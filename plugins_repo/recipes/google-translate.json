@@ -1,11 +1,11 @@
 {
   "name": "google-translate",
-  "tooltip": "Google Translate → Norwegian",
+  "tooltip": "Google Translate → English",
   "icon": "preferences-desktop-locale-symbolic",
   "content_types": ["plain_text"],
   "priority": 73,
   "action": {
     "type": "open_url",
-    "template": "https://translate.google.com/?sl=auto&tl=no&text={text_url}&op=translate"
+    "template": "https://translate.google.com/?sl=auto&tl=en&text={text_url}&op=translate"
   }
 }
