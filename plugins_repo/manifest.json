@@ -155,8 +155,8 @@
   {
     "kind": "recipe",
     "file": "google-translate.json",
-    "title": "Google Translate to Norwegian",
-    "description": "Auto-detect source language → translate to Norwegian",
+    "title": "Google Translate to English",
+    "description": "Auto-detect source language → translate to English",
     "tags": ["web", "text"]
   },
   {
