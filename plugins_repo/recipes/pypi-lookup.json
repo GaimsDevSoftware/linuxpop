@@ -1,0 +1,11 @@
+{
+  "name": "pypi-lookup",
+  "tooltip": "PyPI package",
+  "icon": "package-x-generic-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 68,
+  "action": {
+    "type": "open_url",
+    "template": "https://pypi.org/project/{text_url}/"
+  }
+}

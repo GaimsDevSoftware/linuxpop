@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plugin Store — LinuxPop</title>
+  <meta name="description" content="Browse plugins for LinuxPop. Clipboard manager, AI integrations, text transformers, calculators and more — every plugin is one click to install.">
+  <link rel="icon" href="assets/icons/linuxpop.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icons/linuxpop.svg" alt="LinuxPop">
+      LinuxPop
+    </a>
+    <div class="nav-links">
+      <a class="active" href="plugins.html">Plugins</a>
+      <a href="develop.html">Build your own</a>
+      <a class="nav-cta" href="https://github.com/GaimsDevSoftware/linuxpop">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="store-header">
+  <div class="container">
+    <h1>Plugin Store</h1>
+    <p>Every plugin below ships in the catalogue — click <em>Install</em> inside LinuxPop's Plugin Manager to add it. Missing something? <a href="develop.html">Build your own</a> with the wizard.</p>
+  </div>
+</header>
+
+<div class="container">
+  <div class="store-controls">
+    <div class="search-box">
+      <input id="plugin-search" type="search" placeholder="Search plugins…" aria-label="Search plugins">
+    </div>
+    <div class="filter-pills" id="filter-pills">
+      <button class="pill active" data-tag="all">All</button>
+      <button class="pill" data-tag="ai">AI</button>
+      <button class="pill" data-tag="clipboard">Clipboard</button>
+      <button class="pill" data-tag="text">Text</button>
+      <button class="pill" data-tag="developer">Developer</button>
+      <button class="pill" data-tag="utility">Utility</button>
+      <button class="pill" data-tag="web">Web</button>
+    </div>
+  </div>
+
+  <div class="plugin-grid" id="plugin-grid">
+
+    <!-- AI -->
+    <article class="plugin-card" data-tags="ai web" data-name="Send to chat AI">
+      <div class="plugin-head">
+        <span class="plugin-icon colored brand-claude"><img src="assets/icons/linuxpop-claude.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Send to Chat AI</div>
+          <div class="plugin-tags"><span class="tag">AI</span><span class="tag">Web</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Opens your selection in Claude, ChatGPT, Gemini, Perplexity or Google AI — auto-fills the chat box. No API keys, no accounts to wire up.</p>
+      <div class="plugin-footer">
+        <span><kbd>send_to_ai.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="ai" data-name="Local AI Ollama">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-claude.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Local AI (Ollama)</div>
+          <div class="plugin-tags"><span class="tag">AI</span><span class="tag">Offline</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Explain, summarize, translate, rewrite — runs locally via Ollama. Free, offline, private. Requires Ollama with any model installed.</p>
+      <div class="plugin-footer">
+        <span><kbd>ollama_ai.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <!-- Clipboard -->
+    <article class="plugin-card" data-tags="clipboard utility" data-name="Clipboard and snippets">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-clipboard-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Clipboard &amp; Snippets</div>
+          <div class="plugin-tags"><span class="tag">Clipboard</span><span class="tag">Utility</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Rolling history of the last 25 clipboard entries (text and images). Pin and name an entry → it becomes a permanent snippet. Picker via <kbd>Super</kbd>+<kbd>V</kbd>.</p>
+      <div class="plugin-footer">
+        <span><kbd>clipboard_history.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <!-- Text -->
+    <article class="plugin-card" data-tags="text utility" data-name="Word and character count">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-wordcount-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Word &amp; Character Count</div>
+          <div class="plugin-tags"><span class="tag">Text</span><span class="tag">Utility</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Shows word, character and line counts of the selection as a desktop notification. Useful for tweets, alt-text, abstracts.</p>
+      <div class="plugin-footer">
+        <span><kbd>wordcount.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="text case" data-name="Case converter">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-case-upper-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Case Converter</div>
+          <div class="plugin-tags"><span class="tag">Text</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">UPPERCASE, lowercase, Title Case and Slugify — four buttons that transform the selection and put the result on the clipboard.</p>
+      <div class="plugin-footer">
+        <span><kbd>case_convert.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <!-- Developer -->
+    <article class="plugin-card" data-tags="developer text encoding" data-name="Base64 encode decode">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-base64-encode-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Base64 Encode / Decode</div>
+          <div class="plugin-tags"><span class="tag">Developer</span><span class="tag">Encoding</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Encode the selection to Base64, or decode a Base64 string back to text. Two separate buttons. Output goes to the clipboard with a notification.</p>
+      <div class="plugin-footer">
+        <span><kbd>base64_codec.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="developer" data-name="JSON pretty print">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-json-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">JSON Pretty-Print</div>
+          <div class="plugin-tags"><span class="tag">Developer</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Reformats unreadable single-line JSON into properly-indented form. Validation errors are shown as notifications, not silent failures.</p>
+      <div class="plugin-footer">
+        <span><kbd>json_format.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="developer web encoding url" data-name="URL encode decode">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-url-encode-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">URL Encode / Decode</div>
+          <div class="plugin-tags"><span class="tag">Web</span><span class="tag">Encoding</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Percent-encodes text for safe use in URLs, or reverses the encoding. Two buttons for round-tripping.</p>
+      <div class="plugin-footer">
+        <span><kbd>url_encode.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <!-- Utility -->
+    <article class="plugin-card" data-tags="utility math" data-name="Calculator">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-calculator-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Calculator</div>
+          <div class="plugin-tags"><span class="tag">Utility</span><span class="tag">Math</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Evaluates math expressions in the selection: <code>2 + 2</code>, <code>sqrt(16) * sin(pi/2)</code>, <code>log10(1000)</code>. Result copied to clipboard.</p>
+      <div class="plugin-footer">
+        <span><kbd>calculator.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="utility web url" data-name="QR code">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-qr-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">QR Code</div>
+          <div class="plugin-tags"><span class="tag">Utility</span><span class="tag">Web</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Generates a QR code from a selected URL or text — opens the image in your default viewer. Requires <code>qrencode</code> system package.</p>
+      <div class="plugin-footer">
+        <span><kbd>qr_code.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="text web" data-name="Slugify URL friendly">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-slugify-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Slugify</div>
+          <div class="plugin-tags"><span class="tag">Text</span><span class="tag">Web</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Turns "My Post Title!" into "my-post-title". Strips accents, lowercases, replaces non-alphanumerics with hyphens. Result on the clipboard.</p>
+      <div class="plugin-footer">
+        <span><kbd>case_convert.py</kbd></span>
+        <span class="plugin-bundled">Bundled</span>
+      </div>
+    </article>
+
+    <article class="plugin-card" data-tags="utility" data-name="Open path file">
+      <div class="plugin-head">
+        <span class="plugin-icon"><img src="assets/icons/linuxpop-clipboard-symbolic.svg" alt=""></span>
+        <div>
+          <div class="plugin-title">Open Path</div>
+          <div class="plugin-tags"><span class="tag">Utility</span></div>
+        </div>
+      </div>
+      <p class="plugin-desc">Selects a file path like <code>~/Documents/draft.md</code> and clicks "Open" → opens it in the registered application via <code>xdg-open</code>.</p>
+      <div class="plugin-footer">
+        <span><kbd>built-in</kbd></span>
+        <span class="plugin-bundled">Built-in</span>
+      </div>
+    </article>
+
+  </div>
+
+  <div class="empty-state" id="empty-state" style="display:none;">
+    Nothing matched. Try a different search or filter — or
+    <a href="develop.html">build it yourself</a>.
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    LinuxPop is MIT-licensed. No telemetry. No accounts. <br>
+    <a href="https://github.com/GaimsDevSoftware/linuxpop">Source on GitHub</a> ·
+    <a href="https://github.com/GaimsDevSoftware/linuxpop/issues">Issues</a> ·
+    <a href="develop.html">Plugin API</a>
+  </div>
+</footer>
+
+<script src="assets/script.js"></script>
+</body>
+</html>

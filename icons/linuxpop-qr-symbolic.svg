@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Stylized QR with three corner finder patterns + a few module blocks -->
+  <g fill="#f0f0f0">
+    <!-- Top-left finder -->
+    <path d="M1,1 H6 V6 H1 Z M2,2 H5 V5 H2 Z" fill-rule="evenodd"/>
+    <rect x="3" y="3" width="1" height="1"/>
+    <!-- Top-right finder -->
+    <path d="M10,1 H15 V6 H10 Z M11,2 H14 V5 H11 Z" fill-rule="evenodd"/>
+    <rect x="12" y="3" width="1" height="1"/>
+    <!-- Bottom-left finder -->
+    <path d="M1,10 H6 V15 H1 Z M2,11 H5 V14 H2 Z" fill-rule="evenodd"/>
+    <rect x="3" y="12" width="1" height="1"/>
+    <!-- Sample data modules -->
+    <rect x="8" y="7" width="1" height="1"/>
+    <rect x="10" y="8" width="1" height="1"/>
+    <rect x="12" y="9" width="1" height="1"/>
+    <rect x="9" y="11" width="1" height="1"/>
+    <rect x="11" y="11" width="1" height="1"/>
+    <rect x="13" y="12" width="1" height="1"/>
+    <rect x="10" y="13" width="1" height="1"/>
+    <rect x="14" y="14" width="1" height="1"/>
+    <rect x="8" y="9" width="1" height="1"/>
+    <rect x="8" y="13" width="1" height="1"/>
+  </g>
+</svg>

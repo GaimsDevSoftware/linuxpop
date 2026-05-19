@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Big capital A as filled path with negative inner triangle -->
+  <path fill="#f0f0f0" fill-rule="evenodd"
+        d="M2,15
+           L7,1
+           L9,1
+           L14,15
+           L11.5,15
+           L10.5,12
+           L5.5,12
+           L4.5,15
+           Z
+           M6.3,9.5
+           L9.7,9.5
+           L8,4.5
+           Z"/>
+</svg>
