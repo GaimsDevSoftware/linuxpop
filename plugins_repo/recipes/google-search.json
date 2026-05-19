@@ -1,0 +1,11 @@
+{
+  "name": "google-search",
+  "tooltip": "Search Google",
+  "icon": "system-search-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 30,
+  "action": {
+    "type": "open_url",
+    "template": "https://www.google.com/search?q={text_url}"
+  }
+}

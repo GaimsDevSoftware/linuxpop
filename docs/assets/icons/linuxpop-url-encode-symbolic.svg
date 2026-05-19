@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Letter A → arrow → percent sign -->
+  <g fill="#f0f0f0" fill-rule="evenodd">
+    <!-- Capital A -->
+    <path d="M0.5,13.5 L3,3.5 L4,3.5 L6.5,13.5 L5.2,13.5 L4.8,11.5 L2.2,11.5 L1.8,13.5 Z
+             M2.45,10 L4.55,10 L3.5,6.5 Z"/>
+    <!-- Arrow -->
+    <path d="M7,8 L9,8 L9,7 L10.5,8.5 L9,10 L9,9 L7,9 Z"/>
+    <!-- Percent: two circles + diagonal slash -->
+    <circle cx="12" cy="6.5" r="1.4"/>
+    <circle cx="12" cy="6.5" r="0.5" fill="#2b2b2b"/>
+    <circle cx="14.5" cy="11.5" r="1.4"/>
+    <circle cx="14.5" cy="11.5" r="0.5" fill="#2b2b2b"/>
+    <path d="M14.5,4 L11.5,14 L10.7,13.6 L13.7,3.6 Z"/>
+  </g>
+</svg>

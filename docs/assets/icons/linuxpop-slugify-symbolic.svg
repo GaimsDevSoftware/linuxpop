@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- "word-word-word": three rounded blocks joined by dashes -->
+  <g fill="#f0f0f0">
+    <rect x="0.5" y="6.5" width="3.5" height="3" rx="0.7"/>
+    <rect x="4.5" y="7.5" width="2"   height="1" rx="0.3"/>
+    <rect x="7"   y="6.5" width="2"   height="3" rx="0.7"/>
+    <rect x="9.5" y="7.5" width="2"   height="1" rx="0.3"/>
+    <rect x="12"  y="6.5" width="3.5" height="3" rx="0.7"/>
+  </g>
+</svg>

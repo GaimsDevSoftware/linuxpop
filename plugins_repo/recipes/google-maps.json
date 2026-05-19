@@ -1,0 +1,11 @@
+{
+  "name": "google-maps",
+  "tooltip": "Look up in Maps",
+  "icon": "mark-location-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 74,
+  "action": {
+    "type": "open_url",
+    "template": "https://www.google.com/maps/search/{text_url}"
+  }
+}

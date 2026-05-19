@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Knotted-hex outline inspired by OpenAI's signature mark, on near-black -->
+  <rect x="0" y="0" width="24" height="24" rx="5" fill="#10A37F"/>
+  <g fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">
+    <!-- A simplified hex knot: three overlapping rotated rectangles -->
+    <path d="M12,4 L18.5,8 L18.5,16 L12,20 L5.5,16 L5.5,8 Z"/>
+    <path d="M12,4 L12,12 L5.5,16"/>
+    <path d="M12,12 L18.5,16"/>
+    <path d="M12,12 L12,20"/>
+  </g>
+</svg>

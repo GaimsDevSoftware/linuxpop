@@ -1,0 +1,11 @@
+{
+  "name": "github-search",
+  "tooltip": "Search GitHub",
+  "icon": "applications-development-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 67,
+  "action": {
+    "type": "open_url",
+    "template": "https://github.com/search?q={text_url}&type=code"
+  }
+}

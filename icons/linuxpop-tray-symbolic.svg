@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!--
+    LinuxPop symbolic tray icon.
+    Pill with downward tail + three action dots (punched via evenodd).
+    Uses currentColor so the panel theme can recolor it to match the bar.
+  -->
+  <path fill="currentColor" fill-rule="evenodd"
+        d="M3.25,2 H12.75
+           A2.25,2.25 0 0 1 15,4.25
+           V9.25
+           A2.25,2.25 0 0 1 12.75,11.5
+           H9.2
+           L8,14
+           L6.8,11.5
+           H3.25
+           A2.25,2.25 0 0 1 1,9.25
+           V4.25
+           A2.25,2.25 0 0 1 3.25,2
+           Z
+
+           M4.6,5.75
+           a1.15,1.15 0 1,0 0,2.3
+           a1.15,1.15 0 1,0 0,-2.3
+           Z
+           M8,5.75
+           a1.15,1.15 0 1,0 0,2.3
+           a1.15,1.15 0 1,0 0,-2.3
+           Z
+           M11.4,5.75
+           a1.15,1.15 0 1,0 0,2.3
+           a1.15,1.15 0 1,0 0,-2.3
+           Z"/>
+</svg>

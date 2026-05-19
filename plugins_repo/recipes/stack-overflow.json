@@ -1,0 +1,11 @@
+{
+  "name": "stack-overflow",
+  "tooltip": "Search Stack Overflow",
+  "icon": "help-faq-symbolic",
+  "content_types": ["plain_text", "command"],
+  "priority": 65,
+  "action": {
+    "type": "open_url",
+    "template": "https://stackoverflow.com/search?q={text_url}"
+  }
+}

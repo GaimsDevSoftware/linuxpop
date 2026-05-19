@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=LinuxPop
+Comment=PopClip-inspirert teksthandlings-popup
+Exec=/usr/bin/python3 /home/robert/linuxpop/main.py
+Icon=linuxpop
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+StartupNotify=false

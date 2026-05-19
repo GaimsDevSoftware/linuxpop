@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Anthropic Claude mark: 8-petal starburst on warm orange -->
+  <rect x="0" y="0" width="24" height="24" rx="5" fill="#D97757"/>
+  <g transform="translate(12 12)" fill="#ffffff">
+    <!-- Each petal is a tapered seed/pip shape, drawn vertically then rotated -->
+    <g id="petal-claude">
+      <path d="M 0,-7.5
+               C 0.6,-5 0.6,-2.5 0,0
+               C -0.6,-2.5 -0.6,-5 0,-7.5 Z"/>
+    </g>
+    <use href="#petal-claude" transform="rotate(45)"/>
+    <use href="#petal-claude" transform="rotate(90)"/>
+    <use href="#petal-claude" transform="rotate(135)"/>
+    <use href="#petal-claude" transform="rotate(180)"/>
+    <use href="#petal-claude" transform="rotate(225)"/>
+    <use href="#petal-claude" transform="rotate(270)"/>
+    <use href="#petal-claude" transform="rotate(315)"/>
+  </g>
+</svg>
