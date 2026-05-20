@@ -444,6 +444,39 @@ progressbar progress {
     min-height: 6px;
 }
 
+/* Generic TextView coverage so multi-line text widgets pick up the dark
+   theme by default. Without this, GTK falls back to the system theme's
+   white text region (which sticks out in the terminal confirm dialog,
+   the recipe wizard, etc.). */
+textview,
+textview text {
+    background-color: transparent;
+    background-image: none;
+    color: #f0f3fa;
+    caret-color: #5B7DF5;
+}
+
+/* Terminal confirm dialog: read-only "preview" state. Flat, no box,
+   sits on the dialog's dark surface the way a label would. */
+textview.lp-cmd-preview,
+textview.lp-cmd-preview text {
+    background-color: transparent;
+    background-image: none;
+    color: #f0f3fa;
+    padding: 4px 6px;
+}
+
+/* Terminal confirm dialog: editable state after Edit was pressed.
+   Picks up the entry-field look so it's obvious you can type now. */
+textview.lp-cmd-edit,
+textview.lp-cmd-edit text {
+    background-color: #181d2a;
+    background-image: none;
+    color: #f0f3fa;
+    caret-color: #5B7DF5;
+    padding: 6px 10px;
+}
+
 /* ----- LinuxPop-specific helper classes -----
    Any widget that adds these style classes via add_css_class()
    gets premium accents on top of the generic widget styling. */
