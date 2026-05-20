@@ -116,24 +116,34 @@ modules:
   # ----- python-xlib -----
   # Pure-Python Xlib bindings. Used for XFixes selection events + the
   # raw keysym/keycode dance in hotkey.py.
+  #
+  # Use the pre-built wheel from PyPI rather than the sdist. The sdist's
+  # setup.py declares setup_requires=['setuptools-scm'] which causes
+  # setuptools to phone home for that build-time dep -- and Flatpak's
+  # build sandbox has no network, so it fails.
   - name: python3-xlib
     buildsystem: simple
     build-commands:
-      - pip3 install --prefix=/app --no-build-isolation --no-deps .
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          python_xlib-0.33-py2.py3-none-any.whl
     sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/source/p/python-xlib/python-xlib-0.33.tar.gz
-        sha256: 55af7906a2c75ce6cb280a584776080602444f75815a7aff4d287bb2d7018b32
+      - type: file
+        url: https://files.pythonhosted.org/packages/fc/b8/ff33610932e0ee81ae7f1269c890f697d56ff74b9f5b2ee5d9b7fa2c5355/python_xlib-0.33-py2.py3-none-any.whl
+        sha256: c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
 
   # ----- pillow (for QR code plugin) -----
+  # Use the manylinux wheel rather than the sdist. Pillow's sdist
+  # requires a full C toolchain + JPEG/PNG/freetype/etc. headers; the
+  # manylinux wheel is self-contained and pip-installable as-is.
   - name: python3-pillow
     buildsystem: simple
     build-commands:
-      - pip3 install --prefix=/app --no-build-isolation --no-deps .
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
     sources:
-      - type: archive
-        url: https://files.pythonhosted.org/packages/source/p/pillow/pillow-10.4.0.tar.gz
-        sha256: 166c1cd4d24309b30d61f79f4a9114b7b2313d7450912277855ff5dfd7cd4a06
+      - type: file
+        url: https://files.pythonhosted.org/packages/ac/10/c67e20445a707f7a610699bba4fe050583b688d8cd2d202572b257f46600/pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: 5e84b6cc6a4a3d76c153a6b19270b3526a5a8ed6b09501d3af891daa2a9de7d6
 
   # ----- LinuxPop itself -----
   - name: linuxpop
