@@ -54,7 +54,7 @@ modules:
     sources:
       - type: archive
         url: https://download.gnome.org/sources/libhandy/1.8/libhandy-1.8.3.tar.xz
-        sha256: 9f1bf3033c4cdfb55ec4533afe22dd99fb1062f44ee2c5fb1f1aaa927d8b75e8
+        sha256: 05b497229073ff557f10b326e074c5066f8743a302d4820ab97bcb5cd2dab087
 
   # ----- libayatana-appindicator -----
   # System tray support.
