@@ -66,7 +66,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.92.tar.gz
-        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+        sha256: adedcf160dae7547971d475b42062cab278d54ec075537e6958ffdbf2d996857
 
   # ----- xdotool -----
   # Keyboard simulation. Used by AI plugins for paste mode and by
@@ -79,7 +79,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
-        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+        sha256: 96f0facfde6d78eacad35b91b0f46fecd0b35e474c03e00e30da3fdd345f9ada
 
   # ----- xclip -----
   # X11 clipboard. LinuxPop reads PRIMARY/CLIPBOARD via this.
@@ -88,7 +88,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/astrand/xclip/archive/refs/tags/0.13.tar.gz
-        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+        sha256: ca5b8804e3c910a66423a882d79bf3c9450b875ac8528791fb60ec9de667f758
 
   # ----- wmctrl -----
   # Window listing/activation for the AI paste flow.
@@ -97,7 +97,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/dvdhrm/wmctrl/archive/refs/tags/v1.07.tar.gz
-        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+        sha256: 0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
 
   # ----- python-xlib -----
   # Pure-Python Xlib bindings. Used for XFixes selection events + the
@@ -119,7 +119,7 @@ modules:
     sources:
       - type: archive
         url: https://files.pythonhosted.org/packages/source/p/pillow/pillow-10.4.0.tar.gz
-        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+        sha256: 166c1cd4d24309b30d61f79f4a9114b7b2313d7450912277855ff5dfd7cd4a06
 
   # ----- LinuxPop itself -----
   - name: linuxpop

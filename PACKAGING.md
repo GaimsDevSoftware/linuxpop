@@ -20,23 +20,29 @@ What's done in this repo:
 
 - [x] AppStream metainfo XML — `packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml`
 - [x] Flatpak-style `.desktop` entry — `packaging/io.github.GaimsDevSoftware.LinuxPop.desktop`
-- [x] Flatpak manifest scaffold — `packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml`
+- [x] Flatpak manifest with **real SHA256 hashes** — `packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml`
 - [x] Wrapper script — `packaging/flatpak/linuxpop.wrapper`
 - [x] Stable reverse-DNS app ID: `io.github.GaimsDevSoftware.LinuxPop`
+- [x] `appstreamcli validate --no-net` passes (1 pedantic about online screenshots — expected)
+- [x] `desktop-file-validate` passes
+- [x] `install.sh` installs the AppStream metainfo + reverse-DNS `.desktop` so local
+      tarball-installs are visible in Mint Software Manager / GNOME Software
 
-What still needs human verification before the first Flathub PR:
+What still needs human action before the first Flathub PR:
 
-- [ ] Verify the SHA256 hashes in the Flatpak manifest by running
-      `flatpak-builder` once locally — it prints expected vs actual
-      hashes when they're wrong (search the file for `PLACEHOLDER`).
-- [ ] Take 3–4 screenshots into `docs/screenshots/` (popup, settings,
-      wizard, clipboard) and verify the URLs in the metainfo resolve.
-- [ ] Run `appstreamcli validate packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml`
-      and fix any warnings.
-- [ ] Run `desktop-file-validate packaging/io.github.GaimsDevSoftware.LinuxPop.desktop`.
-- [ ] Build the Flatpak end-to-end once and confirm: tray icon shows,
-      hotkey works, popup appears on selection, clipboard hotkey
-      opens picker.
+- [ ] Take 4 screenshots into `docs/screenshots/` (popup, settings, wizard,
+      clipboard). Save as `popup.png`, `settings.png`, `wizard.png`,
+      `clipboard.png` — those are the filenames the metainfo references.
+      Use PrintScreen / scrot / gnome-screenshot, then commit + push.
+- [ ] Install `flatpak-builder`: `sudo apt install flatpak-builder`
+      (only `flatpak` is currently installed on this machine).
+- [ ] Install the GNOME runtime + SDK:
+      `flatpak install flathub org.gnome.Platform//46 org.gnome.Sdk//46`
+- [ ] Build the Flatpak end-to-end:
+      `flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml`
+      and smoke-test: tray icon appears, hotkey works, popup appears on
+      selection, clipboard hotkey opens picker.
+- [ ] Submit PR to `flathub/flathub`.
 
 ---
 
