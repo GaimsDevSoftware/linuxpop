@@ -22,8 +22,14 @@ DEFAULTS: dict[str, Any] = {
     # Set to null/empty to disable. Use the recorder in Innstillinger to capture
     # a combo by pressing it.
     "hotkey": "super+shift+y",
+    # Master on/off for the clipboard plugin. When False, the background
+    # selection-watcher thread is NOT started, the picker hotkey does
+    # nothing, and the popup button is hidden. Use this if you'd rather
+    # not have LinuxPop track your clipboard at all.
+    "clipboard_history_enabled": True,
     # Hotkey to open the clipboard / snippets picker. Press, type to filter,
-    # Enter to paste at the cursor.
+    # Enter to paste at the cursor. Ignored if clipboard_history_enabled
+    # is False.
     "clipboard_hotkey": "super+v",
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",

@@ -214,7 +214,27 @@ class SettingsDialog:
         hk_row.add(clear)
         group.add(hk_row)
 
-        # Clipboard-picker hotkey row
+        # Clipboard plugin master toggle. When off, the background
+        # selection-watcher thread is not started, the picker hotkey
+        # doesn't bind, and the popup button is hidden.
+        clip_master_row = Handy.ActionRow()
+        clip_master_row.set_title("Clipboard history & picker")
+        clip_master_row.set_subtitle(
+            "Track recent clipboard contents and pin snippets. "
+            "Off = no clipboard watching at all.")
+        clip_master_switch = Gtk.Switch()
+        clip_master_switch.set_valign(Gtk.Align.CENTER)
+        clip_master_switch.set_active(
+            bool(self._settings.get("clipboard_history_enabled", True)))
+        clip_master_switch.connect(
+            "notify::active", self._on_switch, "clipboard_history_enabled")
+        clip_master_row.add(clip_master_switch)
+        clip_master_row.set_activatable_widget(clip_master_switch)
+        group.add(clip_master_row)
+
+        # Clipboard-picker hotkey row -- only meaningful if the master
+        # switch above is on, but we keep it visible so the binding can
+        # be configured ahead of enabling.
         clip_row = Handy.ActionRow()
         clip_row.set_title("Clipboard picker hotkey")
         clip_row.set_subtitle("Opens the clipboard history + snippets picker at the cursor.")
@@ -228,6 +248,12 @@ class SettingsDialog:
         clip_clear.set_tooltip_text("Disable")
         clip_clear.connect("clicked", lambda *_: clip_recorder.set_value(""))
         clip_row.add(clip_clear)
+        clip_row.set_sensitive(
+            bool(self._settings.get("clipboard_history_enabled", True)))
+        # Re-flow sensitivity when the master toggles
+        clip_master_switch.connect(
+            "notify::active",
+            lambda s, _p: clip_row.set_sensitive(s.get_active()))
         group.add(clip_row)
 
         # Hotkey source (combo)
