@@ -41,6 +41,11 @@ DEFAULTS: dict[str, Any] = {
     "min_selection_length": 1,
     # If True, ignore selections that contain only whitespace
     "ignore_whitespace_only": True,
+    # Substrings that, if any matches the active window's title or
+    # WM_CLASS (case-insensitive), suppress the popup entirely. Useful
+    # for password managers, banking sites, etc. One entry per pattern.
+    # Examples: "KeePassXC", "DNB - Mozilla Firefox", "1Password".
+    "blocklist_patterns": [],
     # If True (default): after the command, drop into an interactive shell so
     #   output stays visible. Close with exit/Ctrl-D/X.
     # If False: terminal closes immediately after the command exits (output lost).
