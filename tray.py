@@ -81,6 +81,7 @@ class Tray:
         on_open_plugins: Callable[[], None],
         on_open_about: Callable[[], None],
         on_quit: Callable[[], None],
+        on_open_support: Callable[[], None] | None = None,
     ) -> None:
         self._on_toggle_watcher = on_toggle_watcher
         self._get_watcher_active = get_watcher_active
@@ -88,6 +89,7 @@ class Tray:
         self._on_open_settings = on_open_settings
         self._on_open_plugins = on_open_plugins
         self._on_open_about = on_open_about
+        self._on_open_support = on_open_support
         self._on_quit = on_quit
         self._indicator = None
 
@@ -141,6 +143,12 @@ class Tray:
         about_item = Gtk.MenuItem(label="About LinuxPop")
         about_item.connect("activate", lambda *_: self._on_open_about())
         menu.append(about_item)
+
+        if self._on_open_support is not None:
+            support_item = Gtk.MenuItem(label="Support LinuxPop…")
+            support_item.connect("activate",
+                                 lambda *_: self._on_open_support())
+            menu.append(support_item)
 
         menu.append(Gtk.SeparatorMenuItem())
 

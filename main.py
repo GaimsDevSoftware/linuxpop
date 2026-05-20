@@ -292,8 +292,16 @@ class App:
             on_open_settings=self.open_settings,
             on_open_plugins=self.open_plugins,
             on_open_about=self.open_about,
+            on_open_support=self.open_support,
             on_quit=self.quit,
         )
+
+    def open_support(self) -> None:
+        try:
+            from welcome import open_support_picker
+            open_support_picker(self.settings)
+        except Exception:
+            log.exception("support picker crashed")
 
     def open_settings(self) -> None:
         log.info("opening settings dialog…")
@@ -375,6 +383,15 @@ class App:
         if project_url:
             about.set_website(project_url)
             about.set_website_label("Project page")
+        # Add a "Support" action button so the donation flow is one click
+        # away from the canonical "About" surface.
+        try:
+            support_btn = about.add_button("Support LinuxPop…",
+                                           Gtk.ResponseType.HELP)
+            support_btn.connect("clicked",
+                                lambda *_: self.open_support())
+        except Exception:
+            pass
         about.run()
         about.destroy()
 
@@ -386,19 +403,31 @@ class App:
         FIRST_RUN_MARKER.parent.mkdir(parents=True, exist_ok=True)
         FIRST_RUN_MARKER.touch()
 
-        # Welcome notification + offer to open plugin manager
-        try:
-            subprocess.run(
-                ["notify-send", "-i", "linuxpop", "-t", "8000",
-                 "LinuxPop is running",
-                 "Select text anywhere to see actions. Look for the tray icon "
-                 "for settings & plugins."],
-                check=False,
-            )
-        except FileNotFoundError:
-            pass
-        # Open plugin manager after a short delay so user sees what's installable
-        GLib.timeout_add(1500, lambda: (self.open_plugins(), False)[1])
+        # Welcome dialog (one-time): explains usage + offers an optional
+        # support link. Falls back to notify-send if GTK can't construct
+        # the dialog for some reason.
+        def _open_welcome():
+            try:
+                from welcome import show_welcome_dialog
+                show_welcome_dialog(
+                    self.settings,
+                    on_open_plugins=self.open_plugins,
+                )
+            except Exception:
+                log.exception("welcome dialog failed; falling back to notify-send")
+                try:
+                    subprocess.run(
+                        ["notify-send", "-i", "linuxpop", "-t", "8000",
+                         "LinuxPop is running",
+                         "Select text anywhere to see actions. Tray icon "
+                         "has settings & plugins."],
+                        check=False,
+                    )
+                except FileNotFoundError:
+                    pass
+            return False
+
+        GLib.timeout_add(800, _open_welcome)
 
     # ---- lifecycle -----------------------------------------------------------
 
