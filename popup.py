@@ -25,36 +25,39 @@ window.linuxpop-popup {
 }
 
 box.linuxpop-bar {
-    background-color: #2b2b2b;
-    border: 1px solid #3c3c3c;
-    border-radius: 7px;
-    padding: 2px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+    background-image: linear-gradient(to bottom, #1d2230, #161a24);
+    background-color: #1a1f2c;
+    border: 1px solid #2c3346;
+    border-radius: 9px;
+    padding: 3px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55),
+                0 0 0 1px rgba(255, 255, 255, 0.02) inset;
 }
 
 button.linuxpop-action {
     background: transparent;
     border: none;
-    border-radius: 4px;
-    padding: 2px 4px;
+    border-radius: 6px;
+    padding: 3px 5px;
     margin: 0;
-    min-width: 20px;
-    min-height: 20px;
-    color: #f0f0f0;
-    transition: background-color 80ms ease-in-out;
+    min-width: 22px;
+    min-height: 22px;
+    color: #e8ecf4;
+    transition: background-color 100ms ease, color 100ms ease;
 }
 
 button.linuxpop-action:hover {
-    background-color: #3d6eb5;
+    background-image: linear-gradient(to bottom right, #5B7DF5, #7C3AED);
     color: #ffffff;
 }
 
 button.linuxpop-action:active {
-    background-color: #2d5391;
+    background-image: linear-gradient(to bottom right, #4A6CE3, #6929DB);
+    color: #ffffff;
 }
 
 button.linuxpop-action image {
-    color: #f0f0f0;
+    color: #e8ecf4;
 }
 """
 
