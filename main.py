@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import logging
 import os
 import signal
@@ -26,7 +27,51 @@ __version__ = "0.1.0"
 
 CACHE_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
 LOG_FILE = CACHE_DIR / "linuxpop.log"
+LOCK_FILE = CACHE_DIR / "linuxpop.lock"
 FIRST_RUN_MARKER = Path(os.path.expanduser("~/.config/linuxpop/.first-run-done"))
+
+# Held for the lifetime of the process; the kernel releases the flock when
+# the fd is closed (i.e. when we exit, even ungracefully). Storing it at
+# module scope ensures it's not garbage-collected mid-run.
+_lock_fd: int | None = None
+
+
+def _acquire_single_instance_lock() -> None:
+    """Refuse to start a second copy. Uses fcntl.flock — robust against
+    crashes (kernel releases the lock automatically when the process dies,
+    no stale-lockfile cleanup needed)."""
+    global _lock_fd
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, BlockingIOError):
+        os.close(fd)
+        # Read the existing PID for the user-facing message
+        try:
+            with open(LOCK_FILE, "r", encoding="utf-8") as f:
+                existing_pid = f.read().strip() or "unknown"
+        except OSError:
+            existing_pid = "unknown"
+        message = (
+            f"LinuxPop is already running (PID {existing_pid}). "
+            "Open the tray icon to use it. To force-restart, kill the "
+            "existing process first: pkill -f 'python3.*linuxpop/main.py'"
+        )
+        print(f"[linuxpop] {message}", file=sys.stderr)
+        try:
+            subprocess.run(
+                ["notify-send", "-u", "normal", "-i", "linuxpop",
+                 "LinuxPop is already running", message],
+                check=False,
+            )
+        except FileNotFoundError:
+            pass
+        sys.exit(0)
+    # Write our PID inside the (now-locked) file for diagnostics
+    os.ftruncate(fd, 0)
+    os.write(fd, f"{os.getpid()}\n".encode("ascii"))
+    _lock_fd = fd
 
 log = logging.getLogger("linuxpop")
 
@@ -381,6 +426,10 @@ def main(argv: list[str] | None = None) -> int:
 
     _setup_logging(args.debug)
     _check_x11_or_exit()
+    # Single-instance guard — refuses to start a second copy. Run BEFORE
+    # any GTK init or hotkey grabs so the second copy exits before
+    # interfering with the existing instance.
+    _acquire_single_instance_lock()
 
     app = App(enable_tray=not args.no_tray)
     signal.signal(signal.SIGINT, lambda *_: app.quit())
