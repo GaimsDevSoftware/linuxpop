@@ -231,10 +231,21 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
 
     box.pack_start(btn_box, False, False, 0)
 
-    # Keyboard shortcuts: Ctrl+Enter runs, Esc cancels. Plain Enter inside
-    # an editable TextView still inserts a newline (useful for multi-line
-    # commands). When the view is read-only, Enter also runs.
-    def _on_key(_w, event):
+    # Keyboard shortcuts. Two separate handlers because GTK key events
+    # are dispatched to the focused widget FIRST -- if GtkTextView's
+    # default handler consumes Enter (to insert a newline), the dialog's
+    # key-press-event never fires. So Ctrl+Enter has to be intercepted
+    # ON the TextView itself, before the default handler runs.
+    def _on_textview_key(_w, event):
+        is_enter = event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter)
+        ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
+        if is_enter and ctrl:
+            dlg.response(Gtk.ResponseType.OK)
+            return True  # consume, don't insert a newline
+        return False  # let TextView handle plain Enter etc. normally
+    text_view.connect("key-press-event", _on_textview_key)
+
+    def _on_dialog_key(_w, event):
         is_enter = event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter)
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
         if event.keyval == Gdk.KEY_Escape:
@@ -244,7 +255,7 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
             dlg.response(Gtk.ResponseType.OK)
             return True
         return False
-    dlg.connect("key-press-event", _on_key)
+    dlg.connect("key-press-event", _on_dialog_key)
 
     content.add(box)
     dlg.show_all()
@@ -253,17 +264,23 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
     run_btn.grab_focus()
 
     response = dlg.run()
+    import logging
+    log = logging.getLogger("linuxpop")
 
     if response == Gtk.ResponseType.OK:
         start, end = text_buf.get_start_iter(), text_buf.get_end_iter()
         edited = text_buf.get_text(start, end, True).strip()
-        if edited:
+        if not edited:
+            log.info("[terminal] OK pressed but command was empty -- skipping")
+        else:
             wrapped = _wrap_for_terminal(edited)
             try:
                 subprocess.Popen([*prefix, wrapped], start_new_session=True)
-                print(f"[actions] running in terminal ({binary}): {edited[:60]}")
+                log.info("[terminal] launched (%s): %s", binary, edited[:120])
             except OSError as exc:
-                print(f"[actions] terminal launch failed: {exc}")
+                log.error("[terminal] launch failed: %s", exc)
+    else:
+        log.info("[terminal] cancelled (response=%s)", response)
     dlg.destroy()
     return False
 
