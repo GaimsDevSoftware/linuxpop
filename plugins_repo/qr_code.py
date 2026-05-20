@@ -32,7 +32,7 @@ def _cleanup_cache() -> None:
 def _qr(text: str) -> None:
     if not shutil.which("qrencode"):
         subprocess.run(
-            ["notify-send", "-i", "dialog-error", "QR plugin missing dependency",
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "QR plugin missing dependency",
              "Install with: sudo apt-get install -y qrencode"],
             check=False,
         )
@@ -48,7 +48,7 @@ def _qr(text: str) -> None:
         subprocess.Popen(["xdg-open", str(out_path)], start_new_session=True)
     except subprocess.CalledProcessError as exc:
         subprocess.run(
-            ["notify-send", "-i", "dialog-error", "QR error", str(exc)[:200]],
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "QR error", str(exc)[:200]],
             check=False,
         )
 

@@ -32,7 +32,7 @@ def _copy_and_notify(text: str, title: str) -> None:
         input=text.encode("utf-8"), check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "security-high-symbolic", title, text[:280]],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "security-high-symbolic", title, text[:280]],
         check=False,
     )
 
@@ -57,7 +57,7 @@ def _jwt_decode(text: str) -> None:
     parts = text.strip().split(".")
     if len(parts) < 2:
         subprocess.run(
-            ["notify-send", "-i", "dialog-error", "JWT decode",
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "JWT decode",
              "Not a JWT (expected header.payload.signature)"],
             check=False,
         )
@@ -67,7 +67,7 @@ def _jwt_decode(text: str) -> None:
         payload = json.loads(_b64url_decode(parts[1]))
     except Exception as exc:
         subprocess.run(
-            ["notify-send", "-i", "dialog-error", "JWT decode", str(exc)[:200]],
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "JWT decode", str(exc)[:200]],
             check=False,
         )
         return
@@ -79,7 +79,7 @@ def _jwt_decode(text: str) -> None:
     alg = header.get("alg", "?")
     typ = header.get("typ", "?")
     subprocess.run(
-        ["notify-send", "-i", "security-high-symbolic",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "security-high-symbolic",
          f"JWT decoded (alg={alg}, typ={typ})", pretty[:400]],
         check=False,
     )

@@ -29,7 +29,7 @@ def _format(text: str) -> None:
         obj = json.loads(text)
     except json.JSONDecodeError as exc:
         subprocess.run(
-            ["notify-send", "-i", "dialog-error", "JSON error", str(exc)[:300]],
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "JSON error", str(exc)[:300]],
             check=False,
         )
         return
@@ -40,7 +40,7 @@ def _format(text: str) -> None:
         check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "accessories-text-editor",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-text-editor",
          "JSON formatted", f"Copied ({len(pretty)} chars)"],
         check=False,
     )

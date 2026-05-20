@@ -59,7 +59,7 @@ def _ollama_reachable() -> bool:
 
 
 def _notify(title: str, body: str, urgent: bool = False) -> None:
-    args = ["notify-send", "-i", "applications-science", title, body[:600]]
+    args = ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "applications-science", title, body[:600]]
     if urgent:
         args.extend(["-u", "critical"])
     subprocess.run(args, check=False)

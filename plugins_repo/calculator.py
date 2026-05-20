@@ -93,7 +93,7 @@ def _calc(text: str) -> None:
         result = _eval(tree.body)
     except Exception as exc:  # noqa: BLE001
         subprocess.run(
-            ["notify-send", "-i", "dialog-error", "Calculator error", str(exc)[:200]],
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Calculator error", str(exc)[:200]],
             check=False,
         )
         return
@@ -104,7 +104,7 @@ def _calc(text: str) -> None:
         check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "accessories-calculator", "Result", f"{expr} = {result_str}"],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-calculator", "Result", f"{expr} = {result_str}"],
         check=False,
     )
 

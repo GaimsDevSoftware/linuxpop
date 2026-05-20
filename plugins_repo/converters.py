@@ -15,7 +15,7 @@ def _copy(text: str, label: str) -> None:
         input=text.encode("utf-8"), check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "preferences-system-time-symbolic", label, text[:200]],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "preferences-system-time-symbolic", label, text[:200]],
         check=False,
     )
 
@@ -46,7 +46,7 @@ def _timestamp_convert(text: str) -> None:
         except ValueError:
             continue
     subprocess.run(
-        ["notify-send", "-i", "dialog-error", "Timestamp converter",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Timestamp converter",
          f"Couldn't parse {s!r} as a timestamp or epoch"],
         check=False,
     )
@@ -107,7 +107,7 @@ def _color_convert(text: str) -> None:
         _copy(f"#{r:02x}{g:02x}{b:02x}", f"rgb → hex")
         return
     subprocess.run(
-        ["notify-send", "-i", "dialog-error", "Color converter",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Color converter",
          "Couldn't recognise as #hex or rgb(r,g,b)"],
         check=False,
     )

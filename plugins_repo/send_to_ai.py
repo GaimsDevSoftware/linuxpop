@@ -58,7 +58,7 @@ def _send_via_url(service: str, url_template: str, text: str,
         subprocess.Popen(["xdg-open", url], start_new_session=True)
     except FileNotFoundError:
         subprocess.run(
-            ["notify-send", "-i", "dialog-error",
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
              f"Could not open {service}", "xdg-open is missing"],
             check=False,
         )
@@ -67,7 +67,7 @@ def _send_via_url(service: str, url_template: str, text: str,
             if not auto_submits
             else "Sent. (URL-mode auto-submits on this service.)")
     subprocess.run(
-        ["notify-send", "-i", "applications-internet",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "applications-internet",
          f"Opened {service}", body],
         check=False,
     )
@@ -207,7 +207,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
         subprocess.Popen(["xdg-open", url], start_new_session=True)
     except FileNotFoundError:
         subprocess.run(
-            ["notify-send", "-i", "dialog-error",
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
              f"Could not open {service}", "xdg-open is missing"],
             check=False,
         )
@@ -224,7 +224,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
             print(f"[send_to_ai] {service}: no browser window matched within "
                   f"{_WINDOW_TIMEOUT}s — terms={window_terms}")
             subprocess.run(
-                ["notify-send", "-i", "dialog-warning", service,
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-warning", service,
                  "Browser window didn't appear in time. "
                  "Paste manually with Ctrl+V."],
                 check=False,
@@ -255,7 +255,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
             if shutil.which("xdotool")
             else "Text copied — paste manually with Ctrl+V or Shift+Insert")
     subprocess.run(
-        ["notify-send", "-i", "applications-internet",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "applications-internet",
          f"Opened {service}", body],
         check=False,
     )

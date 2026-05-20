@@ -18,7 +18,7 @@ def _copy(text: str, label: str) -> None:
         input=text.encode("utf-8"), check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "accessories-text-editor", label, text[:200]],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-text-editor", label, text[:200]],
         check=False,
     )
 

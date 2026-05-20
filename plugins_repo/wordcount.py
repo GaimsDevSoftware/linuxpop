@@ -18,7 +18,7 @@ def _count(text: str) -> None:
     )
     try:
         subprocess.run(
-            ["notify-send", "-i", "accessories-text-editor", "LinuxPop wordcount", body],
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-text-editor", "LinuxPop wordcount", body],
             check=False,
         )
     except FileNotFoundError:

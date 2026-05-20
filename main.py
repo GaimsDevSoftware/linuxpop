@@ -62,7 +62,7 @@ def _acquire_single_instance_lock() -> None:
         print(f"[linuxpop] {message}", file=sys.stderr)
         try:
             subprocess.run(
-                ["notify-send", "-u", "normal", "-i", "linuxpop",
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-u", "normal", "-i", "linuxpop",
                  "LinuxPop is already running", message],
                 check=False,
             )
@@ -109,7 +109,7 @@ def _check_x11_or_exit() -> None:
         print(msg, file=sys.stderr)
         try:
             subprocess.run(
-                ["notify-send", "-u", "critical",
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-u", "critical",
                  "LinuxPop cannot start", msg.replace("\n", " ")],
                 check=False,
             )
@@ -191,7 +191,7 @@ class App:
         text = _read_selection(self.settings.get("hotkey_source") or "primary")
         if not text:
             subprocess.run(
-                ["notify-send", "-i", "dialog-information",
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-information",
                  "LinuxPop", "Nothing selected"],
                 check=False,
             )
@@ -273,7 +273,7 @@ class App:
                 self._show_for_text(text, x, y)
             else:
                 subprocess.run(
-                    ["notify-send", "-i", "dialog-information", "LinuxPop",
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-information", "LinuxPop",
                      "Install the Clipboard plugin to get the picker."],
                     check=False,
                 )
@@ -417,7 +417,7 @@ class App:
                 log.exception("welcome dialog failed; falling back to notify-send")
                 try:
                     subprocess.run(
-                        ["notify-send", "-i", "linuxpop", "-t", "8000",
+                        ["notify-send", "--hint=byte:transient:1",  "-i", "linuxpop", "-t", "8000",
                          "LinuxPop is running",
                          "Select text anywhere to see actions. Tray icon "
                          "has settings & plugins."],

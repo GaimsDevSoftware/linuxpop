@@ -27,7 +27,7 @@ def _copy_and_notify(label: str, text: str) -> None:
         check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "applications-internet", label, text[:200]],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "applications-internet", label, text[:200]],
         check=False,
     )
 
