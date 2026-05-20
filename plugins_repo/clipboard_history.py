@@ -36,6 +36,39 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 
+try:
+    gi.require_version("GdkX11", "3.0")
+    from gi.repository import GdkX11  # noqa: F401, E402
+except (ImportError, ValueError):
+    pass
+
+
+def _force_to_front(window) -> None:
+    """Reliably raise the picker on X11 even when WM focus-stealing
+    prevention would otherwise drop it behind other windows. Same trick
+    the Settings/Plugin Manager dialogs use."""
+    try:
+        window.deiconify()
+        gdk_win = window.get_window()
+        if gdk_win is not None:
+            try:
+                ts = Gdk.X11.get_server_time(gdk_win)
+            except Exception:
+                ts = Gtk.get_current_event_time() or 0
+            window.present_with_time(ts)
+        else:
+            window.present()
+        window.set_keep_above(True)
+        # Drop keep-above shortly after so the user can move other windows
+        # over the picker if they want — but it's reliably on top at open.
+        GLib.timeout_add(200, lambda: (window.set_keep_above(False), False)[1])
+    except Exception:
+        try:
+            window.present()
+        except Exception:
+            pass
+
+
 from classifier import ContentType
 from plugin_base import Plugin
 
@@ -393,7 +426,7 @@ class _PickerDialog:
 
     def show(self, target_window: str | None = None) -> None:
         if self.dialog is not None and self.dialog.get_visible():
-            self.dialog.present()
+            _force_to_front(self.dialog)
             return
         self.target_window = target_window
 
@@ -457,7 +490,7 @@ class _PickerDialog:
         self._populate_recent()
         self._populate_snippets()
         win.show_all()
-        win.present()
+        _force_to_front(win)
         # Focus the search box for type-to-filter
         if self.search_entry is not None:
             self.search_entry.grab_focus()
