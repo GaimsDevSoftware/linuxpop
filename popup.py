@@ -80,13 +80,25 @@ class PopupWindow:
     ) -> None:
         _install_css()
 
-        self.win = Gtk.Window(type=Gtk.WindowType.POPUP)
+        # TOPLEVEL (not POPUP) so the WM actually stacks us above other
+        # LinuxPop dialogs like Settings / Plugin Manager. Override-
+        # redirect POPUP windows bypass WM stacking, which on Cinnamon
+        # caused the popup to silently end up *under* an already-visible
+        # Settings or Plugin Manager window -- clicks went to the wrong
+        # window. TOPLEVEL + decorated=False + POPUP_MENU type-hint
+        # gives us a borderless on-top window the WM handles correctly.
+        self.win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
         self.win.set_decorated(False)
         self.win.set_resizable(False)
         self.win.set_keep_above(True)
         self.win.set_skip_taskbar_hint(True)
         self.win.set_skip_pager_hint(True)
-        self.win.set_accept_focus(True)
+        # accept_focus=False prevents the popup from stealing keyboard
+        # focus from the text-source app (so paste still goes there).
+        # Esc-to-dismiss is handled via the Xlib keymap poll in _tick(),
+        # not via GTK key events, so we don't lose that flow.
+        self.win.set_accept_focus(False)
+        self.win.set_focus_on_map(False)
         self.win.set_type_hint(Gdk.WindowTypeHint.POPUP_MENU)
         self.win.get_style_context().add_class("linuxpop-popup")
 
