@@ -25,13 +25,13 @@ window.linuxpop-popup {
 }
 
 box.linuxpop-bar {
-    background-image: linear-gradient(to bottom, #1d2230, #161a24);
-    background-color: #1a1f2c;
-    border: 1px solid #2c3346;
+    background-image: linear-gradient(to bottom, #262d3f, #1c2231);
+    background-color: #1c2231;
+    border: 1px solid #3a4258;
     border-radius: 9px;
     padding: 3px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55),
-                0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+                0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
 
 button.linuxpop-action {
@@ -42,7 +42,7 @@ button.linuxpop-action {
     margin: 0;
     min-width: 22px;
     min-height: 22px;
-    color: #e8ecf4;
+    color: #f0f3fa;
     transition: background-color 100ms ease, color 100ms ease;
 }
 
@@ -57,7 +57,7 @@ button.linuxpop-action:active {
 }
 
 button.linuxpop-action image {
-    color: #e8ecf4;
+    color: #f0f3fa;
 }
 """
 

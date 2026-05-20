@@ -21,11 +21,11 @@ _PREMIUM_CSS = b"""
    LinuxPop -- premium dark theme
    palette:
      base       #0e1118  (deep cobalt)
-     surface    #161a24  (cards / list rows)
-     elevated   #1d2230  (hover / selected)
-     border     #262c3a
-     text       #e8ecf4
-     muted      #9aa3b8
+     surface    #1c2231  (cards / list rows -- lifted for contrast)
+     elevated   #262d3f  (hover / selected)
+     border     #3a4258  (visible at a glance, not hairline)
+     text       #f0f3fa
+     muted      #b8c0d4  (higher contrast for dim labels)
      accent-1   #5B7DF5  (cobalt blue)
      accent-2   #7C3AED  (royal violet)
      accent-3   #EC4899  (magenta pink)
@@ -38,7 +38,7 @@ hdypreferenceswindow,
 hdypreferencespage,
 hdypreferencesgroup {
     background-color: #0e1118;
-    color: #e8ecf4;
+    color: #f0f3fa;
 }
 
 /* Header bar: subtle gradient that picks up the accent palette without
@@ -46,26 +46,27 @@ hdypreferencesgroup {
 headerbar,
 .titlebar {
     background-image: linear-gradient(to bottom,
-        #1a1f2e 0%,
-        #141823 100%);
-    background-color: #141823;
-    border-bottom: 1px solid #262c3a;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-    color: #e8ecf4;
+        #232a3c 0%,
+        #1a1f2e 100%);
+    background-color: #1a1f2e;
+    border-bottom: 1px solid #3a4258;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                0 1px 0 rgba(0, 0, 0, 0.35);
+    color: #f0f3fa;
     padding: 6px 10px;
     min-height: 38px;
 }
 
 headerbar label,
 .titlebar label {
-    color: #e8ecf4;
+    color: #f0f3fa;
     font-weight: 600;
     letter-spacing: 0.01em;
 }
 
 /* Typography */
 label {
-    color: #e8ecf4;
+    color: #f0f3fa;
 }
 
 label.title,
@@ -77,28 +78,31 @@ label.title,
 label.subtitle,
 label.dim-label,
 .dim-label {
-    color: #9aa3b8;
+    color: #b8c0d4;
     font-size: 0.92em;
 }
 
 /* ----- libhandy boxed list (the GNOME-Settings card look) ----- */
 list.boxed-list,
 list.content {
-    background-color: #161a24;
-    border: 1px solid #262c3a;
+    background-color: #1c2231;
+    border: 1px solid #3a4258;
     border-radius: 12px;
     padding: 2px;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
-                0 4px 12px rgba(0, 0, 0, 0.25);
+    /* Subtle inner top highlight + slightly stronger bottom border to give
+       cards real lift instead of bleeding into the dark background. */
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
+                0 -1px 0 rgba(0, 0, 0, 0.30) inset,
+                0 6px 14px rgba(0, 0, 0, 0.30);
 }
 
 list.boxed-list > row,
 list.content > row,
 hdyactionrow {
     background-color: transparent;
-    color: #e8ecf4;
+    color: #f0f3fa;
     padding: 10px 14px;
-    border-bottom: 1px solid #1f2433;
+    border-bottom: 1px solid #2c3346;
     transition: background-color 120ms ease;
 }
 
@@ -109,7 +113,7 @@ list.content > row:last-child {
 
 list.boxed-list > row:hover,
 list.content > row:hover {
-    background-color: #1d2230;
+    background-color: #262d3f;
 }
 
 list.boxed-list > row:selected,
@@ -124,8 +128,8 @@ list > row:selected {
 /* ----- buttons ----- */
 button {
     background-image: linear-gradient(to bottom, #1f2433, #1a1f2c);
-    background-color: #1d2230;
-    color: #e8ecf4;
+    background-color: #262d3f;
+    color: #f0f3fa;
     border: 1px solid #2c3346;
     border-radius: 8px;
     padding: 6px 14px;
@@ -207,12 +211,13 @@ entry,
 .entry,
 searchentry,
 spinbutton {
-    background-color: #14171f;
-    color: #e8ecf4;
-    border: 1px solid #262c3a;
+    background-color: #181d2a;
+    color: #f0f3fa;
+    border: 1px solid #3a4258;
     border-radius: 8px;
     padding: 6px 10px;
     caret-color: #5B7DF5;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) inset;
     transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
@@ -251,7 +256,7 @@ switch:checked {
 }
 
 switch slider {
-    background-color: #e8ecf4;
+    background-color: #f0f3fa;
     border-radius: 50%;
     border: none;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -265,22 +270,22 @@ combobox button,
 combobox box.linked button {
     background-image: linear-gradient(to bottom, #1f2433, #1a1f2c);
     border: 1px solid #2c3346;
-    color: #e8ecf4;
+    color: #f0f3fa;
     border-radius: 8px;
 }
 
 combobox arrow {
-    color: #9aa3b8;
+    color: #b8c0d4;
 }
 
 /* ----- popovers ----- */
 popover,
 popover.background {
-    background-color: #161a24;
-    border: 1px solid #262c3a;
+    background-color: #1c2231;
+    border: 1px solid #3a4258;
     border-radius: 10px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-    color: #e8ecf4;
+    color: #f0f3fa;
     padding: 4px;
 }
 
@@ -289,14 +294,14 @@ popover modelbutton {
     background-image: none;
     background-color: transparent;
     border: none;
-    color: #e8ecf4;
+    color: #f0f3fa;
     padding: 6px 10px;
     border-radius: 6px;
 }
 
 popover button:hover,
 popover modelbutton:hover {
-    background-color: #1d2230;
+    background-color: #262d3f;
 }
 
 /* ----- scrolled windows + scrollbars ----- */
@@ -322,13 +327,13 @@ scrollbar slider:hover {
 
 /* ----- frames / separators ----- */
 frame {
-    border: 1px solid #262c3a;
+    border: 1px solid #3a4258;
     border-radius: 10px;
-    background-color: #161a24;
+    background-color: #1c2231;
 }
 
 separator {
-    background-color: #262c3a;
+    background-color: #3a4258;
     min-width: 1px;
     min-height: 1px;
 }
@@ -340,31 +345,31 @@ notebook {
 
 notebook > header {
     background-color: #141823;
-    border-bottom: 1px solid #262c3a;
+    border-bottom: 1px solid #3a4258;
 }
 
 notebook > header > tabs > tab {
     background-color: transparent;
-    color: #9aa3b8;
+    color: #b8c0d4;
     border: none;
     padding: 8px 14px;
     transition: color 120ms ease;
 }
 
 notebook > header > tabs > tab:checked {
-    color: #e8ecf4;
+    color: #f0f3fa;
     box-shadow: inset 0 -2px 0 #5B7DF5;
 }
 
 notebook > header > tabs > tab:hover {
-    color: #e8ecf4;
+    color: #f0f3fa;
 }
 
 /* ----- tooltips ----- */
 tooltip,
 tooltip.background {
-    background-color: #1d2230;
-    color: #e8ecf4;
+    background-color: #262d3f;
+    color: #f0f3fa;
     border: 1px solid #2c3346;
     border-radius: 6px;
     padding: 4px 8px;
@@ -375,7 +380,7 @@ check,
 radio {
     background-color: #14171f;
     border: 1px solid #2c3346;
-    color: #e8ecf4;
+    color: #f0f3fa;
     min-width: 16px;
     min-height: 16px;
 }
@@ -389,8 +394,8 @@ radio:checked {
 
 /* ----- progress bars ----- */
 progressbar trough {
-    background-color: #1d2230;
-    border: 1px solid #262c3a;
+    background-color: #262d3f;
+    border: 1px solid #3a4258;
     border-radius: 6px;
     min-height: 6px;
 }
@@ -409,8 +414,8 @@ progressbar progress {
 }
 
 .lp-card {
-    background-color: #161a24;
-    border: 1px solid #262c3a;
+    background-color: #1c2231;
+    border: 1px solid #3a4258;
     border-radius: 12px;
     padding: 12px;
 }
@@ -423,7 +428,7 @@ progressbar progress {
 }
 
 .lp-muted {
-    color: #9aa3b8;
+    color: #b8c0d4;
 }
 
 .lp-title {
