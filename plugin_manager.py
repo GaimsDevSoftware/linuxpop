@@ -382,6 +382,17 @@ class PluginManagerDialog:
             short = template if len(template) <= 70 else template[:67] + "…"
             row.set_subtitle(f"{atype}  ·  {short}")
 
+            # On/off toggle. Lets the user disable a custom button without
+            # deleting it. Default-True for recipes that don't carry the
+            # 'enabled' key yet.
+            enabled_switch = Gtk.Switch()
+            enabled_switch.set_valign(Gtk.Align.CENTER)
+            enabled_switch.set_tooltip_text("Show this button in the popup")
+            enabled_switch.set_active(bool(recipe.get("enabled", True)))
+            enabled_switch.connect("notify::active",
+                                   self._on_toggle_recipe, path)
+            row.add(enabled_switch)
+
             edit_btn = Gtk.Button.new_from_icon_name("document-edit-symbolic", Gtk.IconSize.BUTTON)
             edit_btn.set_valign(Gtk.Align.CENTER)
             edit_btn.set_tooltip_text("Edit")
@@ -444,6 +455,17 @@ class PluginManagerDialog:
         import recipe_loader
         recipe_loader.delete_recipe(path)
         self._refresh_custom_group()
+        if self._on_changed:
+            self._on_changed()
+
+    def _on_toggle_recipe(self, switch: Gtk.Switch, _param, path: Path) -> None:
+        """Flip the recipe's 'enabled' field and reload the plugin layer
+        so the popup picks up the change without a restart."""
+        import recipe_loader
+        recipe_loader.set_recipe_enabled(path, switch.get_active())
+        # Don't repaint the whole group -- that would rebuild every row
+        # and lose the switch animation feedback. Just trigger the
+        # plugin-reload callback so the popup reflects the change.
         if self._on_changed:
             self._on_changed()
 

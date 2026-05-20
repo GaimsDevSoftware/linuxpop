@@ -210,6 +210,11 @@ def load_recipes(register) -> int:
         if errors:
             print(f"[recipe] {path.name} has errors: {', '.join(errors)}")
             continue
+        # Recipes can be turned off without deleting: 'enabled': false in
+        # the JSON skips registration. Missing key defaults to True for
+        # backwards compatibility with older recipes.
+        if not recipe.get("enabled", True):
+            continue
         try:
             register(Plugin(
                 name=recipe["name"],
@@ -264,3 +269,21 @@ def delete_recipe(path: Path) -> None:
         path.unlink()
     except OSError as exc:
         print(f"[recipe] could not delete {path}: {exc}")
+
+
+def set_recipe_enabled(path: Path, enabled: bool) -> bool:
+    """Flip the 'enabled' field on the recipe at `path` and save atomically.
+    Returns True on success."""
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            recipe = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[recipe] could not read {path} for toggle: {exc}")
+        return False
+    recipe["enabled"] = bool(enabled)
+    try:
+        save_recipe(recipe, target_path=path)
+        return True
+    except OSError as exc:
+        print(f"[recipe] could not save toggle for {path}: {exc}")
+        return False
