@@ -167,6 +167,7 @@ class SettingsDialog:
         page.add(self._build_general_group())
         page.add(self._build_timing_group())
         page.add(self._build_filter_group())
+        page.add(self._build_search_group())
         page.add(self._build_terminal_group())
         page.add(self._build_ai_group())
 
@@ -325,6 +326,67 @@ class SettingsDialog:
         else:
             current = [k for k in current if k != key]
         self._save_key("ai_services", current)
+
+    def _build_search_group(self) -> Handy.PreferencesGroup:
+        group = Handy.PreferencesGroup()
+        group.set_title("Web search")
+        group.set_description(
+            "Which engine the popup's \"Search the web\" button uses. "
+            "Google also surfaces Gemini answers; DuckDuckGo and Brave "
+            "are private; Kagi requires an account."
+        )
+
+        # Pull catalog from actions.py so the two stay in sync.
+        try:
+            from actions import SEARCH_ENGINES
+        except Exception:
+            SEARCH_ENGINES = {"google": ("Google", "https://www.google.com/search?q={q}")}
+
+        # Picker row
+        engine_row = Handy.ActionRow()
+        engine_row.set_title("Search engine")
+        engine_row.set_subtitle("The button on the popup will open this site.")
+        engine_combo = Gtk.ComboBoxText()
+        engine_combo.set_valign(Gtk.Align.CENTER)
+        for key, (label, _tmpl) in SEARCH_ENGINES.items():
+            engine_combo.append(key, label)
+        engine_combo.append("custom", "Custom URL…")
+        current = (self._settings.get("search_engine") or "google").strip().lower()
+        if current not in SEARCH_ENGINES and current != "custom":
+            current = "google"
+        engine_combo.set_active_id(current)
+        engine_row.add(engine_combo)
+        engine_row.set_activatable_widget(engine_combo)
+        group.add(engine_row)
+
+        # Custom-URL row (sensitive only when "Custom URL…" is picked)
+        custom_row = Handy.ActionRow()
+        custom_row.set_title("Custom search URL")
+        custom_row.set_subtitle("Must contain {q} — replaced by the selection.")
+        custom_entry = Gtk.Entry()
+        custom_entry.set_valign(Gtk.Align.CENTER)
+        custom_entry.set_width_chars(28)
+        custom_entry.set_placeholder_text("https://searx.example.com/search?q={q}")
+        custom_entry.set_text(self._settings.get("search_engine_custom_url") or "")
+        custom_row.add(custom_entry)
+        group.add(custom_row)
+
+        def _sync_custom_visibility(*_):
+            active = engine_combo.get_active_id() == "custom"
+            custom_row.set_sensitive(active)
+        _sync_custom_visibility()
+
+        def _on_engine_changed(combo: Gtk.ComboBoxText) -> None:
+            new_id = combo.get_active_id() or "google"
+            self._save_key("search_engine", new_id)
+            _sync_custom_visibility()
+
+        def _on_custom_changed(entry: Gtk.Entry) -> None:
+            self._save_key("search_engine_custom_url", entry.get_text().strip())
+
+        engine_combo.connect("changed", _on_engine_changed)
+        custom_entry.connect("changed", _on_custom_changed)
+        return group
 
     def _build_terminal_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()

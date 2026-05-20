@@ -39,9 +39,47 @@ def open_url(text: str) -> None:
         print("[actions] xdg-open not available")
 
 
+# Built-in search engines. The value is a URL template — '{q}' gets
+# replaced with the URL-encoded selection. Add to the dict to extend.
+SEARCH_ENGINES: dict[str, tuple[str, str]] = {
+    # key:            (display name,     URL template)
+    "google":         ("Google",         "https://www.google.com/search?q={q}"),
+    "duckduckgo":     ("DuckDuckGo",     "https://duckduckgo.com/?q={q}"),
+    "bing":           ("Bing",           "https://www.bing.com/search?q={q}"),
+    "brave":          ("Brave Search",   "https://search.brave.com/search?q={q}"),
+    "startpage":      ("Startpage",      "https://www.startpage.com/do/search?q={q}"),
+    "ecosia":         ("Ecosia",         "https://www.ecosia.org/search?q={q}"),
+    "kagi":           ("Kagi",           "https://kagi.com/search?q={q}"),
+    "qwant":          ("Qwant",          "https://www.qwant.com/?q={q}"),
+    "yandex":         ("Yandex",         "https://yandex.com/search/?text={q}"),
+    "wikipedia":      ("Wikipedia",      "https://en.wikipedia.org/wiki/Special:Search?search={q}"),
+    "youtube":        ("YouTube",        "https://www.youtube.com/results?search_query={q}"),
+}
+
+
+def _search_template() -> str:
+    """Return the URL template for the user's chosen search engine.
+    Falls back to Google if the configured engine is unknown."""
+    try:
+        from settings import get_settings
+        s = get_settings()
+        engine = (s.get("search_engine") or "google").strip().lower()
+        if engine == "custom":
+            tmpl = (s.get("search_engine_custom_url") or "").strip()
+            if "{q}" in tmpl:
+                return tmpl
+            # Empty/invalid custom URL — fall through to default.
+        if engine in SEARCH_ENGINES:
+            return SEARCH_ENGINES[engine][1]
+    except Exception:
+        pass
+    return SEARCH_ENGINES["google"][1]
+
+
 def search_web(text: str) -> None:
     query = urllib.parse.quote_plus(_strip_invisible(text))
-    subprocess.Popen(["xdg-open", f"https://duckduckgo.com/?q={query}"], start_new_session=True)
+    url = _search_template().replace("{q}", query)
+    subprocess.Popen(["xdg-open", url], start_new_session=True)
 
 
 def _find_terminal() -> Optional[tuple[str, list[str]]]:
