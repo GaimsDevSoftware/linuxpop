@@ -338,6 +338,31 @@ separator {
     min-height: 1px;
 }
 
+/* ----- GtkAssistant left sidebar (recipe wizard's page list).
+   The internal Box has class 'sidebar', child labels are inactive,
+   the current page's label adds the 'highlight' class. Default
+   theme paints these light-on-light which is illegible against the
+   dark content panel. */
+.sidebar {
+    background-color: #161a24;
+    border-right: 1px solid #3a4258;
+}
+
+.sidebar label {
+    color: #b8c0d4;
+    padding: 8px 16px;
+    background-color: transparent;
+}
+
+.sidebar label.highlight {
+    color: #f0f3fa;
+    background-image: linear-gradient(to right,
+        rgba(91, 125, 245, 0.18),
+        rgba(124, 58, 237, 0.18));
+    box-shadow: inset 3px 0 0 #7C3AED;
+    font-weight: 600;
+}
+
 /* ----- libhandy view switcher / stack switcher (the tab strip in the
    Plugin Manager and other multi-page windows). These render as buttons
    in the header bar; the generic button styling above would give each
