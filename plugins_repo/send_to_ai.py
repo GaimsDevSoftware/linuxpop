@@ -169,18 +169,39 @@ def _stuff_text(text: str) -> None:
         )
 
 
-def _paste_keystroke() -> None:
-    """Send Shift+Insert (pastes from PRIMARY) — more reliable than Ctrl+V
-    on Electron/Chromium because the synthetic XEvent maps cleanly to a
-    real keysym the browser already wires to paste-from-PRIMARY."""
+def _paste_keystroke(key: str = "ctrl+v") -> None:
+    """Send the configured paste shortcut. Default is Ctrl+V which is the
+    most universal — modern contenteditable inputs (ProseMirror, Lexical,
+    Slate, Draft, TipTap) all wire it. Shift+Insert is offered as a
+    per-service alternative for legacy Electron textareas that swallow
+    synthetic Ctrl+V."""
     subprocess.run(
-        ["xdotool", "key", "--clearmodifiers", "--delay", "12",
-         "shift+Insert"],
+        ["xdotool", "key", "--clearmodifiers", "--delay", "12", key],
         check=False,
     )
 
 
-def _send_via_paste(service: str, url: str, window_terms: list[str], text: str) -> None:
+def _diagnose_window(window_id: str) -> str:
+    """Return a short string describing what window we matched, for logs.
+    Helps catch cases where 'Claude' matches Claude Desktop or a VSCode
+    panel instead of the browser tab we just opened."""
+    try:
+        name = subprocess.run(
+            ["xdotool", "getwindowname", window_id],
+            capture_output=True, text=True, timeout=0.5,
+        ).stdout.strip()
+        wclass = subprocess.run(
+            ["xdotool", "getwindowclassname", window_id],
+            capture_output=True, text=True, timeout=0.5,
+        ).stdout.strip()
+        return f"wid={window_id} class={wclass!r} name={name!r}"
+    except (OSError, subprocess.SubprocessError):
+        return f"wid={window_id}"
+
+
+def _send_via_paste(service: str, url: str, window_terms: list[str],
+                    text: str, paste_key: str = "ctrl+v",
+                    settle_extra: float = 0.0) -> None:
     _stuff_text(text)
     try:
         subprocess.Popen(["xdg-open", url], start_new_session=True)
@@ -200,13 +221,17 @@ def _send_via_paste(service: str, url: str, window_terms: list[str], text: str) 
             if window_id is not None:
                 break
         if window_id is None or not shutil.which("xdotool"):
+            print(f"[send_to_ai] {service}: no browser window matched within "
+                  f"{_WINDOW_TIMEOUT}s — terms={window_terms}")
             subprocess.run(
                 ["notify-send", "-i", "dialog-warning", service,
                  "Browser window didn't appear in time. "
-                 "Paste manually with Ctrl+V or Shift+Insert."],
+                 "Paste manually with Ctrl+V."],
                 check=False,
             )
             return
+
+        print(f"[send_to_ai] {service} matched: {_diagnose_window(window_id)}")
 
         # wmctrl is the reliable focus path; xdotool windowactivate is a fallback
         if not _focus_via_wmctrl(window_id):
@@ -217,9 +242,12 @@ def _send_via_paste(service: str, url: str, window_terms: list[str], text: str) 
 
         _wait_until_active(window_id, timeout=_FOCUS_TIMEOUT,
                             stability=_FOCUS_STABLE)
-        if _SETTLE > 0:
-            time.sleep(_SETTLE)
-        _paste_keystroke()
+        # Per-service extra settle on top of the global _SETTLE. Claude's
+        # input takes longer to mount than Gemini's, for example.
+        total_settle = _SETTLE + settle_extra
+        if total_settle > 0:
+            time.sleep(total_settle)
+        _paste_keystroke(paste_key)
 
     threading.Thread(target=worker, daemon=True, name=f"ai-paste-{service}").start()
 
@@ -243,7 +271,11 @@ _SERVICES = {
         service="Claude",
         mode="paste",
         url="https://claude.ai/new",
-        window_terms=["Claude", "claude.ai"],
+        # Narrow window match so Claude Desktop / Claude Code don't hijack.
+        # The /new path forces the chat-input page, with title "Claude".
+        window_terms=["claude.ai", "Claude"],
+        paste_key="ctrl+v",      # ProseMirror-style editor; Ctrl+V is what it expects
+        settle_extra=0.8,        # Claude's input mounts noticeably slower than Gemini's
         priority=100,
     ),
     "chatgpt": dict(
@@ -325,6 +357,8 @@ def _send(spec: dict):
             _send_via_paste(
                 spec["service"], spec["url"],
                 spec.get("window_terms", []), text,
+                paste_key=spec.get("paste_key", "ctrl+v"),
+                settle_extra=spec.get("settle_extra", 0.0),
             )
 
     return handler
