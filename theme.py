@@ -338,6 +338,44 @@ separator {
     min-height: 1px;
 }
 
+/* ----- libhandy view switcher / stack switcher (the tab strip in the
+   Plugin Manager and other multi-page windows). These render as buttons
+   in the header bar; the generic button styling above would give each
+   tab a border + gradient + 14 px horizontal padding which clips long
+   labels like 'Installed'. Strip the heavy styling so labels fit. */
+hdyviewswitcher button,
+stackswitcher button {
+    background-image: none;
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 8px;
+    box-shadow: none;
+    color: #b8c0d4;
+    font-weight: 500;
+}
+
+hdyviewswitcher button:hover,
+stackswitcher button:hover {
+    background-image: none;
+    background-color: rgba(91, 125, 245, 0.10);
+    color: #f0f3fa;
+}
+
+hdyviewswitcher button:checked,
+stackswitcher button:checked {
+    background-image: none;
+    background-color: rgba(124, 58, 237, 0.15);
+    color: #f0f3fa;
+    box-shadow: inset 0 -2px 0 #7C3AED;
+}
+
+hdyviewswitcher button label,
+stackswitcher button label {
+    /* Make sure long labels don't get ellipsised by an inherited rule */
+    margin: 0 2px;
+}
+
 /* ----- notebooks / tabs (used by some dialogs) ----- */
 notebook {
     background-color: transparent;

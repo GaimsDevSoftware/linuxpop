@@ -98,7 +98,7 @@ class PluginManagerDialog:
         win = Handy.PreferencesWindow()
         win.set_title("LinuxPop — Plugins")
         win.set_search_enabled(False)
-        win.set_default_size(640, 620)
+        win.set_default_size(780, 620)
         win.set_position(Gtk.WindowPosition.CENTER)
         win.set_icon_name("linuxpop")
         win.set_modal(False)
