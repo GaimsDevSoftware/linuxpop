@@ -44,11 +44,15 @@ except (ImportError, ValueError):
 
 
 def _force_to_front(window) -> None:
-    """Reliably raise the picker on X11 even when WM focus-stealing
-    prevention would otherwise drop it behind other windows. Same trick
-    the Settings/Plugin Manager dialogs use."""
+    """Reliably raise AND focus the picker on X11. The window is invoked
+    from a hotkey thread → GLib.idle_add → here, so WMs see no recent
+    user event tied to it and apply focus-stealing-prevention. We force
+    keyboard focus via the lower-level GdkWindow.focus() call which most
+    WMs honour even when present_with_time alone is ignored."""
     try:
         window.deiconify()
+        window.set_accept_focus(True)
+        window.set_focus_on_map(True)
         gdk_win = window.get_window()
         if gdk_win is not None:
             try:
@@ -56,6 +60,12 @@ def _force_to_front(window) -> None:
             except Exception:
                 ts = Gtk.get_current_event_time() or 0
             window.present_with_time(ts)
+            # The stronger X11-level focus request. present_with_time
+            # asks the WM to raise; .focus() demands keyboard focus.
+            try:
+                gdk_win.focus(ts)
+            except Exception:
+                pass
         else:
             window.present()
         window.set_keep_above(True)
@@ -491,10 +501,17 @@ class _PickerDialog:
         self._populate_snippets()
         win.show_all()
         _force_to_front(win)
-        # Focus the search box for type-to-filter
+        # Defer search-entry focus until AFTER the WM has had a chance to
+        # process our focus request — calling grab_focus immediately after
+        # show_all races the FocusIn event and silently fails.
         if self.search_entry is not None:
-            self.search_entry.grab_focus()
+            GLib.idle_add(self._grab_search_focus)
         self.dialog = win
+
+    def _grab_search_focus(self) -> bool:
+        if self.search_entry is not None and self.dialog is not None:
+            self.search_entry.grab_focus()
+        return False  # one-shot
 
     def _on_destroy(self, *_):
         self.dialog = None
