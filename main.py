@@ -464,11 +464,13 @@ def main(argv: list[str] | None = None) -> int:
     # interfering with the existing instance.
     _acquire_single_instance_lock()
 
-    # Auto-reap subprocess zombies. LinuxPop launches xdg-open / terminals /
-    # xdotool many times across a long uptime and never .wait()s them, so
-    # without this each one lingers as a defunct PID slot until exit. Setting
-    # SIGCHLD to SIG_IGN tells the Linux kernel to clean them up itself.
-    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    # NOTE: previously we set SIGCHLD = SIG_IGN here as a cheap way to
+    # auto-reap subprocess zombies. Reverted because it has been observed
+    # to interact badly with subprocess.run() on Python 3.12 in this
+    # process layout (background watcher + many short-lived xclip/xdotool
+    # calls + GTK main loop), producing intermittent UI freezes when the
+    # clipboard picker is opened. Accepting some zombie PIDs over uptime
+    # is the lesser evil; a proper periodic reaper can come later.
 
     theme.install_premium_theme()
 
