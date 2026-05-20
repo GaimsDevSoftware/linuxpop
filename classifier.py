@@ -36,15 +36,49 @@ _PATH_RE = re.compile(r"^(/|~/|\./)[^\s]*$")
 
 # Tokens that strongly suggest a shell command on the first word
 _COMMAND_TOKENS = {
-    "sudo", "apt", "apt-get", "pacman", "dnf", "yum", "snap", "flatpak",
-    "git", "docker", "kubectl", "make", "cmake", "ninja",
-    "ls", "cd", "cp", "mv", "rm", "mkdir", "rmdir", "chmod", "chown",
-    "cat", "grep", "sed", "awk", "find", "xargs", "tar", "gzip", "gunzip",
-    "ssh", "scp", "rsync", "curl", "wget", "ping", "netstat", "ss",
-    "ps", "kill", "killall", "top", "htop", "systemctl", "journalctl",
-    "python", "python3", "pip", "pip3", "node", "npm", "yarn", "pnpm",
-    "cargo", "rustc", "go", "java", "javac", "ruby", "gem", "bundle",
-    "echo", "export", "source", "bash", "sh", "zsh", "fish",
+    # package managers
+    "sudo", "apt", "apt-get", "aptitude", "pacman", "dnf", "yum", "zypper",
+    "snap", "flatpak", "brew", "nix", "nix-env",
+    # version control + build
+    "git", "svn", "hg", "docker", "podman", "kubectl", "helm",
+    "make", "cmake", "ninja", "meson", "gradle", "mvn",
+    # file management
+    "ls", "ll", "la", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir",
+    "chmod", "chown", "chgrp", "ln", "touch", "stat", "file", "tree",
+    # viewing / paging / text inspection
+    "cat", "tac", "tail", "head", "less", "more", "view",
+    "grep", "egrep", "fgrep", "rg", "ag", "ack",
+    "sed", "awk", "cut", "paste", "tr", "sort", "uniq", "wc",
+    "tee", "column", "fold", "fmt", "nl",
+    "find", "locate", "xargs", "tar", "gzip", "gunzip", "zip", "unzip",
+    "diff", "patch", "cmp",
+    # network
+    "ssh", "scp", "sftp", "rsync", "curl", "wget", "httpie", "http",
+    "ping", "traceroute", "mtr", "dig", "nslookup", "host",
+    "netstat", "ss", "ip", "ifconfig", "iwconfig", "nmap",
+    # process / system
+    "ps", "kill", "killall", "pkill", "pgrep", "top", "htop", "btop",
+    "systemctl", "journalctl", "service", "dmesg", "uptime",
+    "df", "du", "free", "lsof", "fuser", "mount", "umount",
+    "uname", "hostname", "whoami", "id", "who", "w", "groups",
+    # editors
+    "vim", "vi", "nano", "emacs", "code", "gedit", "kate", "nvim",
+    # languages / runtimes
+    "python", "python3", "pip", "pip3", "pipx", "uv", "poetry",
+    "node", "npm", "yarn", "pnpm", "npx", "deno", "bun",
+    "cargo", "rustc", "rustup", "go", "java", "javac", "kotlin",
+    "ruby", "gem", "bundle", "rake", "rails", "perl", "php",
+    # shell builtins / general
+    "echo", "printf", "export", "source", "alias", "unalias",
+    "bash", "sh", "zsh", "fish", "dash",
+    "env", "which", "type", "whereis", "command",
+    "date", "cal", "sleep", "watch", "time", "timeout",
+    "man", "info", "help",
+    "history", "exit", "logout",
+    "nohup", "screen", "tmux",
+    # X11 / desktop helpers commonly used in tutorials
+    "xdotool", "xclip", "xsel", "wmctrl", "xrandr", "xprop", "xev",
+    "notify-send", "xdg-open",
 }
 
 _COMMAND_HINTS = re.compile(r"(\s&&\s|\s\|\|\s|\s\|\s|\s>\s|\s>>\s|\$\(|`)")
