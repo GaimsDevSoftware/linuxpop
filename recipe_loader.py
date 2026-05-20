@@ -154,8 +154,48 @@ def validate(recipe: dict) -> list[str]:
     return errors
 
 
+_DEFAULT_RECIPE_SEEDS = ("wikipedia.json", "youtube-search.json")
+_SEED_MARKER = RECIPES_DIR.parent / ".default-recipes-seeded"
+
+
+def _seed_default_recipes() -> None:
+    """First-run only: if the user has no recipes yet, copy a small curated
+    set from the repo's plugins_repo/recipes/ so a fresh install shows
+    useful buttons (Wikipedia, YouTube) right away. Touches a marker so
+    this never runs twice — users who later delete a default recipe
+    don't get it re-installed."""
+    if _SEED_MARKER.is_file():
+        return
+    RECIPES_DIR.mkdir(parents=True, exist_ok=True)
+    # If the user has already curated this dir, respect it — don't seed
+    # on top of an existing setup.
+    has_existing = any(RECIPES_DIR.glob("*.json"))
+    if has_existing:
+        _SEED_MARKER.touch()
+        return
+    repo_dir = Path(__file__).resolve().parent / "plugins_repo" / "recipes"
+    if not repo_dir.is_dir():
+        _SEED_MARKER.touch()
+        return
+    import shutil
+    for filename in _DEFAULT_RECIPE_SEEDS:
+        src = repo_dir / filename
+        if not src.is_file():
+            continue
+        dst = RECIPES_DIR / filename
+        if dst.is_file():
+            continue
+        try:
+            shutil.copy2(src, dst)
+            print(f"[recipe_loader] seeded default recipe: {filename}")
+        except OSError as exc:
+            print(f"[recipe_loader] could not seed {filename}: {exc}")
+    _SEED_MARKER.touch()
+
+
 def load_recipes(register) -> int:
     """Walk RECIPES_DIR; register each valid recipe as a Plugin. Returns count."""
+    _seed_default_recipes()
     count = 0
     if not RECIPES_DIR.is_dir():
         return 0

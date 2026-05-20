@@ -39,8 +39,12 @@ def open_url(text: str) -> None:
         print("[actions] xdg-open not available")
 
 
-# Built-in search engines. The value is a URL template — '{q}' gets
-# replaced with the URL-encoded selection. Add to the dict to extend.
+# General-purpose web search engines. The value is a URL template — '{q}'
+# gets replaced with the URL-encoded selection. Add to the dict to extend.
+#
+# Site-specific destinations (Wikipedia, YouTube, MDN, Stack Overflow, etc.)
+# live as their own popup buttons via the recipe system — see
+# plugins_repo/recipes/. Keep this dict scoped to "general search".
 SEARCH_ENGINES: dict[str, tuple[str, str]] = {
     # key:            (display name,     URL template)
     "google":         ("Google",         "https://www.google.com/search?q={q}"),
@@ -52,8 +56,6 @@ SEARCH_ENGINES: dict[str, tuple[str, str]] = {
     "kagi":           ("Kagi",           "https://kagi.com/search?q={q}"),
     "qwant":          ("Qwant",          "https://www.qwant.com/?q={q}"),
     "yandex":         ("Yandex",         "https://yandex.com/search/?text={q}"),
-    "wikipedia":      ("Wikipedia",      "https://en.wikipedia.org/wiki/Special:Search?search={q}"),
-    "youtube":        ("YouTube",        "https://www.youtube.com/results?search_query={q}"),
 }
 
 
