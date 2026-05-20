@@ -4,10 +4,42 @@ from __future__ import annotations
 import ast
 import math
 import operator
+import re
 import subprocess
 
 from classifier import ContentType
 from plugin_base import Plugin
+
+# An expression must contain at least one digit AND at least one operator
+# (or one of the allowed function/constant names) — anything else is just
+# prose and would never evaluate.
+_HAS_DIGIT = re.compile(r"\d")
+_HAS_OP_OR_CALL = re.compile(
+    r"[+\-*/^%()]"
+    r"|\b(?:pi|e|tau|sqrt|log|log10|log2|exp|sin|cos|tan|"
+    r"asin|acos|atan|floor|ceil|round|abs)\b"
+)
+# Only letters that are part of allowed function/constant names are OK.
+_ALLOWED_WORD_RE = re.compile(
+    r"^(?:pi|e|tau|sqrt|log|log10|log2|exp|sin|cos|tan|"
+    r"asin|acos|atan|floor|ceil|round|abs)$"
+)
+
+
+def _looks_like_math(text: str) -> bool:
+    s = text.strip()
+    if not s or len(s) > 200:
+        return False
+    if not _HAS_DIGIT.search(s):
+        return False
+    if not _HAS_OP_OR_CALL.search(s):
+        return False
+    # Any word longer than 1 char that isn't an allowed function/constant
+    # disqualifies the selection (e.g. "I have 3 cats" -> 'have', 'cats').
+    for word in re.findall(r"[A-Za-z][A-Za-z_]*", s):
+        if not _ALLOWED_WORD_RE.match(word):
+            return False
+    return True
 
 _BIN_OPS = {
     ast.Add: operator.add,
@@ -85,4 +117,5 @@ def register(register_plugin) -> None:
         handler=_calc,
         content_types=(ContentType.PLAIN_TEXT,),
         priority=40,
+        predicate=_looks_like_math,
     ))

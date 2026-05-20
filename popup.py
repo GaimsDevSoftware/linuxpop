@@ -178,7 +178,7 @@ class PopupWindow:
         self._current_text = text
         self._clear_buttons()
 
-        plugins = plugin_loader.for_content_type(content_type)
+        plugins = plugin_loader.for_content_type(content_type, text)
         if not plugins:
             print(f"[popup] no plugins for {content_type.value}")
             return

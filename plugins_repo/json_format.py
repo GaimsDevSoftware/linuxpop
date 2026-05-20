@@ -8,6 +8,22 @@ from classifier import ContentType
 from plugin_base import Plugin
 
 
+def _looks_like_json(text: str) -> bool:
+    """Cheap shape check — does the text *start* with a JSON container or
+    string? We deliberately don't json.loads() here (too slow to run on
+    every popup show)."""
+    s = text.lstrip()
+    if not s:
+        return False
+    first = s[0]
+    if first not in '{["':
+        return False
+    # A lone '{' or '[' is too eager — require at least a paired closer
+    # somewhere in the selection.
+    last = s.rstrip()[-1:]
+    return (first, last) in (("{", "}"), ("[", "]"), ('"', '"'))
+
+
 def _format(text: str) -> None:
     try:
         obj = json.loads(text)
@@ -38,4 +54,5 @@ def register(register_plugin) -> None:
         handler=_format,
         content_types=(ContentType.PLAIN_TEXT,),
         priority=55,
+        predicate=_looks_like_json,
     ))

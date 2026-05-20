@@ -1,6 +1,7 @@
 """URL-encode and decode selected text."""
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -8,6 +9,15 @@ import urllib.parse
 
 from classifier import ContentType  # noqa: E402
 from plugin_base import Plugin  # noqa: E402
+
+_PERCENT_ESCAPE = re.compile(r"%[0-9A-Fa-f]{2}")
+_PLUS_AS_SPACE = re.compile(r"\S\+\S")
+
+
+def _looks_percent_encoded(text: str) -> bool:
+    """Return True if the selection contains percent-escape sequences
+    (\\x%XX), which is the only thing url-decode can actually change."""
+    return bool(_PERCENT_ESCAPE.search(text))
 
 
 def _copy_and_notify(label: str, text: str) -> None:
@@ -46,4 +56,5 @@ def register(register_plugin) -> None:
         handler=_decode,
         content_types=(ContentType.PLAIN_TEXT, ContentType.URL),
         priority=71,
+        predicate=_looks_percent_encoded,
     ))
