@@ -160,12 +160,19 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
 
     # Command preview/editor. Monospace TextView holds any character
     # (including '&', '<', '>', shell metacharacters) without the
-    # Pango-markup ambiguity that the old MessageDialog had. Starts
-    # read-only so the user verifies first; Edit toggles editable mode.
+    # Pango-markup ambiguity that the old MessageDialog had.
+    #
+    # Two visual states, toggled by the Edit button:
+    #   .lp-cmd-preview -> read-only, flat on the dialog background,
+    #                      looks like a label (the "old preview" look)
+    #   .lp-cmd-edit    -> editable, picks up the input-field styling
+    #                      (border + slightly lighter bg + caret)
     scroll = Gtk.ScrolledWindow()
     scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
     scroll.set_min_content_height(96)
-    scroll.set_shadow_type(Gtk.ShadowType.IN)
+    # No shadow frame in the read-only state -- the IN shadow gives the
+    # white-box look the user disliked. Re-enabled on entering edit mode.
+    scroll.set_shadow_type(Gtk.ShadowType.NONE)
     text_view = Gtk.TextView()
     text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
     try:
@@ -174,6 +181,7 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
         text_view.override_font(__import__("gi").repository.Pango.FontDescription("monospace 11"))
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
+    text_view.get_style_context().add_class("lp-cmd-preview")
     text_buf = text_view.get_buffer()
     text_buf.set_text(cmd)
     scroll.add(text_view)
@@ -194,6 +202,12 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
     def _enter_edit_mode(*_):
         text_view.set_editable(True)
         text_view.set_cursor_visible(True)
+        # Swap visual state: drop the flat preview look, pick up the
+        # input-field look (border + slight bg + caret).
+        ctx = text_view.get_style_context()
+        ctx.remove_class("lp-cmd-preview")
+        ctx.add_class("lp-cmd-edit")
+        scroll.set_shadow_type(Gtk.ShadowType.IN)
         text_view.grab_focus()
         # Select all so the user can just start typing to replace, or
         # press End/Arrow to position the caret to tweak.
