@@ -148,8 +148,13 @@ class PopupWindow:
         self._prev_esc_pressed = False
 
     def _clear_buttons(self) -> None:
+        # destroy() drops the GTK refcount to 0, which releases the button's
+        # signal-handler GClosures and its child image. remove() alone would
+        # rely on Python GC noticing the orphan; this is the belt-and-
+        # suspenders form.
         for child in list(self._bar.get_children()):
             self._bar.remove(child)
+            child.destroy()
 
     def _add_button(self, icon_name: str, tooltip: str, on_click) -> None:
         btn = Gtk.Button()

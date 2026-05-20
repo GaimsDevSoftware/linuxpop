@@ -32,6 +32,20 @@ def _ensure_on_path() -> None:
         sys.path.insert(0, LINUXPOP_DIR)
 
 
+# Cache of (icons_dir_mtime, user_icons_dir_mtime) → (any_copied) from the
+# previous _install_all_icons / _sync_user_icons run. Lets load_all() skip
+# the whole icon stat/copy/rescan dance when the source dirs haven't
+# changed -- which is the common case after first startup.
+_icon_sync_cache: dict[str, float] = {}
+
+
+def _dir_mtime(p: Path) -> float:
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def _install_all_icons() -> None:
     """Copy every SVG from linuxpop/icons/ into the user's hicolor theme,
     register an extra search path with the running GTK process, and refresh
@@ -39,6 +53,16 @@ def _install_all_icons() -> None:
     """
     if not ICONS_DIR.is_dir():
         return
+    # Fast path: if neither the bundled icons dir nor the user icons dir
+    # has been touched since the last run, skip the stat-storm + rescan.
+    user_icons_dir = Path.home() / ".config/linuxpop/icons"
+    bundled_mtime = _dir_mtime(ICONS_DIR)
+    user_mtime = _dir_mtime(user_icons_dir)
+    if (_icon_sync_cache.get("bundled") == bundled_mtime
+            and _icon_sync_cache.get("user") == user_mtime
+            and _icon_sync_cache.get("done")):
+        return
+
     HICOLOR_APPS.mkdir(parents=True, exist_ok=True)
     copied_any = False
     for src in ICONS_DIR.glob("*.svg"):
@@ -92,6 +116,12 @@ def _install_all_icons() -> None:
     # Mirror any user-supplied icons from ~/.config/linuxpop/icons/ into
     # hicolor so they're searchable in the picker and usable by recipes.
     _sync_user_icons()
+
+    # Remember that we've completed an install pass with these source-dir
+    # mtimes so subsequent load_all() calls can short-circuit.
+    _icon_sync_cache["bundled"] = bundled_mtime
+    _icon_sync_cache["user"]    = user_mtime
+    _icon_sync_cache["done"]    = True  # type: ignore[assignment]
 
 
 def _sync_user_icons() -> None:

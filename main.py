@@ -461,6 +461,12 @@ def main(argv: list[str] | None = None) -> int:
     # interfering with the existing instance.
     _acquire_single_instance_lock()
 
+    # Auto-reap subprocess zombies. LinuxPop launches xdg-open / terminals /
+    # xdotool many times across a long uptime and never .wait()s them, so
+    # without this each one lingers as a defunct PID slot until exit. Setting
+    # SIGCHLD to SIG_IGN tells the Linux kernel to clean them up itself.
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+
     theme.install_premium_theme()
 
     app = App(enable_tray=not args.no_tray)
