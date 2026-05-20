@@ -128,9 +128,9 @@ def _wrap_for_terminal(cmd: str) -> str:
 
 
 def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
-    """GTK confirmation dialog with an editable command field. The user can
-    tweak the command (or cancel) before it runs. Returns False so
-    GLib.idle_add doesn't re-fire."""
+    """GTK confirmation dialog. Default state is read-only preview --
+    Cancel / Edit / Run. Clicking Edit unlocks the command field for
+    in-place tweaking. Returns False so GLib.idle_add doesn't re-fire."""
     import gi
     gi.require_version("Gtk", "3.0")
     from gi.repository import Gdk, Gtk
@@ -153,15 +153,15 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
     explain = Gtk.Label(xalign=0)
     explain.set_markup(
         "<span foreground='#b8c0d4' size='small'>"
-        "You can edit the command before running. "
-        "Ctrl+Enter to run, Esc to cancel."
+        "Press <b>Run</b> to launch it as-is, <b>Edit</b> to tweak it first."
         "</span>")
     explain.set_line_wrap(True)
     box.pack_start(explain, False, False, 0)
 
-    # Editable command field. A multi-line TextView in monospace handles
-    # any character (including '&', '<', '>', shell metacharacters) without
-    # Pango-markup ambiguity. Pre-loaded with the selected text.
+    # Command preview/editor. Monospace TextView holds any character
+    # (including '&', '<', '>', shell metacharacters) without the
+    # Pango-markup ambiguity that the old MessageDialog had. Starts
+    # read-only so the user verifies first; Edit toggles editable mode.
     scroll = Gtk.ScrolledWindow()
     scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
     scroll.set_min_content_height(96)
@@ -172,43 +172,71 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
         text_view.set_monospace(True)  # GTK 3.16+
     except AttributeError:
         text_view.override_font(__import__("gi").repository.Pango.FontDescription("monospace 11"))
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
     text_buf = text_view.get_buffer()
     text_buf.set_text(cmd)
     scroll.add(text_view)
     box.pack_start(scroll, True, True, 0)
 
-    # Button row
+    # Button row: Cancel · Edit · Run
     btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
                      margin_top=4)
     btn_box.pack_start(Gtk.Label(), True, True, 0)
+
     cancel = Gtk.Button(label="Cancel")
     cancel.connect("clicked", lambda *_: dlg.response(Gtk.ResponseType.CANCEL))
     btn_box.pack_start(cancel, False, False, 0)
+
+    edit_btn = Gtk.Button(label="Edit")
+    edit_btn.set_tooltip_text("Unlock the command for editing")
+
+    def _enter_edit_mode(*_):
+        text_view.set_editable(True)
+        text_view.set_cursor_visible(True)
+        text_view.grab_focus()
+        # Select all so the user can just start typing to replace, or
+        # press End/Arrow to position the caret to tweak.
+        text_buf.select_range(text_buf.get_start_iter(),
+                              text_buf.get_end_iter())
+        # The button has done its job — disable so it visually confirms
+        # "you're in edit mode now".
+        edit_btn.set_sensitive(False)
+        edit_btn.set_label("Editing…")
+        explain.set_markup(
+            "<span foreground='#b8c0d4' size='small'>"
+            "<b>Editing</b> -- Ctrl+Enter to run, Esc to cancel."
+            "</span>")
+    edit_btn.connect("clicked", _enter_edit_mode)
+    btn_box.pack_start(edit_btn, False, False, 0)
+
     run_btn = Gtk.Button(label="Run")
     run_btn.get_style_context().add_class("suggested-action")
     run_btn.connect("clicked", lambda *_: dlg.response(Gtk.ResponseType.OK))
     btn_box.pack_start(run_btn, False, False, 0)
+
     box.pack_start(btn_box, False, False, 0)
 
     # Keyboard shortcuts: Ctrl+Enter runs, Esc cancels. Plain Enter inside
-    # the TextView still inserts a newline (useful for multi-line commands).
+    # an editable TextView still inserts a newline (useful for multi-line
+    # commands). When the view is read-only, Enter also runs.
     def _on_key(_w, event):
         is_enter = event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter)
         ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
-        if is_enter and ctrl:
-            dlg.response(Gtk.ResponseType.OK)
-            return True
         if event.keyval == Gdk.KEY_Escape:
             dlg.response(Gtk.ResponseType.CANCEL)
+            return True
+        if is_enter and (ctrl or not text_view.get_editable()):
+            dlg.response(Gtk.ResponseType.OK)
             return True
         return False
     dlg.connect("key-press-event", _on_key)
 
     content.add(box)
     dlg.show_all()
-    text_view.grab_focus()
-    # Select all so the user can just start typing to replace.
-    text_buf.select_range(text_buf.get_start_iter(), text_buf.get_end_iter())
+    # Focus the Run button by default so plain Enter confirms the as-is
+    # command (the common path). Edit button is one Tab away.
+    run_btn.grab_focus()
 
     response = dlg.run()
 
