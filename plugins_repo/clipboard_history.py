@@ -441,8 +441,15 @@ class _PickerDialog:
         self._filter_text = ""
 
     def show(self, target_window: str | None = None) -> None:
+        # Stamp each phase so a UI freeze leaves breadcrumbs in the log.
+        # Times > 100 ms anywhere here would explain a perceived freeze.
+        t0 = time.monotonic()
+        def _stamp(label):
+            print(f"[clipboard.show] {label}: {(time.monotonic()-t0)*1000:.0f} ms")
+
         if self.dialog is not None and self.dialog.get_visible():
             _force_to_front(self.dialog)
+            _stamp("reused existing")
             return
         self.target_window = target_window
 
@@ -503,10 +510,15 @@ class _PickerDialog:
         outer.pack_start(hint, False, False, 0)
 
         win.add(outer)
+        _stamp("built widgets")
         self._populate_recent()
+        _stamp("populated recent")
         self._populate_snippets()
+        _stamp("populated snippets")
         win.show_all()
+        _stamp("show_all")
         _force_to_front(win)
+        _stamp("force_to_front")
         # Defer search-entry focus until AFTER the WM has had a chance to
         # process our focus request — calling grab_focus immediately after
         # show_all races the FocusIn event and silently fails.
