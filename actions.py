@@ -117,6 +117,30 @@ def _should_confirm_terminal() -> bool:
         return True
 
 
+def _spawn_terminal(argv: list[str], log) -> None:
+    """Launch a terminal emulator with hardening that makes the D-Bus
+    flavours (gnome-terminal, konsole) actually open a window:
+
+      * stdin=/dev/null -- the daemon's stdin is a socket, and inheriting
+        that into the gnome-terminal CLI confuses its D-Bus handshake.
+      * env=os.environ.copy() -- the posix_spawn fast path in Python 3.12
+        with env=None has been observed to drop some env vars that the
+        terminal's D-Bus client needs (DBUS_SESSION_BUS_ADDRESS, GIO*).
+        Explicit copy forces the fork+exec path.
+      * start_new_session=True -- terminal outlives LinuxPop if we exit.
+    """
+    try:
+        subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            env=os.environ.copy(),
+            start_new_session=True,
+        )
+    except OSError as exc:
+        log.error("[terminal] launch failed: %s", exc)
+        raise
+
+
 def _wrap_for_terminal(cmd: str) -> str:
     """Wrap a user command so the terminal echoes it first (looks like the
     user pasted it), then runs it, and optionally drops into an interactive
@@ -275,10 +299,10 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
         else:
             wrapped = _wrap_for_terminal(edited)
             try:
-                subprocess.Popen([*prefix, wrapped], start_new_session=True)
+                _spawn_terminal([*prefix, wrapped], log)
                 log.info("[terminal] launched (%s): %s", binary, edited[:120])
-            except OSError as exc:
-                log.error("[terminal] launch failed: %s", exc)
+            except OSError:
+                pass  # already logged inside _spawn_terminal
     else:
         log.info("[terminal] cancelled (response=%s)", response)
     dlg.destroy()
@@ -301,12 +325,14 @@ def run_in_terminal(text: str) -> None:
         GLib.idle_add(_confirm_run_then_launch, cmd, binary, prefix)
         return
 
+    import logging
+    log = logging.getLogger("linuxpop")
     wrapped = _wrap_for_terminal(cmd)
     try:
-        subprocess.Popen([*prefix, wrapped], start_new_session=True)
-        print(f"[actions] running in terminal ({binary}): {cmd[:60]}")
-    except OSError as exc:
-        print(f"[actions] terminal launch failed: {exc}")
+        _spawn_terminal([*prefix, wrapped], log)
+        log.info("[terminal] launched (%s): %s", binary, cmd[:120])
+    except OSError:
+        pass  # already logged
 
 
 def open_path(text: str) -> None:
