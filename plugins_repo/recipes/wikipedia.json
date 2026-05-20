@@ -1,7 +1,7 @@
 {
   "name": "wikipedia-search",
   "tooltip": "Search Wikipedia",
-  "icon": "help-about-symbolic",
+  "icon": "linuxpop-wikipedia",
   "content_types": ["plain_text"],
   "priority": 72,
   "action": {
