@@ -80,7 +80,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
                 subprocess.Popen(["xdg-open", url], start_new_session=True)
             except FileNotFoundError:
                 subprocess.run(
-                    ["notify-send", "-i", "dialog-error",
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
                      "Recipe error", "xdg-open is not installed"],
                     check=False,
                 )
@@ -93,7 +93,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
                 subprocess.Popen(["bash", "-c", cmd], start_new_session=True)
             except OSError as exc:
                 subprocess.run(
-                    ["notify-send", "-i", "dialog-error",
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
                      "Recipe error", f"Could not run: {exc}"],
                     check=False,
                 )
@@ -103,7 +103,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
         def handler(text: str) -> None:
             body = _render(template, text)
             subprocess.run(
-                ["notify-send", "-i", icon, title, body[:600]],
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", icon, title, body[:600]],
                 check=False,
             )
         return handler
@@ -116,7 +116,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
                 input=out.encode("utf-8"), check=False,
             )
             subprocess.run(
-                ["notify-send", "-i", icon, title, out[:200]],
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", icon, title, out[:200]],
                 check=False,
             )
         return handler

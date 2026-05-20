@@ -183,7 +183,7 @@ class Hotkey:
             try:
                 import subprocess
                 subprocess.run(
-                    ["notify-send", "-u", "critical", "-i", "dialog-warning",
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-u", "critical", "-i", "dialog-warning",
                      "LinuxPop hotkey conflict",
                      f"'{self._hotkey_str}' is already bound by another app. "
                      "Pick a different combination in Settings."],

@@ -15,7 +15,7 @@ def _rot13(text: str) -> None:
         input=out.encode("utf-8"), check=False,
     )
     subprocess.run(
-        ["notify-send", "-i", "view-refresh-symbolic", "ROT13", out[:200]],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "view-refresh-symbolic", "ROT13", out[:200]],
         check=False,
     )
 

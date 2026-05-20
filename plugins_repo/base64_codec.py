@@ -31,7 +31,7 @@ def _looks_like_base64(text: str) -> bool:
 def _notify(title: str, body: str) -> None:
     try:
         subprocess.run(
-            ["notify-send", "-i", "accessories-character-map", title, body[:300]],
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-character-map", title, body[:300]],
             check=False,
         )
     except FileNotFoundError:
