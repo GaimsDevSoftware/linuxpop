@@ -783,6 +783,12 @@ def _open_from_popup(_text: str) -> None:
 
 
 def register(register_plugin) -> None:
+    # Honour the master kill-switch so the user can turn the entire
+    # clipboard plugin off (no watcher thread, no hotkey, no popup
+    # button) without having to uninstall the file.
+    if not bool(_cfg("clipboard_history_enabled", True)):
+        print("[clipboard] disabled in settings — not registering")
+        return
     _start_watcher_once()
     register_plugin(Plugin(
         name="clipboard-history",

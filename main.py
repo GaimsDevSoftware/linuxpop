@@ -246,6 +246,9 @@ class App:
         self.hotkey.start()
 
     def _start_clipboard_hotkey(self) -> None:
+        if not bool(self.settings.get("clipboard_history_enabled", True)):
+            log.info("clipboard plugin disabled — not binding clipboard hotkey")
+            return
         hotkey_str = self.settings.get("clipboard_hotkey")
         if not hotkey_str:
             log.info("clipboard hotkey disabled in settings")
