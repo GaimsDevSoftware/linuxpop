@@ -56,17 +56,13 @@ modules:
         url: https://download.gnome.org/sources/libhandy/1.8/libhandy-1.8.3.tar.xz
         sha256: 05b497229073ff557f10b326e074c5066f8743a302d4820ab97bcb5cd2dab087
 
-  # ----- libayatana-appindicator -----
-  # System tray support.
-  - name: libayatana-appindicator
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DENABLE_BINDINGS_MONO=NO
-      - -DENABLE_BINDINGS_VALA=NO
-    sources:
-      - type: archive
-        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.92.tar.gz
-        sha256: adedcf160dae7547971d475b42062cab278d54ec075537e6958ffdbf2d996857
+  # ----- libayatana-appindicator (via Flathub shared-modules) -----
+  # System tray support. This pulls in libdbusmenu, ayatana-ido,
+  # libayatana-indicator, intltool, and libayatana-appindicator itself,
+  # all configured the way Flathub's reviewers know works. Trying to
+  # hand-roll this fights two layers of missing pkgconfig deps that
+  # aren't in GNOME 46 Platform.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
 
   # ----- xdotool -----
   # Keyboard simulation. Used by AI plugins for paste mode and by
