@@ -274,6 +274,54 @@ def _read_clipboard_image() -> Optional[bytes]:
 
 _state = {"last_text": "", "last_image_hash": b""}
 
+# Persistent dedup-hash file. Without this, every daemon restart with
+# an image still on the clipboard re-saves it as a "new" entry.
+_DEDUP_STATE_FILE = CACHE_DIR / "last_image.sha1"
+
+
+def _load_dedup_state() -> None:
+    """Restore the last seen clipboard image hash from disk so we don't
+    re-capture the same image just because the daemon was restarted."""
+    try:
+        _state["last_image_hash"] = _DEDUP_STATE_FILE.read_bytes()
+    except OSError:
+        pass  # first run or missing -- fine
+
+
+def _save_dedup_state(h: bytes) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _DEDUP_STATE_FILE.write_bytes(h)
+    except OSError:
+        pass
+
+
+def _sweep_orphan_images() -> None:
+    """Delete image files in the cache that are not referenced by any
+    history or snippet entry. Cleans up files left behind by older
+    daemon runs whose entries have since been bumped out of history."""
+    if not IMAGES_DIR.is_dir():
+        return
+    referenced: set[str] = set()
+    with _history_lock:
+        for e in _history:
+            if e.kind == "image" and e.image_path:
+                referenced.add(Path(e.image_path).name)
+    with _snippets_lock:
+        for e in _snippets:
+            if e.kind == "image" and e.image_path:
+                referenced.add(Path(e.image_path).name)
+    removed = 0
+    for p in IMAGES_DIR.glob("*.png"):
+        if p.name not in referenced:
+            try:
+                p.unlink()
+                removed += 1
+            except OSError:
+                pass
+    if removed:
+        print(f"[clipboard] swept {removed} orphan image(s) from cache")
+
 
 def _capture_current_clipboard() -> None:
     try:
@@ -288,6 +336,7 @@ def _capture_current_clipboard() -> None:
                 h = hashlib.sha1(data).digest()
                 if h != _state["last_image_hash"]:
                     _state["last_image_hash"] = h
+                    _save_dedup_state(h)
                     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
                     eid = uuid.uuid4().hex[:12]
                     path = IMAGES_DIR / f"{eid}.png"
@@ -369,6 +418,8 @@ def _start_watcher_once() -> None:
         return
     _load_list(HISTORY_FILE, _history)
     _load_list(SNIPPETS_FILE, _snippets)
+    _load_dedup_state()       # keep dedup hash across daemon restarts
+    _sweep_orphan_images()    # delete cached images no entry refers to
     _watcher_stop.clear()
     _watcher_thread = threading.Thread(
         target=_watcher_loop, daemon=True, name="linuxpop-clipboard",
