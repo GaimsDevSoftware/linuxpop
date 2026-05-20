@@ -11,7 +11,7 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Handy", "1")
-from gi.repository import Gdk, GLib, Gtk, Handy  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Handy, Pango  # noqa: E402
 
 try:
     gi.require_version("GdkX11", "3.0")
@@ -20,6 +20,47 @@ except (ImportError, ValueError):
     pass
 
 Handy.init()
+
+
+def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
+    """Walk every Gtk.Label under `root` (INCLUDING internal-template
+    children) and turn off ellipsize + width-cap.
+
+    Why this is needed in three layers of confusion:
+      1. HdyPreferencesWindow puts its tab strip inside an internal HdyHeaderBar
+         that get_children() doesn't expose -- you have to use forall() to
+         reach the titlebar's descendants.
+      2. Each HdyViewSwitcherButton wraps an internal Stack that holds *two*
+         GtkLabel instances per tab (one for the wide layout, one for
+         narrow). Both have ellipsize=PANGO_ELLIPSIZE_END set in C and
+         allocations like 36 px, so they crop to 'Availat' / 'Installe'.
+      3. CSS cannot reach the ellipsize attribute -- it's a widget property,
+         not a CSS one.
+
+    So: forall-walk the realised tree, find every label, force
+    ellipsize=NONE on it. With ellipsize off, the label demands its
+    natural width and the parent reallocates accordingly.
+    """
+    def visit(widget: Gtk.Widget) -> None:
+        if isinstance(widget, Gtk.Label):
+            try:
+                widget.set_ellipsize(Pango.EllipsizeMode.NONE)
+                widget.set_max_width_chars(-1)
+                widget.set_width_chars(-1)
+            except Exception:
+                pass
+        if isinstance(widget, Gtk.Container):
+            children = []
+            try:
+                # forall() exposes internal-template children that the
+                # public get_children() hides — that's where the tab
+                # labels live.
+                widget.forall(lambda c, _: children.append(c), None)
+            except Exception:
+                children = widget.get_children()
+            for child in children:
+                visit(child)
+    visit(root)
 
 
 def _force_to_front(window: Gtk.Window) -> None:
@@ -137,6 +178,13 @@ class PluginManagerDialog:
         win.add(order_page)
 
         win.show_all()
+        # Libhandy's HdyViewSwitcherButton hard-codes
+        # gtk_label_set_ellipsize(PANGO_ELLIPSIZE_END) on the tab labels
+        # at the C level -- CSS can't undo that. Walk the widget tree
+        # after show_all() and switch every label in the header area off
+        # ellipsize so "Available", "Installed", "Custom" stop being
+        # clipped to "Availat", "Installe", "Custor".
+        _unellipsize_tab_labels(win)
         self._window = win
         _force_to_front(win)
 
