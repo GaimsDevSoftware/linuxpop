@@ -57,6 +57,15 @@ DEFAULTS: dict[str, Any] = {
     # command before launching. Recommended — protects against highlighting
     # a malicious-looking string and clicking the wrong button.
     "terminal_confirm_run": True,
+    # Which search engine the "Search the web" popup button uses. Recognised
+    # values: "google", "duckduckgo", "bing", "brave", "startpage", "ecosia",
+    # "kagi", "qwant", "yandex", "wikipedia", "youtube", or "custom".
+    # See actions.SEARCH_ENGINES for the full table.
+    "search_engine": "google",
+    # Used when search_engine == "custom". Must contain '{q}' which gets
+    # replaced with the URL-encoded selection. Example for searx:
+    #   "https://searx.example.com/search?q={q}"
+    "search_engine_custom_url": "",
     # Support / donation URLs surfaced in the welcome dialog, the About
     # dialog, and the tray menu. Leave empty to hide that button entirely
     # (each is independent — show only the ones you've actually set up).
