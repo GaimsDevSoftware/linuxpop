@@ -41,12 +41,26 @@ def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
     ellipsize=NONE on it. With ellipsize off, the label demands its
     natural width and the parent reallocates accordingly.
     """
+    tab_names = {"Available", "Installed", "Custom", "Order"}
+
     def visit(widget: Gtk.Widget) -> None:
         if isinstance(widget, Gtk.Label):
             try:
                 widget.set_ellipsize(Pango.EllipsizeMode.NONE)
                 widget.set_max_width_chars(-1)
-                widget.set_width_chars(-1)
+                # For the tab labels specifically: also set width-chars
+                # to the text length so the label REQUESTS at least that
+                # many character-widths from its parent. Without this,
+                # ellipsize=NONE alone just lets the label render beyond
+                # its tight allocation and get visually clipped by the
+                # parent button's overflow -- which is what was happening
+                # ('Availat' shown without ellipsis dots, because there
+                # were no ellipsis dots, just visual overflow clipping).
+                text = widget.get_text() or ""
+                if text in tab_names:
+                    widget.set_width_chars(len(text) + 1)
+                else:
+                    widget.set_width_chars(-1)
             except Exception:
                 pass
         if isinstance(widget, Gtk.Container):
@@ -61,6 +75,17 @@ def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
             for child in children:
                 visit(child)
     visit(root)
+
+    # Also queue a re-run on the next idle cycle. HdyViewSwitcherTitle
+    # has an internal GtkStack that swaps between wide and narrow layouts
+    # based on allocated width, and the swap may happen AFTER the first
+    # show_all -- which would replace the labels we just patched. Re-
+    # patching from idle catches the post-swap labels too.
+    def _again():
+        visit(root)
+        return False
+    GLib.idle_add(_again)
+    GLib.timeout_add(150, _again)
 
 
 def _force_to_front(window: Gtk.Window) -> None:
