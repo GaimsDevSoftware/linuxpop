@@ -91,13 +91,16 @@ modules:
         sha256: ca5b8804e3c910a66423a882d79bf3c9450b875ac8528791fb60ec9de667f758
 
   # ----- wmctrl -----
-  # Window listing/activation for the AI paste flow.
+  # Window listing/activation for the AI paste flow. The dvdhrm/wmctrl
+  # GitHub mirror went 404, and the original Tomas Styblo SourceForge
+  # project's download URLs are also broken now. Debian's source pool
+  # is the most reliable upstream that's still available.
   - name: wmctrl
     buildsystem: autotools
     sources:
       - type: archive
-        url: https://github.com/dvdhrm/wmctrl/archive/refs/tags/v1.07.tar.gz
-        sha256: 0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
+        url: https://deb.debian.org/debian/pool/main/w/wmctrl/wmctrl_1.07.orig.tar.gz
+        sha256: d78a1efdb62f18674298ad039c5cbdb1edb6e8e149bb3a8e3a01a4750aa3cca9
 
   # ----- python-xlib -----
   # Pure-Python Xlib bindings. Used for XFixes selection events + the
