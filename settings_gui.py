@@ -289,11 +289,11 @@ class SettingsDialog:
         )
 
         services = [
-            ("claude",     "Claude",       "linuxpop-claude",       "claude.ai · paste mode (no URL prefill)"),
-            ("chatgpt",    "ChatGPT",      "linuxpop-chatgpt",      "chatgpt.com · URL prefill (auto-submits)"),
-            ("gemini",     "Gemini",       "linuxpop-gemini",       "gemini.google.com · paste mode"),
-            ("perplexity", "Perplexity",   "emoji-objects-symbolic", "perplexity.ai · URL prefill (auto-submits)"),
-            ("google_ai",  "Google AI",    "system-search-symbolic", "google.com/search?udm=50 · URL prefill"),
+            ("claude",     "Claude",            "linuxpop-claude",       "claude.ai · paste mode"),
+            ("chatgpt",    "ChatGPT",           "linuxpop-chatgpt",      "chatgpt.com · URL prefill (you press Enter)"),
+            ("gemini",     "Gemini",            "linuxpop-gemini",       "gemini.google.com · paste mode"),
+            ("perplexity", "Perplexity",        "linuxpop-perplexity",   "perplexity.ai · URL search (auto-submits)"),
+            ("google_ai",  "Google AI Search",  "linuxpop-google-ai",    "google.com/search?udm=50 · URL search (auto-submits)"),
         ]
         current = list(self._settings.get("ai_services") or [])
 
