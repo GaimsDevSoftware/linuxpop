@@ -329,6 +329,49 @@ class SettingsDialog:
             "min_selection_length", 1, 100, 1,
         )
         group.add(min_row)
+
+        # Blocklist: one substring per line. Matches against the active
+        # window's title and WM_CLASS (case-insensitive) at popup time.
+        # Stored in settings.json as a list of strings; the UI gives a
+        # plain multi-line text area because per-row HdyActionRows would
+        # be overkill for a free-form list.
+        block_row = Handy.ActionRow()
+        block_row.set_title("Don't show in these apps or pages")
+        block_row.set_subtitle(
+            "One pattern per line. Case-insensitive substring match against "
+            "the active window's title and class. Examples: KeePassXC, "
+            "1Password, Mozilla Firefox - DNB.")
+        group.add(block_row)
+
+        block_scroll = Gtk.ScrolledWindow()
+        block_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        block_scroll.set_min_content_height(110)
+        block_scroll.set_shadow_type(Gtk.ShadowType.IN)
+        block_scroll.set_margin_top(2)
+        block_scroll.set_margin_bottom(8)
+        block_scroll.set_margin_start(14)
+        block_scroll.set_margin_end(14)
+        block_view = Gtk.TextView()
+        block_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        try:
+            block_view.set_monospace(True)
+        except AttributeError:
+            pass
+        block_buf = block_view.get_buffer()
+        block_buf.set_text("\n".join(
+            self._settings.get("blocklist_patterns") or []))
+
+        def _on_block_changed(buf: Gtk.TextBuffer) -> None:
+            start, end = buf.get_start_iter(), buf.get_end_iter()
+            raw = buf.get_text(start, end, True)
+            patterns = [
+                line.strip() for line in raw.splitlines()
+                if line.strip()
+            ]
+            self._save_key("blocklist_patterns", patterns)
+        block_buf.connect("changed", _on_block_changed)
+        block_scroll.add(block_view)
+        group.add(block_scroll)
         return group
 
     def _build_ai_group(self) -> Handy.PreferencesGroup:

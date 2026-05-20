@@ -144,6 +144,44 @@ def _pointer_position() -> tuple[int, int]:
         dpy.close()
 
 
+def _active_window_blocked(patterns: list[str]) -> bool:
+    """Return True if the currently-focused window's title or WM_CLASS
+    matches any of the user's block patterns. Case-insensitive substring
+    match. Empty / unset pattern list short-circuits to False so there's
+    no xdotool call when nothing is blocked."""
+    if not patterns:
+        return False
+    try:
+        # getactivewindow gives us the active window's X ID; we then
+        # query name + class. Two short xdotool calls bound at 0.3s
+        # each so a slow X server can't hang the popup path.
+        wid = subprocess.run(
+            ["xdotool", "getactivewindow"],
+            capture_output=True, text=True, timeout=0.3,
+        ).stdout.strip()
+        if not wid:
+            return False
+        haystacks: list[str] = []
+        for arg in ("getwindowname", "getwindowclassname"):
+            try:
+                out = subprocess.run(
+                    ["xdotool", arg, wid],
+                    capture_output=True, text=True, timeout=0.3,
+                ).stdout.strip()
+                if out:
+                    haystacks.append(out.lower())
+            except (OSError, subprocess.SubprocessError):
+                continue
+        for p in patterns:
+            p_lc = (p or "").strip().lower()
+            if p_lc and any(p_lc in h for h in haystacks):
+                return True
+    except (OSError, subprocess.SubprocessError):
+        # xdotool missing or hung — fail open (show popup as usual)
+        return False
+    return False
+
+
 class App:
     def __init__(self, enable_tray: bool = True) -> None:
         self.settings = get_settings()
@@ -181,6 +219,13 @@ class App:
         if not text or len(text) < self.min_len:
             return
         if self.ignore_ws and not text.strip():
+            return
+        # Skip when the active app/site is on the user's blocklist.
+        # Checked here (just before the popup would appear) so plugins
+        # and the watcher don't have to know about it.
+        patterns = list(self.settings.get("blocklist_patterns") or [])
+        if _active_window_blocked(patterns):
+            log.info("[blocked] suppressed popup -- active window matches blocklist")
             return
         ctype = classify(text)
         preview = text[:60].replace("\n", "↵")
