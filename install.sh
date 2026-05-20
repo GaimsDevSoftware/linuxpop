@@ -8,14 +8,19 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 AUTOSTART_DIR="$HOME/.config/autostart"
 AUTOSTART_FILE="$AUTOSTART_DIR/linuxpop.desktop"
+APPS_DIR="$HOME/.local/share/applications"
+APP_FILE="$APPS_DIR/linuxpop.desktop"
 PLUGIN_DIR="$HOME/.config/linuxpop/plugins"
 
 uninstall() {
     if [[ -f "$AUTOSTART_FILE" ]]; then
         rm -v "$AUTOSTART_FILE"
         echo "[install] LinuxPop removed from autostart"
-    else
-        echo "[install] no autostart file to remove"
+    fi
+    if [[ -f "$APP_FILE" ]]; then
+        rm -v "$APP_FILE"
+        update-desktop-database "$APPS_DIR" 2>/dev/null || true
+        echo "[install] LinuxPop removed from app launcher"
     fi
     pkill -f "python3 .*linuxpop/main.py" 2>/dev/null || true
     echo "[install] any running instances stopped"
@@ -44,7 +49,7 @@ python3 -c "import Xlib" 2>/dev/null \
     || { echo "[install] missing python-xlib: pip3 install python-xlib --break-system-packages"; exit 1; }
 
 # Write the autostart .desktop with the absolute path to main.py
-mkdir -p "$AUTOSTART_DIR" "$PLUGIN_DIR"
+mkdir -p "$AUTOSTART_DIR" "$APPS_DIR" "$PLUGIN_DIR"
 cat > "$AUTOSTART_FILE" <<EOF
 [Desktop Entry]
 Type=Application
@@ -57,9 +62,30 @@ Categories=Utility;
 X-GNOME-Autostart-enabled=true
 StartupNotify=false
 EOF
-
 chmod +x "$AUTOSTART_FILE"
+
+# Write the launcher .desktop so Synapse, Mint-menu, GNOME Activities etc.
+# can find and start LinuxPop. Single-instance lock means re-launching
+# from a menu while it's already running is harmless (second copy exits).
+cat > "$APP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=LinuxPop
+GenericName=Text action popup
+Comment=PopClip-inspired floating popup of context-aware actions on selected text
+Exec=/usr/bin/python3 ${REPO_DIR}/main.py
+Icon=linuxpop
+Terminal=false
+Categories=Utility;Office;TextTools;
+Keywords=popup;text;clipboard;snippets;ai;productivity;popclip;
+StartupNotify=false
+EOF
+chmod +x "$APP_FILE"
+update-desktop-database "$APPS_DIR" 2>/dev/null || true
+
 echo "[install] autostart written to $AUTOSTART_FILE"
-echo "[install] LinuxPop will start automatically next login."
+echo "[install] launcher entry written to $APP_FILE"
+echo "[install] LinuxPop will start automatically next login,"
+echo "[install]   and shows up in Synapse / Mint menu / GNOME Activities."
 echo "[install] to start now: python3 ${REPO_DIR}/main.py"
 echo "[install] uninstall: bash $0 --uninstall"
