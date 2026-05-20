@@ -920,7 +920,13 @@ class RecipeWizard:
             msg.destroy()
             return
         self._result = recipe
-        a.destroy()
+        # IMPORTANT: don't destroy the assistant from inside the 'apply'
+        # signal handler -- GtkAssistant fires 'apply' immediately followed
+        # by 'close' on a confirm-page, and tearing the widget down mid-
+        # cascade crashes when the 'close' emission lands on a half-freed
+        # object. Defer to the next idle so the signal cascade finishes
+        # first, then destroy cleanly.
+        GLib.idle_add(a.destroy)
 
 
 def _slugify(name: str) -> str:
