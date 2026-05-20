@@ -198,6 +198,30 @@ class SettingsDialog:
         sel_row.set_activatable_widget(sel_switch)
         group.add(sel_row)
 
+        # Autostart at login (switch row) — driven by ~/.config/autostart
+        # rather than a settings.json key, since the .desktop file is what
+        # the DE actually reads. We just toggle the file from here.
+        auto_row = Handy.ActionRow()
+        auto_row.set_title("Start at login")
+        auto_row.set_subtitle("Launch LinuxPop automatically when you log in")
+        auto_switch = Gtk.Switch()
+        auto_switch.set_valign(Gtk.Align.CENTER)
+        try:
+            import autostart
+            auto_switch.set_active(autostart.is_enabled())
+            def _on_auto_toggle(sw, _p):
+                import autostart as _as
+                ok = _as.set_enabled(sw.get_active())
+                if not ok:
+                    # Revert the visual if writing failed
+                    sw.set_active(not sw.get_active())
+            auto_switch.connect("notify::active", _on_auto_toggle)
+        except Exception:
+            auto_switch.set_sensitive(False)
+        auto_row.add(auto_switch)
+        auto_row.set_activatable_widget(auto_switch)
+        group.add(auto_row)
+
         # Selection-popup hotkey row
         hk_row = Handy.ActionRow()
         hk_row.set_title("Selection-popup hotkey")
