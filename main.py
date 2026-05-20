@@ -18,6 +18,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 import plugin_loader
+import theme
 from classifier import classify
 from popup import PopupWindow
 from settings import get_settings
@@ -430,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
     # any GTK init or hotkey grabs so the second copy exits before
     # interfering with the existing instance.
     _acquire_single_instance_lock()
+
+    theme.install_premium_theme()
 
     app = App(enable_tray=not args.no_tray)
     signal.signal(signal.SIGINT, lambda *_: app.quit())
