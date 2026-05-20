@@ -1,0 +1,146 @@
+# Flatpak manifest for LinuxPop.
+#
+# Build locally with:
+#     flatpak-builder --user --install --force-clean build-dir \
+#         packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml
+#
+# Then run:
+#     flatpak run io.github.GaimsDevSoftware.LinuxPop
+#
+# Notes:
+#   - LinuxPop is an X11-only app. The sandbox needs the X11 socket,
+#     keyboard simulation, system tray, and notifications.
+#   - xdotool / xclip / wmctrl are not in any freedesktop runtime. They
+#     are built as Flatpak modules below from upstream source.
+#   - Global hotkey grabs work because we forward the X11 socket — there
+#     is no Wayland support yet (XWayland would lose the global grab).
+
+app-id: io.github.GaimsDevSoftware.LinuxPop
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: linuxpop
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --share=network               # AI plugins (ChatGPT URL prefill, Ollama, etc.)
+  - --filesystem=home             # plugin install + recipes + snippets in ~/.config/linuxpop
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher    # system tray
+  - --talk-name=org.freedesktop.portal.OpenURI   # xdg-open via portal
+  - --device=dri                  # GTK rendering
+
+cleanup:
+  - /include
+  - /share/man
+  - /share/doc
+  - /lib/pkgconfig
+  - '*.la'
+  - '*.a'
+
+modules:
+
+  # ----- libhandy 1 -----
+  # GNOME's adaptive widget toolkit. LinuxPop uses Hdy.PreferencesWindow
+  # and Hdy.ActionRow.
+  - name: libhandy
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Dtests=false
+      - -Dvapi=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libhandy/1.8/libhandy-1.8.3.tar.xz
+        sha256: 9f1bf3033c4cdfb55ec4533afe22dd99fb1062f44ee2c5fb1f1aaa927d8b75e8
+
+  # ----- libayatana-appindicator -----
+  # System tray support.
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.92.tar.gz
+        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+
+  # ----- xdotool -----
+  # Keyboard simulation. Used by AI plugins for paste mode and by
+  # clipboard-picker's "paste at cursor" feature.
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+
+  # ----- xclip -----
+  # X11 clipboard. LinuxPop reads PRIMARY/CLIPBOARD via this.
+  - name: xclip
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/astrand/xclip/archive/refs/tags/0.13.tar.gz
+        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+
+  # ----- wmctrl -----
+  # Window listing/activation for the AI paste flow.
+  - name: wmctrl
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/dvdhrm/wmctrl/archive/refs/tags/v1.07.tar.gz
+        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+
+  # ----- python-xlib -----
+  # Pure-Python Xlib bindings. Used for XFixes selection events + the
+  # raw keysym/keycode dance in hotkey.py.
+  - name: python3-xlib
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/p/python-xlib/python-xlib-0.33.tar.gz
+        sha256: 55f39fc37e54fbf3134fb83fdb148bc34af0bb50ca1ac0c4a8f6720c20f4abd5
+
+  # ----- pillow (for QR code plugin) -----
+  - name: python3-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps .
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/source/p/pillow/pillow-10.4.0.tar.gz
+        sha256: PLACEHOLDER_RUN_FLATHUB_LINTER_TO_GET_REAL_HASH
+
+  # ----- LinuxPop itself -----
+  - name: linuxpop
+    buildsystem: simple
+    build-commands:
+      # 1. Copy the Python sources into the runtime
+      - mkdir -p /app/share/linuxpop
+      - cp -r *.py icons plugins_repo recipes_repo /app/share/linuxpop/ 2>/dev/null || true
+
+      # 2. Wrapper script on PATH
+      - install -Dm755 packaging/flatpak/linuxpop.wrapper /app/bin/linuxpop
+
+      # 3. Desktop entry + AppStream metadata
+      - install -Dm644 packaging/io.github.GaimsDevSoftware.LinuxPop.desktop
+          /app/share/applications/io.github.GaimsDevSoftware.LinuxPop.desktop
+      - install -Dm644 packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml
+          /app/share/metainfo/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml
+
+      # 4. App icon at the canonical Flatpak path
+      - install -Dm644 icons/linuxpop.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.GaimsDevSoftware.LinuxPop.svg
+    sources:
+      - type: dir
+        path: ../..

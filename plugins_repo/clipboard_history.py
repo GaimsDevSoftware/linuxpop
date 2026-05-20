@@ -44,15 +44,22 @@ except (ImportError, ValueError):
 
 
 def _force_to_front(window) -> None:
-    """Reliably raise AND focus the picker on X11. The window is invoked
-    from a hotkey thread → GLib.idle_add → here, so WMs see no recent
-    user event tied to it and apply focus-stealing-prevention. We force
-    keyboard focus via the lower-level GdkWindow.focus() call which most
-    WMs honour even when present_with_time alone is ignored."""
+    """Reliably raise AND focus the picker on X11. The picker is meant to
+    be a short-lived overlay — keep_above stays on for the lifetime of the
+    window so it can't slip behind a still-visible Settings or Plugin
+    Manager dialog. Previously we released keep_above after 200 ms which
+    let other LinuxPop windows rise back over it."""
     try:
         window.deiconify()
         window.set_accept_focus(True)
         window.set_focus_on_map(True)
+        # UTILITY type-hint tells the WM: 'short-lived helper, keep it
+        # above the main window stack'. Combined with skip-taskbar this
+        # behaves like a panel/popover instead of a regular window.
+        try:
+            window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        except Exception:
+            pass
         gdk_win = window.get_window()
         if gdk_win is not None:
             try:
@@ -68,10 +75,9 @@ def _force_to_front(window) -> None:
                 pass
         else:
             window.present()
+        # Permanent keep-above while the picker is visible. Removed in
+        # _on_destroy → no-op since the window is already gone.
         window.set_keep_above(True)
-        # Drop keep-above shortly after so the user can move other windows
-        # over the picker if they want — but it's reliably on top at open.
-        GLib.timeout_add(200, lambda: (window.set_keep_above(False), False)[1])
     except Exception:
         try:
             window.present()

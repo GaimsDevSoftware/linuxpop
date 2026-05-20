@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata for LinuxPop.
+
+  This file is what every Linux software centre (GNOME Software,
+  KDE Discover, Pop Shop, Mint Software Manager, Snap Store, Flathub)
+  reads to render the app's listing: name, description, screenshots,
+  category, license, release notes.
+
+  Validate with: appstreamcli validate <this-file>
+-->
+<component type="desktop-application">
+  <id>io.github.GaimsDevSoftware.LinuxPop</id>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>LinuxPop</name>
+  <summary>A floating popup of context-aware actions for selected text</summary>
+
+  <description>
+    <p>
+      LinuxPop watches the text you select on screen and surfaces a small
+      floating popup with relevant actions: search the web, copy to clipboard,
+      open URLs and paths, send to your favourite AI assistant, encode/decode
+      common formats, run quick scripts. Inspired by PopClip on macOS, built
+      for Linux on X11.
+    </p>
+    <p>Highlights:</p>
+    <ul>
+      <li>Floating action popup that appears near your text selection</li>
+      <li>Context-aware buttons (URL decode only shows on encoded URLs, etc.)</li>
+      <li>Send any selection to ChatGPT, Claude, Gemini, Perplexity or local Ollama</li>
+      <li>Clipboard manager + snippets picker on a configurable hotkey</li>
+      <li>No-code recipe wizard for building your own custom buttons</li>
+      <li>Plugin marketplace with one-click install of community actions</li>
+      <li>Premium dark theme that respects your eyes</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.GaimsDevSoftware.LinuxPop.desktop</launchable>
+
+  <url type="homepage">https://github.com/GaimsDevSoftware/linuxpop</url>
+  <url type="bugtracker">https://github.com/GaimsDevSoftware/linuxpop/issues</url>
+  <url type="help">https://github.com/GaimsDevSoftware/linuxpop#readme</url>
+  <url type="vcs-browser">https://github.com/GaimsDevSoftware/linuxpop</url>
+
+  <developer id="io.github.gaimsdevsoftware">
+    <name>GaimsDev Software</name>
+  </developer>
+
+  <categories>
+    <category>Utility</category>
+    <category>Office</category>
+    <category>TextTools</category>
+  </categories>
+
+  <keywords>
+    <keyword>popup</keyword>
+    <keyword>popclip</keyword>
+    <keyword>clipboard</keyword>
+    <keyword>snippets</keyword>
+    <keyword>selection</keyword>
+    <keyword>ai</keyword>
+    <keyword>productivity</keyword>
+    <keyword>text</keyword>
+  </keywords>
+
+  <!--
+    Screenshots are required by Flathub. Host them in the repo (e.g.
+    docs/screenshots/) and update the URLs after pushing them.
+    The first <screenshot> with the 'default' attribute is the hero image.
+  -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>The action popup near a text selection</caption>
+      <image>https://raw.githubusercontent.com/GaimsDevSoftware/linuxpop/main/docs/screenshots/popup.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings with the premium dark theme</caption>
+      <image>https://raw.githubusercontent.com/GaimsDevSoftware/linuxpop/main/docs/screenshots/settings.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The step-by-step custom-button wizard</caption>
+      <image>https://raw.githubusercontent.com/GaimsDevSoftware/linuxpop/main/docs/screenshots/wizard.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Clipboard history + snippet picker</caption>
+      <image>https://raw.githubusercontent.com/GaimsDevSoftware/linuxpop/main/docs/screenshots/clipboard.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2026-05-20">
+      <description>
+        <p>First public release.</p>
+        <ul>
+          <li>Selection-driven popup with context classifier</li>
+          <li>17 built-in plugins + JSON-defined recipe system</li>
+          <li>Clipboard manager and snippets</li>
+          <li>Step-by-step custom-button wizard</li>
+          <li>Premium dark theme</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <provides>
+    <binary>linuxpop</binary>
+  </provides>
+
+  <recommends>
+    <display_length compare="ge">600</display_length>
+    <internet>offline-only</internet>
+  </recommends>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+</component>

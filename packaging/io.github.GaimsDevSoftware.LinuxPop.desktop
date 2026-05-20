@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=LinuxPop
+GenericName=Floating action popup
+Comment=Context-aware popup actions for selected text — PopClip for Linux
+Icon=io.github.GaimsDevSoftware.LinuxPop
+Exec=linuxpop
+Terminal=false
+Categories=Utility;TextTools;
+Keywords=popup;popclip;clipboard;snippets;selection;ai;productivity;text;
+StartupNotify=false
+StartupWMClass=linuxpop
+X-GNOME-UsesNotifications=true
