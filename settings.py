@@ -57,6 +57,17 @@ DEFAULTS: dict[str, Any] = {
     # command before launching. Recommended — protects against highlighting
     # a malicious-looking string and clicking the wrong button.
     "terminal_confirm_run": True,
+    # Support / donation URLs surfaced in the welcome dialog, the About
+    # dialog, and the tray menu. Leave empty to hide that button entirely
+    # (each is independent — show only the ones you've actually set up).
+    # Conventional defaults are pre-filled assuming the GitHub org name
+    # matches the upstream repo; update or blank out as needed.
+    "support_kofi_url":     "https://ko-fi.com/gaimsdev",
+    "support_sponsors_url": "https://github.com/sponsors/GaimsDevSoftware",
+    "support_bmc_url":      "",  # https://www.buymeacoffee.com/<name>
+    # If True, show the one-time welcome dialog on first run. Set to False
+    # to skip it (mostly useful for screencasts / CI testing).
+    "show_welcome_dialog": True,
 }
 
 
