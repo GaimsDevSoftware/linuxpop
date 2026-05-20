@@ -197,14 +197,17 @@ class Hotkey:
 
         print(f"[hotkey] listening for {self._hotkey_str} (keycode={keycode}, mods=0x{mods:x})")
 
-        # Event loop
+        # Event loop. We poll select() with a 1 s timeout so the daemon
+        # can stop within 1 s of self._stop being set, while staying mostly
+        # asleep when no hotkey traffic arrives. (Previously: 0.2 s, which
+        # woke this thread 5 times/sec per registered hotkey — multiply by
+        # the popup + clipboard hotkeys and the daemon was getting 10
+        # context switches/sec for no reason.)
         while not self._stop.is_set():
-            # next_event blocks; use pending_events poll with small sleep so we can stop
             if self._dpy.pending_events() == 0:
-                # Block with a short timeout via select on the fd
                 import select
                 try:
-                    select.select([self._dpy.fileno()], [], [], 0.2)
+                    select.select([self._dpy.fileno()], [], [], 1.0)
                 except OSError:
                     break
                 continue
