@@ -54,6 +54,40 @@ def _timestamp_convert(text: str) -> None:
 
 _HEX_RE = re.compile(r"^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 _RGB_RE = re.compile(r"^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$", re.IGNORECASE)
+_HSL_RE = re.compile(r"^hsl\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*\)$", re.IGNORECASE)
+# ISO-ish date shapes the timestamp converter accepts.
+_ISO_DATE_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?([+\-]\d{2}:?\d{2}|Z)?)?$"
+    r"|^\d{1,2}[./]\d{1,2}[./]\d{4}$"
+)
+
+
+def _looks_like_timestamp(text: str) -> bool:
+    s = text.strip()
+    if not s:
+        return False
+    # Numeric epoch (seconds or millis). Cap at 16 chars so we don't trip
+    # on huge phone-number-like strings.
+    if len(s) <= 16 and s.replace(".", "", 1).lstrip("-").isdigit():
+        try:
+            v = float(s)
+        except ValueError:
+            return False
+        # Plausible epoch range: 1970-2100 in seconds OR same in millis.
+        return 0 < v < 4_102_444_800_000
+    return bool(_ISO_DATE_RE.match(s))
+
+
+_STRICT_HEX_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def _looks_like_color(text: str) -> bool:
+    """Predicate is stricter than the converter itself: require a '#' on
+    hex so a bare 6-digit string like '123456' (an ID, not a color) doesn't
+    surface the button. The converter still accepts # -less hex for users
+    who explicitly click it via the popup."""
+    s = text.strip()
+    return bool(_STRICT_HEX_RE.match(s) or _RGB_RE.match(s) or _HSL_RE.match(s))
 
 
 def _color_convert(text: str) -> None:
@@ -82,6 +116,8 @@ def _color_convert(text: str) -> None:
 def register(register_plugin) -> None:
     types = (ContentType.PLAIN_TEXT,)
     register_plugin(Plugin(name="timestamp-convert", icon="preferences-system-time-symbolic",
-        tooltip="Timestamp ↔ ISO", handler=_timestamp_convert, content_types=types, priority=170))
+        tooltip="Timestamp ↔ ISO", handler=_timestamp_convert, content_types=types, priority=170,
+        predicate=_looks_like_timestamp))
     register_plugin(Plugin(name="color-convert", icon="preferences-color-symbolic",
-        tooltip="Color hex ↔ rgb", handler=_color_convert, content_types=types, priority=171))
+        tooltip="Color hex ↔ rgb", handler=_color_convert, content_types=types, priority=171,
+        predicate=_looks_like_color))

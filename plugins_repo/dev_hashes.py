@@ -7,10 +7,23 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import subprocess
 
 from classifier import ContentType
 from plugin_base import Plugin
+
+# JWT: three base64url segments separated by dots. Header decodes to JSON
+# starting with '{' — we don't validate that here, just shape-match.
+_JWT_SHAPE = re.compile(r"^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*$")
+
+
+def _looks_like_jwt(text: str) -> bool:
+    stripped = text.strip()
+    if not _JWT_SHAPE.match(stripped):
+        return False
+    # Reject short shape-matches (e.g. "a.b.c"). Real JWTs are 100+ chars.
+    return len(stripped) >= 30
 
 
 def _copy_and_notify(text: str, title: str) -> None:
@@ -79,4 +92,5 @@ def register(register_plugin) -> None:
     register_plugin(Plugin(name="md5", icon="security-medium-symbolic",
         tooltip="MD5 hash", handler=_md5, content_types=types, priority=181))
     register_plugin(Plugin(name="jwt-decode", icon="dialog-password-symbolic",
-        tooltip="Decode JWT payload", handler=_jwt_decode, content_types=types, priority=182))
+        tooltip="Decode JWT payload", handler=_jwt_decode, content_types=types, priority=182,
+        predicate=_looks_like_jwt))

@@ -125,8 +125,10 @@ def all_plugins() -> List[Plugin]:
     return list(_PLUGINS)
 
 
-def for_content_type(content_type: ContentType) -> List[Plugin]:
+def for_content_type(content_type: ContentType, text: str | None = None) -> List[Plugin]:
     matched = [p for p in _PLUGINS if p.handles(content_type)]
+    if text is not None:
+        matched = [p for p in matched if p.matches(text)]
     # User-defined order takes precedence; plugins listed earlier come first.
     # Plugins not in the order list fall back to their built-in priority.
     try:
