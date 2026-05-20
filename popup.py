@@ -222,17 +222,25 @@ class PopupWindow:
         lx = x / scale
         ly = y / scale
 
-        # Place the popup horizontally centered on (lx,ly), just above ly
+        # Cursor Y is the mouse position, which sits in the middle of the
+        # selected line. We need to clear the whole line (~24 px tall in
+        # most fonts) plus a small visual gap, otherwise the popup lands
+        # on top of the text it's supposed to act on.
+        _LINE_CLEARANCE = 28
+        _BELOW_GAP = 32  # used when there isn't room above
+
+        # Place the popup horizontally centered on (lx,ly), clearly above ly
         target_x = int(lx - w / 2)
-        target_y = int(ly - h - 8)
+        target_y = int(ly - h - _LINE_CLEARANCE)
 
         # Keep on-screen (geom is also in logical coords)
         if monitor is not None:
             geom = monitor.get_geometry()
             target_x = max(geom.x + 4, min(target_x, geom.x + geom.width - w - 4))
             if target_y < geom.y + 4:
-                # Not enough room above: show below the selection instead
-                target_y = int(ly + 12)
+                # Not enough room above: show below the selection instead,
+                # with the same generous gap so we don't overlap downward.
+                target_y = int(ly + _BELOW_GAP)
             target_y = min(target_y, geom.y + geom.height - h - 4)
 
         self.win.move(target_x, target_y)
