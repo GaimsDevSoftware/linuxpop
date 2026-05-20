@@ -44,22 +44,17 @@ except (ImportError, ValueError):
 
 
 def _force_to_front(window) -> None:
-    """Reliably raise AND focus the picker on X11. The picker is meant to
-    be a short-lived overlay — keep_above stays on for the lifetime of the
-    window so it can't slip behind a still-visible Settings or Plugin
-    Manager dialog. Previously we released keep_above after 200 ms which
-    let other LinuxPop windows rise back over it."""
+    """Reliably raise AND focus the picker on X11. Keep_above stays on
+    so the picker doesn't slip behind a Settings window. Previously we
+    also added WindowTypeHint.UTILITY here -- removed, because Cinnamon
+    treats UTILITY windows as auxiliary panels that don't fully take
+    keyboard focus, which empirically caused 'buttons don't work,
+    scrolling doesn't work' freezes where the picker appeared but
+    refused all input."""
     try:
         window.deiconify()
         window.set_accept_focus(True)
         window.set_focus_on_map(True)
-        # UTILITY type-hint tells the WM: 'short-lived helper, keep it
-        # above the main window stack'. Combined with skip-taskbar this
-        # behaves like a panel/popover instead of a regular window.
-        try:
-            window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        except Exception:
-            pass
         gdk_win = window.get_window()
         if gdk_win is not None:
             try:
@@ -441,11 +436,16 @@ class _PickerDialog:
         self._filter_text = ""
 
     def show(self, target_window: str | None = None) -> None:
-        # Stamp each phase so a UI freeze leaves breadcrumbs in the log.
-        # Times > 100 ms anywhere here would explain a perceived freeze.
+        # Stamp each phase via the real logger (not print) so a UI freeze
+        # leaves breadcrumbs in ~/.cache/linuxpop/linuxpop.log. Times
+        # > 100 ms at any phase would explain a perceived freeze.
+        import logging
+        _log = logging.getLogger("linuxpop")
         t0 = time.monotonic()
         def _stamp(label):
-            print(f"[clipboard.show] {label}: {(time.monotonic()-t0)*1000:.0f} ms")
+            _log.info("[clipboard.show] %s: %.0f ms",
+                      label, (time.monotonic()-t0)*1000)
+        _stamp("entered show()")
 
         if self.dialog is not None and self.dialog.get_visible():
             _force_to_front(self.dialog)
@@ -532,6 +532,9 @@ class _PickerDialog:
         return False  # one-shot
 
     def _on_destroy(self, *_):
+        import logging
+        logging.getLogger("linuxpop").info(
+            "[clipboard.show] window destroyed -- state cleared")
         self.dialog = None
         self.search_entry = None
         self.notebook = None
