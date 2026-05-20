@@ -305,7 +305,7 @@ _SERVICES = {
     ),
     "perplexity": dict(
         name="send-to-perplexity",
-        icon="emoji-objects-symbolic",
+        icon="linuxpop-perplexity",
         tooltip="Ask Perplexity",
         service="Perplexity",
         mode="url",
@@ -316,9 +316,9 @@ _SERVICES = {
     ),
     "google_ai": dict(
         name="send-to-google-ai",
-        icon="system-search-symbolic",
-        tooltip="Google AI Mode",
-        service="Google AI",
+        icon="linuxpop-google-ai",
+        tooltip="Google AI Search",
+        service="Google AI Search",
         mode="url",
         url_template="https://www.google.com/search?q={text_url}&udm=50",
         url="https://www.google.com/",
