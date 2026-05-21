@@ -31,9 +31,9 @@ Handy.init()
 
 
 def _force_to_front(window: Gtk.Window) -> None:
-    """Reliably raise a window to the foreground on X11 even when WM
-    focus-stealing prevention would otherwise leave it behind other apps.
-    """
+    """Raise the window to the foreground on X11 even when WM focus-
+    stealing prevention or another LinuxPop dialog's keep_above would
+    otherwise rank it lower in the stack."""
     try:
         window.deiconify()
         gdk_win = window.get_window()
@@ -43,11 +43,19 @@ def _force_to_front(window: Gtk.Window) -> None:
             except Exception:
                 ts = Gtk.get_current_event_time() or 0
             window.present_with_time(ts)
+            # Explicit X11 raise bypasses focus arbitration -- needed
+            # because the clipboard picker holds permanent keep_above
+            # and would otherwise float over us.
+            try:
+                gdk_win.raise_()
+            except Exception:
+                pass
         else:
             window.present()
-        # Quick keep-above toggle nudges most WMs into raising it
+        # Quick keep-above toggle nudges most WMs into raising it.
         window.set_keep_above(True)
         GLib.timeout_add(150, lambda: (window.set_keep_above(False), False)[1])
+        window.present()
     except Exception:
         try:
             window.present()

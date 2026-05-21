@@ -44,17 +44,22 @@ except (ImportError, ValueError):
 
 
 def _force_to_front(window) -> None:
-    """Reliably raise AND focus the picker on X11. Keep_above stays on
-    so the picker doesn't slip behind a Settings window. Previously we
-    also added WindowTypeHint.UTILITY here -- removed, because Cinnamon
-    treats UTILITY windows as auxiliary panels that don't fully take
-    keyboard focus, which empirically caused 'buttons don't work,
-    scrolling doesn't work' freezes where the picker appeared but
-    refused all input."""
+    """Raise the picker above every other window on X11, including any
+    Settings / Plugin Manager dialog already open. Cinnamon's WM ranks
+    windows by focus-history first, keep_above second; without an
+    explicit X11 raise the picker can be marked keep_above yet still
+    appear behind a more-recently-focused LinuxPop dialog.
+
+    The fix is to call GdkWindow.raise_() AND a final window.present()
+    after the WM hint flips, which together force a proper restack.
+    """
     try:
         window.deiconify()
         window.set_accept_focus(True)
         window.set_focus_on_map(True)
+        # Permanent keep-above while the picker is visible. Cleared
+        # implicitly on _on_destroy.
+        window.set_keep_above(True)
         gdk_win = window.get_window()
         if gdk_win is not None:
             try:
@@ -62,17 +67,20 @@ def _force_to_front(window) -> None:
             except Exception:
                 ts = Gtk.get_current_event_time() or 0
             window.present_with_time(ts)
-            # The stronger X11-level focus request. present_with_time
-            # asks the WM to raise; .focus() demands keyboard focus.
+            # Explicit X11 raise -- doesn't go through focus arbitration,
+            # so it survives focus-stealing prevention.
+            try:
+                gdk_win.raise_()
+            except Exception:
+                pass
+            # And demand keyboard focus on top of that.
             try:
                 gdk_win.focus(ts)
             except Exception:
                 pass
-        else:
-            window.present()
-        # Permanent keep-above while the picker is visible. Removed in
-        # _on_destroy → no-op since the window is already gone.
-        window.set_keep_above(True)
+        # Final present() nudge after keep_above + raise so the WM
+        # re-evaluates stack order with the new flags in place.
+        window.present()
     except Exception:
         try:
             window.present()
