@@ -89,8 +89,10 @@ def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
 
 
 def _force_to_front(window: Gtk.Window) -> None:
-    """Same trick as settings_gui — reliably raise on X11 against
-    focus-stealing prevention."""
+    """Raise on X11 even past the clipboard picker's permanent
+    keep_above. Same shape as settings_gui's helper -- the explicit
+    GdkWindow.raise_() is what wins against another LinuxPop dialog
+    that's already on top."""
     try:
         window.deiconify()
         gdk_win = window.get_window()
@@ -100,10 +102,15 @@ def _force_to_front(window: Gtk.Window) -> None:
             except Exception:
                 ts = Gtk.get_current_event_time() or 0
             window.present_with_time(ts)
+            try:
+                gdk_win.raise_()
+            except Exception:
+                pass
         else:
             window.present()
         window.set_keep_above(True)
         GLib.timeout_add(150, lambda: (window.set_keep_above(False), False)[1])
+        window.present()
     except Exception:
         try:
             window.present()
