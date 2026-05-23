@@ -20,6 +20,7 @@ def _copy(text: str, label: str) -> None:
     subprocess.run(
         ["xclip", "-selection", "clipboard"],
         input=text.encode("utf-8"), check=False,
+        timeout=2.0,
     )
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "text-html-symbolic", label, text[:200]],

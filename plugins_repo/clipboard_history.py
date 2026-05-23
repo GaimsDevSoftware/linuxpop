@@ -161,9 +161,14 @@ def _atomic_write_json(path: Path, data) -> None:
     os.replace(tmp, path)
 
 
-def _load_list(path: Path, target: List[Entry]) -> None:
+def _load_list(path: Path, target: List[Entry]) -> bool:
+    """Return True on a successful load (including empty list), False if
+    the file existed but couldn't be parsed. Callers use this to decide
+    whether subsequent reference-tracking operations (like orphan-image
+    sweeps) are safe — sweeping when the load failed would treat every
+    image as unreferenced and delete the lot."""
     if not path.is_file():
-        return
+        return True
     try:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
@@ -172,8 +177,10 @@ def _load_list(path: Path, target: List[Entry]) -> None:
                 target.append(Entry(**item))
             except TypeError:
                 continue
+        return True
     except (OSError, json.JSONDecodeError) as exc:
         print(f"[clipboard] could not load {path}: {exc}")
+        return False
 
 
 def _save_history() -> None:
@@ -424,10 +431,18 @@ def _start_watcher_once() -> None:
     global _watcher_thread
     if _watcher_thread is not None and _watcher_thread.is_alive():
         return
-    _load_list(HISTORY_FILE, _history)
-    _load_list(SNIPPETS_FILE, _snippets)
+    history_ok = _load_list(HISTORY_FILE, _history)
+    snippets_ok = _load_list(SNIPPETS_FILE, _snippets)
     _load_dedup_state()       # keep dedup hash across daemon restarts
-    _sweep_orphan_images()    # delete cached images no entry refers to
+    # Only sweep when both reference sources loaded cleanly. A failed
+    # load returns an empty list, which would mark every cached image
+    # as orphan and wipe the cache — silently destroying history that
+    # might be recoverable by hand-editing history.json.
+    if history_ok and snippets_ok:
+        _sweep_orphan_images()
+    else:
+        print("[clipboard] skipping orphan-image sweep "
+              "— a reference file failed to load")
     _watcher_stop.clear()
     _watcher_thread = threading.Thread(
         target=_watcher_loop, daemon=True, name="linuxpop-clipboard",
@@ -458,6 +473,7 @@ def _paste_to_window(entry: Entry, target_window: str | None) -> None:
         subprocess.run(
             ["xclip", "-selection", "clipboard"],
             input=entry.text.encode("utf-8"), check=False,
+            timeout=2.0,
         )
     elif entry.kind == "image":
         if not Path(entry.image_path).is_file():
@@ -493,6 +509,10 @@ class _PickerDialog:
         self.recent_listbox: Optional[Gtk.ListBox] = None
         self.snippets_listbox: Optional[Gtk.ListBox] = None
         self._filter_text = ""
+        # Set while a transient child (rename/pin name prompt) is up so
+        # focus-out on the picker doesn't blow away the parent the prompt
+        # is anchored to. Cleared when the prompt is dismissed.
+        self._modal_child_open = False
 
     def show(self, target_window: str | None = None) -> None:
         # Stamp each phase via the real logger (not print) so a UI freeze
@@ -518,9 +538,16 @@ class _PickerDialog:
         win.set_position(Gtk.WindowPosition.CENTER)
         win.set_icon_name("linuxpop")
         win.set_skip_taskbar_hint(True)
+        win.set_skip_pager_hint(True)
         win.set_keep_above(True)
+        # Borderless, ephemeral picker — no title bar, no min/max/close
+        # decorations. Dismissed by Esc, click-outside, or focus-out.
+        win.set_decorated(False)
+        win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        win.set_resizable(False)
         win.connect("destroy", self._on_destroy)
         win.connect("key-press-event", self._on_key_press)
+        win.connect("focus-out-event", self._on_focus_out)
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         outer.set_margin_top(8)
@@ -589,6 +616,35 @@ class _PickerDialog:
         if self.search_entry is not None and self.dialog is not None:
             self.search_entry.grab_focus()
         return False  # one-shot
+
+    def _on_focus_out(self, _widget, _event) -> bool:
+        # Don't close while a rename / pin prompt is showing — that
+        # dialog is transient_for=self.dialog and tearing it down would
+        # orphan the prompt.
+        if self._modal_child_open:
+            return False
+        # IBus/Cinnamon occasionally bounce focus away from the picker
+        # for a single frame (input-method window opens, system tray
+        # ping, etc.) and immediately give it back. Destroying on the
+        # first focus-out makes the picker vanish mid-search. Defer the
+        # check: if focus has actually moved elsewhere 120 ms from now,
+        # close. Otherwise the picker is still focused — keep it.
+        if self.dialog is None:
+            return False
+        def _confirm_focus_lost() -> bool:
+            if self.dialog is None:
+                return False
+            if self._modal_child_open:
+                return False
+            try:
+                still_active = self.dialog.is_active()
+            except Exception:
+                still_active = False
+            if not still_active:
+                self.dialog.destroy()
+            return False  # one-shot
+        GLib.timeout_add(120, _confirm_focus_lost)
+        return False
 
     def _on_destroy(self, *_):
         import logging
@@ -780,25 +836,29 @@ class _PickerDialog:
         self._populate_snippets()
 
     def _ask_for_name(self, default: str = "") -> str | None:
-        dlg = Gtk.Dialog(title="Snippet name", transient_for=self.dialog, flags=0)
-        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
-                        "OK", Gtk.ResponseType.OK)
-        dlg.set_default_response(Gtk.ResponseType.OK)
-        entry = Gtk.Entry()
-        entry.set_text(default)
-        entry.set_activates_default(True)
-        entry.set_margin_top(8)
-        entry.set_margin_bottom(8)
-        entry.set_margin_start(12)
-        entry.set_margin_end(12)
-        dlg.get_content_area().add(entry)
-        dlg.show_all()
-        response = dlg.run()
-        value = entry.get_text().strip()
-        dlg.destroy()
-        if response != Gtk.ResponseType.OK:
-            return None
-        return value
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.Dialog(title="Snippet name", transient_for=self.dialog, flags=0)
+            dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
+                            "OK", Gtk.ResponseType.OK)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            entry = Gtk.Entry()
+            entry.set_text(default)
+            entry.set_activates_default(True)
+            entry.set_margin_top(8)
+            entry.set_margin_bottom(8)
+            entry.set_margin_start(12)
+            entry.set_margin_end(12)
+            dlg.get_content_area().add(entry)
+            dlg.show_all()
+            response = dlg.run()
+            value = entry.get_text().strip()
+            dlg.destroy()
+            if response != Gtk.ResponseType.OK:
+                return None
+            return value
+        finally:
+            self._modal_child_open = False
 
     # ---- keyboard ----
 

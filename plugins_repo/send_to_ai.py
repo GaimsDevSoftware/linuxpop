@@ -102,16 +102,22 @@ def _find_browser_window(name_term: str, timeout: float) -> str | None:
     while time.time() < deadline:
         # Visible browsers — anchor on WM_CLASS so "Claude" inside VSCode
         # or a Slack channel name doesn't match.
-        browsers = subprocess.run(
-            ["xdotool", "search", "--onlyvisible", "--class", _BROWSER_CLASS_RE],
-            capture_output=True, text=True,
-        )
-        browser_ids = {x for x in browsers.stdout.strip().splitlines() if x}
-        # Visible windows whose title contains the service name
-        named = subprocess.run(
-            ["xdotool", "search", "--onlyvisible", "--name", name_term],
-            capture_output=True, text=True,
-        )
+        try:
+            browsers = subprocess.run(
+                ["xdotool", "search", "--onlyvisible", "--class", _BROWSER_CLASS_RE],
+                capture_output=True, text=True, timeout=1.5,
+            )
+            browser_ids = {x for x in browsers.stdout.strip().splitlines() if x}
+            # Visible windows whose title contains the service name
+            named = subprocess.run(
+                ["xdotool", "search", "--onlyvisible", "--name", name_term],
+                capture_output=True, text=True, timeout=1.5,
+            )
+        except subprocess.TimeoutExpired:
+            # xdotool hung — bail out of the wait loop so the worker
+            # thread doesn't sit forever holding the saved clipboard.
+            print("[send_to_ai] xdotool search timed out; giving up")
+            return None
         named_ids = {x for x in named.stdout.strip().splitlines() if x}
         candidates = _intersect(browser_ids, named_ids)
         if candidates:
@@ -143,10 +149,13 @@ def _wait_until_active(window_id: str, timeout: float, stability: float) -> bool
     deadline = time.time() + timeout
     stable_since: float | None = None
     while time.time() < deadline:
-        result = subprocess.run(
-            ["xdotool", "getactivewindow"],
-            capture_output=True, text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["xdotool", "getactivewindow"],
+                capture_output=True, text=True, timeout=1.0,
+            )
+        except subprocess.TimeoutExpired:
+            return False
         active = result.stdout.strip()
         if active == window_id:
             if stable_since is None:
@@ -159,6 +168,18 @@ def _wait_until_active(window_id: str, timeout: float, stability: float) -> bool
     return False
 
 
+def _read_selection(sel: str) -> bytes:
+    """Snapshot a selection so _stuff_text can restore it afterwards."""
+    try:
+        out = subprocess.run(
+            ["xclip", "-selection", sel, "-o"],
+            capture_output=True, timeout=0.8,
+        )
+        return out.stdout
+    except (OSError, subprocess.SubprocessError):
+        return b""
+
+
 def _stuff_text(text: str) -> None:
     """Put text on BOTH X11 selections so any paste shortcut works."""
     payload = text.encode("utf-8")
@@ -166,6 +187,19 @@ def _stuff_text(text: str) -> None:
         subprocess.run(
             ["xclip", "-selection", sel],
             input=payload, check=False,
+            timeout=2.0,
+        )
+
+
+def _restore_selections(saved: dict[str, bytes]) -> None:
+    """Put the user's pre-stuffed clipboard back. Scheduled after the
+    paste keystroke lands so the chat box already has the prompt."""
+    for sel, data in saved.items():
+        if not data:
+            continue
+        subprocess.run(
+            ["xclip", "-selection", sel],
+            input=data, check=False, timeout=2.0,
         )
 
 
@@ -202,10 +236,21 @@ def _diagnose_window(window_id: str) -> str:
 def _send_via_paste(service: str, url: str, window_terms: list[str],
                     text: str, paste_key: str = "ctrl+v",
                     settle_extra: float = 0.0) -> None:
+    # Snapshot the user's clipboard + primary BEFORE we clobber them,
+    # so we can restore once paste lands. Without this, asking Claude
+    # silently overwrites whatever was on the clipboard with the
+    # question prompt — a real annoyance for anyone juggling notes.
+    saved_selections = {
+        "clipboard": _read_selection("clipboard"),
+        "primary":   _read_selection("primary"),
+    }
     _stuff_text(text)
     try:
         subprocess.Popen(["xdg-open", url], start_new_session=True)
     except FileNotFoundError:
+        # Restore immediately on failure — we never paste, so the user's
+        # clipboard shouldn't stay overwritten.
+        _restore_selections(saved_selections)
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
              f"Could not open {service}", "xdg-open is missing"],
@@ -248,6 +293,12 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
         if total_settle > 0:
             time.sleep(total_settle)
         _paste_keystroke(paste_key)
+        # Give the chat box a beat to actually receive the paste before
+        # we restore the user's clipboard — pasting and restoring in
+        # the same tick has a small race where the destination sees the
+        # old clipboard content.
+        time.sleep(0.4)
+        _restore_selections(saved_selections)
 
     threading.Thread(target=worker, daemon=True, name=f"ai-paste-{service}").start()
 

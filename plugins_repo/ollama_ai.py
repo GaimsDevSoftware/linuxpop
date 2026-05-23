@@ -101,6 +101,7 @@ def _run_async(prompt: str, label: str, text: str) -> None:
             ["xclip", "-selection", "clipboard"],
             input=answer.encode("utf-8"),
             check=False,
+            timeout=2.0,
         )
         _notify(f"Ollama — {label} (copied)", answer)
 

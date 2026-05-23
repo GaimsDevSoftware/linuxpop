@@ -39,6 +39,11 @@ DEFAULTS: dict[str, Any] = {
     "auto_hide_leave_ms": 1500,
     # Minimum text length to trigger the popup on selection
     "min_selection_length": 1,
+    # How long to wait (ms) after the last selection change before showing
+    # the popup. Suppresses popup churn while the user is still dragging
+    # to extend a selection. ~250-400 ms feels natural; lower = snappier
+    # but more likely to interrupt; higher = calmer but feels laggy.
+    "selection_debounce_ms": 300,
     # If True, ignore selections that contain only whitespace
     "ignore_whitespace_only": True,
     # Substrings that, if any matches the active window's title or

@@ -87,6 +87,32 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
         return handler
 
     if atype == "run_command":
+        # Reject templates that embed the selection unquoted. Only
+        # {text_shell} and {text_url} survive shell evaluation safely;
+        # {text}, {text_upper}, {text_lower}, {text_strip} pass shell
+        # metacharacters through and turn the recipe into trivial RCE
+        # if the user ever clicks the button on attacker-controlled text.
+        # Refuse to register so the bug surfaces in logs instead of as
+        # a quiet wormhole.
+        import re as _re
+        unsafe = {"text", "text_upper", "text_lower", "text_strip"}
+        placeholders = set(_re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", template))
+        bad = placeholders & unsafe
+        if bad:
+            name = recipe.get("name") or recipe.get("tooltip") or "unnamed"
+            print(f"[recipe] REFUSED to load run_command recipe {name!r}: "
+                  f"template uses unsafe placeholder(s) {sorted(bad)} — "
+                  f"replace with {{text_shell}} (shell-quoted) or "
+                  f"{{text_url}} (URL-encoded).")
+            def disabled_handler(_text: str) -> None:
+                subprocess.run(
+                    ["notify-send", "--hint=byte:transient:1", "-t", "5000",  "-u", "critical",
+                     "-i", "dialog-warning", "LinuxPop recipe disabled",
+                     f"{name}: unsafe template — see ~/.cache/linuxpop/linuxpop.log"],
+                    check=False,
+                )
+            return disabled_handler
+
         def handler(text: str) -> None:
             cmd = _render(template, text)
             try:
@@ -114,6 +140,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
             subprocess.run(
                 ["xclip", "-selection", "clipboard"],
                 input=out.encode("utf-8"), check=False,
+                timeout=2.0,
             )
             subprocess.run(
                 ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", icon, title, out[:200]],

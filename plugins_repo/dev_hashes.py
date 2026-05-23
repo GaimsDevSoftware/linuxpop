@@ -30,6 +30,7 @@ def _copy_and_notify(text: str, title: str) -> None:
     subprocess.run(
         ["xclip", "-selection", "clipboard"],
         input=text.encode("utf-8"), check=False,
+        timeout=2.0,
     )
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "security-high-symbolic", title, text[:280]],
@@ -75,6 +76,7 @@ def _jwt_decode(text: str) -> None:
     subprocess.run(
         ["xclip", "-selection", "clipboard"],
         input=pretty.encode("utf-8"), check=False,
+        timeout=2.0,
     )
     alg = header.get("alg", "?")
     typ = header.get("typ", "?")

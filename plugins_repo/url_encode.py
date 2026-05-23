@@ -25,6 +25,7 @@ def _copy_and_notify(label: str, text: str) -> None:
         ["xclip", "-selection", "clipboard"],
         input=text.encode("utf-8"),
         check=False,
+        timeout=2.0,
     )
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "applications-internet", label, text[:200]],

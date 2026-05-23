@@ -270,12 +270,31 @@ class PopupWindow:
         self._origin_logical = (lx, ly)
         self._popup_rect = (target_x, target_y, w, h)
         self._scale = scale
-        # Reset edge-detectors: assume any currently-held button/Esc is from
-        # the previous interaction. User must release then press again to
-        # trigger dismissal — avoids the "Esc was held during previous popup,
-        # next popup ignores my Esc" bug.
-        self._prev_button_pressed = True
-        self._prev_esc_pressed = True
+        # Edge-detector seed: read the actual button/Esc state right now.
+        # The old "always True" seed swallowed the very first click-outside
+        # if no key was actually held, because the rising-edge detector
+        # never saw a 0→1 transition (state started at 1). Reading the
+        # real state means stuck-held inputs from a previous popup are
+        # still suppressed, but a truly idle pointer is correctly tracked.
+        if self._xdpy is not None:
+            try:
+                data = self._xdpy.screen().root.query_pointer()
+                btn_mask = X.Button1Mask | X.Button2Mask | X.Button3Mask
+                self._prev_button_pressed = bool(data.mask & btn_mask)
+                if self._esc_keycode:
+                    keymap = self._xdpy.query_keymap()
+                    byte_idx = self._esc_keycode // 8
+                    bit_idx = self._esc_keycode % 8
+                    self._prev_esc_pressed = bool(keymap[byte_idx] & (1 << bit_idx))
+                else:
+                    self._prev_esc_pressed = False
+            except Exception:
+                # Fall back to the old conservative seed if Xlib query fails.
+                self._prev_button_pressed = True
+                self._prev_esc_pressed = True
+        else:
+            self._prev_button_pressed = True
+            self._prev_esc_pressed = True
         self._start_tracking()
 
     def hide(self) -> None:
@@ -296,7 +315,11 @@ class PopupWindow:
 
     def _on_hide_timeout(self) -> bool:
         self._hide_timeout_id = None
-        self.win.hide()
+        # Hide via the full path so the tracker tick is cancelled too.
+        # Calling self.win.hide() alone leaves _tracker_id pointing at a
+        # GLib source that fires once after the next show_for, racing
+        # the new tick's setup and reading stale _popup_rect.
+        self.hide()
         return False
 
     def _start_tracking(self) -> None:
@@ -367,15 +390,35 @@ class PopupWindow:
         return x <= lx <= x + w and y <= ly <= y + h
 
     def _in_safe_zone(self, px: int, py: int) -> bool:
-        # Over the popup itself?
+        # Three overlapping regions that all keep the popup alive:
+        #   (a) the popup window itself (with a small fudge margin so a
+        #       diagonal approach to a corner doesn't trip the leave-grace
+        #       just because the pointer is 1-2 px outside the frame).
+        #   (b) a generous circle around the original selection cursor.
+        #   (c) the bounding rectangle spanning both — i.e. the corridor
+        #       between text and popup. This is what was missing: moving
+        #       the cursor from selection to popup along the natural
+        #       diagonal path used to leave the radius briefly, arming
+        #       the hide timer; users on faster mice saw the popup vanish
+        #       mid-reach.
         x, y, w, h = self._popup_rect
-        if x <= px <= x + w and y <= py <= y + h:
+        fudge = 12
+        if (x - fudge) <= px <= (x + w + fudge) and (y - fudge) <= py <= (y + h + fudge):
             return True
-        # Near the original cursor (i.e., still over the selected text)?
         ox, oy = self._origin_logical
         dx = px - ox
         dy = py - oy
-        return (dx * dx + dy * dy) <= (self._text_zone_radius * self._text_zone_radius)
+        if (dx * dx + dy * dy) <= (self._text_zone_radius * self._text_zone_radius):
+            return True
+        # Corridor: rect from selection cursor to popup centre, padded.
+        cx = x + w / 2
+        cy = y + h / 2
+        pad = 24
+        lo_x = min(ox, cx) - pad
+        hi_x = max(ox, cx) + pad
+        lo_y = min(oy, cy) - pad
+        hi_y = max(oy, cy) + pad
+        return lo_x <= px <= hi_x and lo_y <= py <= hi_y
 
     def _on_focus_out(self, *_):
         self.hide()

@@ -44,6 +44,7 @@ def _to_clipboard(text: str) -> None:
             ["xclip", "-selection", "clipboard"],
             input=text.encode("utf-8"),
             check=True,
+            timeout=2.0,
         )
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
