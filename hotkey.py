@@ -121,8 +121,14 @@ class Hotkey:
         self._thread = threading.Thread(target=self._run, daemon=True, name="linuxpop-hotkey")
         self._thread.start()
 
-    def stop(self) -> None:
+    def stop(self, wait: bool = True, timeout: float = 1.5) -> None:
+        """Stop the hotkey thread. When `wait` (default), block until the
+        thread exits and the X11 grab is released — required by live-rebind
+        in main.py so the old thread's ungrab doesn't race the new thread's
+        grab on the same key and silently steal it."""
         self._stop.set()
+        if wait and self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=timeout)
 
     def _run(self) -> None:
         try:
@@ -219,6 +225,14 @@ class Hotkey:
                 )
                 if effective == mods:
                     GLib.idle_add(self._safe_trigger)
+                else:
+                    # Helps diagnose "I pressed the hotkey but nothing
+                    # happened": surfaces mismatched mod state so we can
+                    # see whether some other mod (Hyper, ISO_Level3) is
+                    # sneaking into event.state.
+                    print(f"[hotkey] '{self._hotkey_str}' press ignored: "
+                          f"expected mods=0x{mods:x} got effective=0x{effective:x} "
+                          f"(full state=0x{event.state:x})")
 
         # Cleanup
         for keycode, mask in self._grabbed_combos:

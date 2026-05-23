@@ -17,6 +17,18 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
+# XInitThreads is intentionally NOT called here. We tried it (since
+# multiple threads touch X — watcher, hotkey, popup tick, clipboard
+# watcher) but it interacts badly with the python-xlib + PyGObject mix
+# in this process: the hotkey threads silently fail to grab keys when
+# XInitThreads runs at import time. Python-xlib uses its own per-Display
+# socket and Python-level Lock, so it doesn't actually need XInitThreads;
+# Gdk/GTK's internal lock plus separate-Display-per-thread is the
+# isolation we rely on. If "XIO: fatal IO error" crashes start showing
+# up under load, revisit by giving each Xlib-using component its own
+# connection (already mostly the case) rather than re-enabling
+# XInitThreads.
+
 import plugin_loader
 import theme
 from classifier import classify
@@ -99,12 +111,23 @@ def _setup_logging(debug: bool) -> None:
 
 
 def _check_x11_or_exit() -> None:
-    """LinuxPop relies on X11 APIs (xclip selection, Xlib pointer, X11 grabs)."""
-    if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("DISPLAY"):
+    """LinuxPop relies on X11 APIs (xclip selection, Xlib pointer, X11 grabs).
+
+    Three possible session states:
+      - Pure X11 (DISPLAY set, no WAYLAND_DISPLAY): fully supported.
+      - XWayland (both DISPLAY and WAYLAND_DISPLAY set): native Wayland
+        apps don't write to X PRIMARY, so auto-popup won't fire for most
+        apps. We log a loud warning + notify but still start, because
+        some legacy X11 apps and the hotkey path still work.
+      - Pure Wayland (no DISPLAY, only WAYLAND_DISPLAY): refuse to start.
+    """
+    has_x11 = bool(os.environ.get("DISPLAY"))
+    has_wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
+
+    if not has_x11 and has_wayland:
         msg = (
             "LinuxPop requires an X11 session — you appear to be running Wayland.\n"
-            "Log in to an 'Xorg' session from your display manager, or run under "
-            "XWayland with DISPLAY set."
+            "Log in to an 'Xorg' session from your display manager."
         )
         print(msg, file=sys.stderr)
         try:
@@ -116,9 +139,28 @@ def _check_x11_or_exit() -> None:
         except FileNotFoundError:
             pass
         sys.exit(2)
-    if not os.environ.get("DISPLAY"):
+    if not has_x11:
         print("DISPLAY is not set — LinuxPop needs an X11 display.", file=sys.stderr)
         sys.exit(2)
+    if has_wayland and has_x11:
+        # XWayland session. Native Wayland apps (most modern GTK/Qt) won't
+        # mirror selection to X PRIMARY, so auto-popup will silently miss
+        # most selections. Warn loudly once at startup.
+        warning = (
+            "Running under XWayland: PRIMARY-selection auto-popup will only "
+            "fire for legacy X11 apps. The global hotkey still works everywhere "
+            "the X11 grab is honoured. For full functionality, use an Xorg session."
+        )
+        print(f"[linuxpop] WARNING: {warning}", file=sys.stderr)
+        try:
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "6000", "-u", "normal",
+                 "-i", "linuxpop",
+                 "LinuxPop: limited under XWayland", warning],
+                check=False,
+            )
+        except FileNotFoundError:
+            pass
 
 
 def _read_selection(source: str) -> str:
@@ -134,14 +176,30 @@ def _read_selection(source: str) -> str:
         return ""
 
 
+# Reused Xlib connection for pointer queries. Opening a fresh Display() per
+# call adds ~5-15 ms of XOpenDisplay roundtrip — which the hotkey path hits
+# on every press. Cached at module scope; we never close it (it lives for
+# the process lifetime, like the main GTK connection).
+_pointer_dpy = None
+
+
 def _pointer_position() -> tuple[int, int]:
+    global _pointer_dpy
     from Xlib import display
-    dpy = display.Display()
+    if _pointer_dpy is None:
+        _pointer_dpy = display.Display()
     try:
-        data = dpy.screen().root.query_pointer()
+        data = _pointer_dpy.screen().root.query_pointer()
         return data.root_x, data.root_y
-    finally:
-        dpy.close()
+    except Exception:
+        # Connection may have been broken by an X server restart — drop it
+        # so the next call opens a fresh one instead of permanently failing.
+        try:
+            _pointer_dpy.close()
+        except Exception:
+            pass
+        _pointer_dpy = None
+        raise
 
 
 def _active_window_blocked(patterns: list[str]) -> bool:
@@ -198,6 +256,17 @@ class App:
         self.watcher: SelectionWatcher | None = None
         self.hotkey = None
         self.clipboard_hotkey = None
+        # Debounce id for plugin reloads triggered by settings saves —
+        # prevents a load_all storm when many keys change in quick
+        # succession (textarea editing, bulk toggles).
+        self._reload_pending_id: int | None = None
+        # Track what's actually grabbed right now, independent of the
+        # settings singleton. The on_changed callback fires AFTER
+        # settings_gui has already mutated the singleton, so comparing
+        # "new setting" vs "current singleton" never sees a diff. These
+        # mirrors are the source of truth for the live-rebind diff.
+        self._bound_hotkey: str = ""
+        self._bound_clipboard_hotkey: str = ""
         self._watcher_active = False
         self.tray = None
         # Single-instance dialogs: created lazily, reused on subsequent opens
@@ -256,7 +325,10 @@ class App:
         def on_selection(text: str, x: int, y: int) -> None:
             GLib.idle_add(self._show_for_text, text, x, y)
 
-        self.watcher = SelectionWatcher(on_selection)
+        self.watcher = SelectionWatcher(
+            on_selection,
+            debounce_ms=int(self.settings.get("selection_debounce_ms")),
+        )
         self.watcher.start()
         self._watcher_active = True
         log.info("selection watcher started")
@@ -282,25 +354,30 @@ class App:
     # ---- hotkey --------------------------------------------------------------
 
     def _start_hotkey(self) -> None:
-        hotkey_str = self.settings.get("hotkey")
+        hotkey_str = (self.settings.get("hotkey") or "").strip()
         if not hotkey_str:
             log.info("hotkey disabled in settings")
+            self._bound_hotkey = ""
             return
         from hotkey import Hotkey
         self.hotkey = Hotkey(hotkey_str, self.show_popup_now)
         self.hotkey.start()
+        self._bound_hotkey = hotkey_str
 
     def _start_clipboard_hotkey(self) -> None:
         if not bool(self.settings.get("clipboard_history_enabled", True)):
             log.info("clipboard plugin disabled — not binding clipboard hotkey")
+            self._bound_clipboard_hotkey = ""
             return
-        hotkey_str = self.settings.get("clipboard_hotkey")
+        hotkey_str = (self.settings.get("clipboard_hotkey") or "").strip()
         if not hotkey_str:
             log.info("clipboard hotkey disabled in settings")
+            self._bound_clipboard_hotkey = ""
             return
         from hotkey import Hotkey
         self.clipboard_hotkey = Hotkey(hotkey_str, self._on_clipboard_hotkey)
         self.clipboard_hotkey.start()
+        self._bound_clipboard_hotkey = hotkey_str
 
     def _on_clipboard_hotkey(self) -> None:
         """Capture the currently focused window BEFORE the picker steals
@@ -361,8 +438,10 @@ class App:
                 return
 
             def on_changed():
-                old_hotkey = (self.settings.get("hotkey") or "").strip()
-                old_clip = (self.settings.get("clipboard_hotkey") or "").strip()
+                # Compare against what's currently *grabbed*, NOT the settings
+                # singleton — settings_gui already mutated the singleton
+                # before reaching us, so a singleton-vs-singleton diff
+                # always reports "no change".
                 self.settings = get_settings()
                 new_hotkey = (self.settings.get("hotkey") or "").strip()
                 new_clip = (self.settings.get("clipboard_hotkey") or "").strip()
@@ -370,23 +449,31 @@ class App:
                 self.ignore_ws = bool(self.settings.get("ignore_whitespace_only"))
                 self.popup._initial_grace_ms = int(self.settings.get("auto_hide_initial_ms"))
                 self.popup._leave_grace_ms = int(self.settings.get("auto_hide_leave_ms"))
+                if self.watcher is not None:
+                    self.watcher.set_debounce_ms(
+                        int(self.settings.get("selection_debounce_ms"))
+                    )
                 # Reload plugins so settings that gate plugin registration
-                # (e.g. ai_services) take effect immediately.
-                plugin_loader.load_all()
-                # Rebind hotkeys live if they changed.
-                if new_hotkey != old_hotkey:
-                    log.info("hotkey changed: %r → %r — rebinding", old_hotkey, new_hotkey)
+                # (e.g. ai_services) take effect immediately. Debounced so
+                # a burst of saves (textarea editing, multi-toggle bulk
+                # changes) only triggers one reload after activity quiets.
+                self._schedule_plugin_reload()
+                if new_hotkey != self._bound_hotkey:
+                    log.info("hotkey changed: %r → %r — rebinding",
+                             self._bound_hotkey, new_hotkey)
                     if self.hotkey is not None:
                         self.hotkey.stop()
                         self.hotkey = None
+                    self._bound_hotkey = ""
                     if new_hotkey:
                         self._start_hotkey()
-                if new_clip != old_clip:
+                if new_clip != self._bound_clipboard_hotkey:
                     log.info("clipboard hotkey changed: %r → %r — rebinding",
-                             old_clip, new_clip)
+                             self._bound_clipboard_hotkey, new_clip)
                     if self.clipboard_hotkey is not None:
                         self.clipboard_hotkey.stop()
                         self.clipboard_hotkey = None
+                    self._bound_clipboard_hotkey = ""
                     if new_clip:
                         self._start_clipboard_hotkey()
                 log.info("settings reloaded")
@@ -478,6 +565,15 @@ class App:
         GLib.timeout_add(800, _open_welcome)
 
     # ---- lifecycle -----------------------------------------------------------
+
+    def _schedule_plugin_reload(self) -> None:
+        if self._reload_pending_id is not None:
+            GLib.source_remove(self._reload_pending_id)
+        def _do_reload() -> bool:
+            self._reload_pending_id = None
+            plugin_loader.load_all()
+            return False
+        self._reload_pending_id = GLib.timeout_add(400, _do_reload)
 
     def quit(self) -> None:
         Gtk.main_quit()

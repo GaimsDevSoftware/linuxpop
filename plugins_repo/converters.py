@@ -13,6 +13,7 @@ def _copy(text: str, label: str) -> None:
     subprocess.run(
         ["xclip", "-selection", "clipboard"],
         input=text.encode("utf-8"), check=False,
+        timeout=2.0,
     )
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "preferences-system-time-symbolic", label, text[:200]],
@@ -29,10 +30,14 @@ def _timestamp_convert(text: str) -> None:
         # Heuristic: > 10^11 means milliseconds, else seconds
         if value > 1e11:
             value = value / 1000.0
+        # fromtimestamp raises OSError on some libcs for out-of-range
+        # epochs (extreme negatives, > year 9999). OverflowError on others.
+        # Both mean "not a sensible timestamp" — fall through to the next
+        # parse strategy instead of crashing the worker.
         when = dt.datetime.fromtimestamp(value).astimezone()
         _copy(when.isoformat(), f"From epoch {s}")
         return
-    except ValueError:
+    except (ValueError, OSError, OverflowError):
         pass
     # Try as ISO date / RFC-ish
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S",

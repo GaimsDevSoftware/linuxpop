@@ -38,6 +38,7 @@ def _format(text: str) -> None:
         ["xclip", "-selection", "clipboard"],
         input=pretty.encode("utf-8"),
         check=False,
+        timeout=2.0,
     )
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-text-editor",

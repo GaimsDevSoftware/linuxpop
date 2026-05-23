@@ -103,15 +103,27 @@ def _install_all_icons() -> None:
         print(f"[plugin_loader] could not refresh icon theme: {exc}")
 
     if copied_any:
-        # Rebuild on-disk cache so future GTK processes pick them up faster
-        try:
-            import subprocess
-            subprocess.run(
-                ["gtk-update-icon-cache", "-f", str(hicolor_root)],
-                check=False, capture_output=True,
-            )
-        except FileNotFoundError:
-            pass
+        # Rebuild on-disk cache so future GTK processes pick them up faster.
+        # Cold-cache runs of gtk-update-icon-cache have been seen to take
+        # 3-6 seconds on machines with large icon dirs — blocking the GTK
+        # main thread during startup. Detach to a daemon thread; the
+        # in-process icon theme has already been refreshed via the
+        # rescan_if_needed() call above, so the daemon doesn't need this
+        # to finish to function.
+        import subprocess
+        import threading as _threading
+        def _bg_rebuild_cache() -> None:
+            try:
+                subprocess.run(
+                    ["gtk-update-icon-cache", "-f", str(hicolor_root)],
+                    check=False, capture_output=True, timeout=30,
+                )
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+        _threading.Thread(
+            target=_bg_rebuild_cache, daemon=True,
+            name="linuxpop-icon-cache",
+        ).start()
 
     # Mirror any user-supplied icons from ~/.config/linuxpop/icons/ into
     # hicolor so they're searchable in the picker and usable by recipes.
@@ -247,8 +259,8 @@ def _load_user_plugins() -> None:
     for path in sorted(USER_PLUGIN_DIR.glob("*.py")):
         if path.name.startswith("_"):
             continue
+        mod_name = f"linuxpop_user_{path.stem}"
         try:
-            mod_name = f"linuxpop_user_{path.stem}"
             spec = importlib.util.spec_from_file_location(mod_name, path)
             if spec is None or spec.loader is None:
                 continue
@@ -261,6 +273,11 @@ def _load_user_plugins() -> None:
                 module.register(register)
                 print(f"[plugin_loader] loaded user plugin: {path.name}")
         except Exception:
+            # Roll back the half-initialised module so main.py's
+            # sys.modules.get("linuxpop_user_clipboard_history") doesn't
+            # find a broken stub and silently behave as if the plugin
+            # were loaded. Next load_all() then gets a clean re-import.
+            sys.modules.pop(mod_name, None)
             print(f"[plugin_loader] failed to load {path.name}:")
             traceback.print_exc()
 

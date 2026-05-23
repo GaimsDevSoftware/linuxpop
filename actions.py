@@ -21,6 +21,7 @@ def copy_to_clipboard(text: str) -> None:
             ["xclip", "-selection", "clipboard"],
             input=text.encode("utf-8"),
             check=True,
+            timeout=2.0,
         )
         print(f"[actions] copied {len(text)} chars to clipboard")
     except subprocess.CalledProcessError as exc:

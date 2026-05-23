@@ -76,7 +76,16 @@ def _eval(node):
     if isinstance(node, ast.Num):  # py<3.12
         return node.n
     if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
-        return _BIN_OPS[type(node.op)](_eval(node.left), _eval(node.right))
+        left = _eval(node.left)
+        right = _eval(node.right)
+        # ** with large operands can produce astronomically large ints
+        # that take minutes of pure-CPU time to construct + format.
+        # Selection like "9**9**9" used to freeze the worker thread. Cap
+        # both operand magnitude and exponent at sane values.
+        if isinstance(node.op, ast.Pow):
+            if abs(right) > 1000 or abs(left) > 1e6:
+                raise ValueError("exponent too large — refusing to evaluate")
+        return _BIN_OPS[type(node.op)](left, right)
     if isinstance(node, ast.UnaryOp) and type(node.op) in _UN_OPS:
         return _UN_OPS[type(node.op)](_eval(node.operand))
     if isinstance(node, ast.Name) and node.id in _NAMES:
@@ -102,6 +111,7 @@ def _calc(text: str) -> None:
         ["xclip", "-selection", "clipboard"],
         input=result_str.encode("utf-8"),
         check=False,
+        timeout=2.0,
     )
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-calculator", "Result", f"{expr} = {result_str}"],

@@ -159,6 +159,8 @@ class PluginManagerDialog:
         self._on_changed = on_changed
         self._window: Handy.PreferencesWindow | None = None
         self._catalog_group: Handy.PreferencesGroup | None = None
+        self._catalog_groups: list[Handy.PreferencesGroup] = []
+        self._catalog_page: Handy.PreferencesPage | None = None
         self._installed_group: Handy.PreferencesGroup | None = None
         self._order_group: Handy.PreferencesGroup | None = None
         self._custom_group: Handy.PreferencesGroup | None = None
@@ -177,12 +179,20 @@ class PluginManagerDialog:
         win.set_modal(False)
         win.connect("destroy", self._on_destroy)
 
-        # Tab 1: catalog
+        # Tab 1: catalog. Built as one PreferencesGroup per category so
+        # the user sees Productivity / Web / AI / Developer separately
+        # rather than one undifferentiated flat list. _catalog_group is
+        # tracked as a reference to the *first* group purely so the
+        # parent-page lookup in _rebuild_catalog_buttons still works.
         catalog_page = Handy.PreferencesPage()
         catalog_page.set_title("Available")
         catalog_page.set_icon_name("system-software-install-symbolic")
-        self._catalog_group = self._build_catalog_group()
-        catalog_page.add(self._catalog_group)
+        self._catalog_groups: list[Handy.PreferencesGroup] = []
+        for group in self._build_catalog_groups():
+            catalog_page.add(group)
+            self._catalog_groups.append(group)
+        self._catalog_group = self._catalog_groups[0] if self._catalog_groups else None
+        self._catalog_page = catalog_page
         win.add(catalog_page)
 
         # Tab 2: installed
@@ -223,28 +233,71 @@ class PluginManagerDialog:
     def _on_destroy(self, *_):
         self._window = None
         self._catalog_group = None
+        self._catalog_groups = []
+        self._catalog_page = None
         self._installed_group = None
         self._order_group = None
         self._custom_group = None
 
     # ---- catalog tab ---------------------------------------------------------
 
-    def _build_catalog_group(self) -> Handy.PreferencesGroup:
-        group = Handy.PreferencesGroup()
-        group.set_title("Plugin catalogue")
-        group.set_description("Built-in plugins you can install with one click.")
+    # Display order for category sections. Categories present in the
+    # manifest but missing here are appended in first-seen order.
+    _CATEGORY_ORDER = ["Productivity", "Web shortcuts", "AI", "Developer"]
+    _CATEGORY_DESCRIPTIONS = {
+        "Productivity":  "Everyday actions — clipboard, math, counts, speech.",
+        "Web shortcuts": "Open the selection in a search engine or web service.",
+        "AI":            "Send the selection to a chat AI or run one locally.",
+        "Developer":     "Encoders, hashes and converters for technical text.",
+    }
 
+    def _build_catalog_groups(self) -> list[Handy.PreferencesGroup]:
         manifest = _load_manifest()
         if not manifest:
+            group = Handy.PreferencesGroup()
+            group.set_title("Plugin catalogue")
             row = Handy.ActionRow()
             row.set_title("Catalogue is empty")
             row.set_subtitle("plugins_repo/manifest.json is missing or unreadable")
             group.add(row)
-            return group
+            return [group]
 
+        # Bucket by category, preserving manifest order within each bucket.
+        buckets: dict[str, list[dict]] = {}
         for entry in manifest:
-            group.add(self._make_catalog_row(entry))
-        return group
+            cat = entry.get("category") or "Other"
+            buckets.setdefault(cat, []).append(entry)
+
+        # Stable, opinionated ordering: known categories first in the order
+        # defined above, then anything else by first appearance.
+        seen = set()
+        ordered_cats: list[str] = []
+        for cat in self._CATEGORY_ORDER:
+            if cat in buckets:
+                ordered_cats.append(cat)
+                seen.add(cat)
+        for cat in buckets:
+            if cat not in seen:
+                ordered_cats.append(cat)
+
+        groups: list[Handy.PreferencesGroup] = []
+        for cat in ordered_cats:
+            group = Handy.PreferencesGroup()
+            group.set_title(cat)
+            desc = self._CATEGORY_DESCRIPTIONS.get(cat)
+            if desc:
+                group.set_description(desc)
+            for entry in buckets[cat]:
+                group.add(self._make_catalog_row(entry))
+            groups.append(group)
+        return groups
+
+    def _build_catalog_group(self) -> Handy.PreferencesGroup:
+        # Kept for backwards-compat / single-group callers. Returns the
+        # first category group; in practice _build_catalog_groups() is
+        # what the page now uses.
+        groups = self._build_catalog_groups()
+        return groups[0] if groups else Handy.PreferencesGroup()
 
     def _make_catalog_row(self, entry: dict) -> Handy.ActionRow:
         row = Handy.ActionRow()
@@ -337,8 +390,12 @@ class PluginManagerDialog:
         if self._installed_group is None:
             return
         for child in list(self._installed_group.get_children()):
-            # PreferencesGroup uses an internal box — clearing rows
+            # remove() only drops the parent ref — without destroy() the
+            # row's GObject (and its signal-handler closures over Path
+            # objects) stays alive until Python GC notices the orphan,
+            # which on long-running daemons leaks across many refreshes.
             self._installed_group.remove(child)
+            child.destroy()
         self._fill_installed_group(self._installed_group)
         self._installed_group.show_all()
 
@@ -419,6 +476,7 @@ class PluginManagerDialog:
             return
         for child in list(self._custom_group.get_children()):
             self._custom_group.remove(child)
+            child.destroy()
         self._fill_custom_group_with_header(self._custom_group)
         self._custom_group.show_all()
 
@@ -547,6 +605,7 @@ class PluginManagerDialog:
             return
         for child in list(self._order_group.get_children()):
             self._order_group.remove(child)
+            child.destroy()
         self._fill_order_group(self._order_group)
         self._order_group.show_all()
 
@@ -572,15 +631,19 @@ class PluginManagerDialog:
             self._on_changed()
 
     def _rebuild_catalog_buttons(self) -> None:
-        if self._catalog_group is None:
+        page = getattr(self, "_catalog_page", None)
+        if page is None:
             return
-        # Simplest: re-walk children and reset install buttons via filename
-        # stored in the row title would be brittle — instead, rebuild the group.
-        parent = self._catalog_group.get_parent()
-        if parent is None:
-            return
-        parent.remove(self._catalog_group)
-        new_group = self._build_catalog_group()
-        parent.add(new_group)
-        new_group.show_all()
-        self._catalog_group = new_group
+        # Wipe every existing category group, then append fresh ones.
+        # HdyPreferencesPage exposes children via forall(), not get_children().
+        old_groups = list(getattr(self, "_catalog_groups", []) or [])
+        for g in old_groups:
+            parent = g.get_parent()
+            if parent is not None:
+                parent.remove(g)
+        self._catalog_groups = []
+        for group in self._build_catalog_groups():
+            page.add(group)
+            group.show_all()
+            self._catalog_groups.append(group)
+        self._catalog_group = self._catalog_groups[0] if self._catalog_groups else None

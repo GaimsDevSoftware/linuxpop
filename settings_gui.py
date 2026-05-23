@@ -309,19 +309,26 @@ class SettingsDialog:
 
     def _build_timing_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()
-        group.set_title("Auto-hide timing")
-        group.set_description("Milliseconds before the popup disappears.")
+        group.set_title("Timing")
+        group.set_description("Milliseconds for popup show / hide behaviour.")
 
+        debounce_row = self._spin_row(
+            "Delay before popup appears",
+            "Wait this long after the selection stops changing — keeps the "
+            "popup from flashing while you're still dragging",
+            "selection_debounce_ms", 0, 2000, 50,
+        )
         initial_row = self._spin_row(
-            "Before mouse arrives",
+            "Auto-hide before mouse arrives",
             "How long to wait if the mouse never reaches the popup",
             "auto_hide_initial_ms", 500, 30000, 500,
         )
         leave_row = self._spin_row(
-            "After mouse leaves safe zone",
+            "Auto-hide after mouse leaves safe zone",
             "Safe zone = popup + 80 px around the original selection",
             "auto_hide_leave_ms", 200, 20000, 200,
         )
+        group.add(debounce_row)
         group.add(initial_row)
         group.add(leave_row)
         return group
@@ -369,7 +376,13 @@ class SettingsDialog:
         block_buf.set_text("\n".join(
             self._settings.get("blocklist_patterns") or []))
 
-        def _on_block_changed(buf: Gtk.TextBuffer) -> None:
+        # Debounce blocklist saves: typing 20 chars used to fire 20 settings
+        # writes + 20 plugin_loader.load_all() calls. Hold the latest text,
+        # flush it 350 ms after the last keystroke.
+        self._block_save_pending_id: int | None = None
+
+        def _flush_block(buf: Gtk.TextBuffer) -> bool:
+            self._block_save_pending_id = None
             start, end = buf.get_start_iter(), buf.get_end_iter()
             raw = buf.get_text(start, end, True)
             patterns = [
@@ -377,6 +390,14 @@ class SettingsDialog:
                 if line.strip()
             ]
             self._save_key("blocklist_patterns", patterns)
+            return False  # one-shot timer
+
+        def _on_block_changed(buf: Gtk.TextBuffer) -> None:
+            if self._block_save_pending_id is not None:
+                GLib.source_remove(self._block_save_pending_id)
+            self._block_save_pending_id = GLib.timeout_add(
+                350, _flush_block, buf,
+            )
         block_buf.connect("changed", _on_block_changed)
         block_scroll.add(block_view)
         group.add(block_scroll)
