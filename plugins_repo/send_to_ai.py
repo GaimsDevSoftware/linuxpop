@@ -224,8 +224,10 @@ def _diagnose_window(window_id: str) -> str:
             ["xdotool", "getwindowname", window_id],
             capture_output=True, text=True, timeout=0.5,
         ).stdout.strip()
+        # xprop, not `xdotool getwindowclassname` — the latter is missing
+        # from xdotool on Mint/Debian and silently returns ''.
         wclass = subprocess.run(
-            ["xdotool", "getwindowclassname", window_id],
+            ["xprop", "-id", window_id, "WM_CLASS"],
             capture_output=True, text=True, timeout=0.5,
         ).stdout.strip()
         return f"wid={window_id} class={wclass!r} name={name!r}"
@@ -315,6 +317,21 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
 # ---- service registry ---------------------------------------------------
 
 _SERVICES = {
+    # Google AI Search is the lowest-friction default: no login, no
+    # subscription, URL-mode auto-submits, works in any browser. Bumped
+    # to the lowest priority number (=highest popup priority) so it
+    # appears first if multiple services are enabled.
+    "google_ai": dict(
+        name="send-to-google-ai",
+        icon="linuxpop-google-ai",
+        tooltip="Google AI Search",
+        service="Google AI Search",
+        mode="url",
+        url_template="https://www.google.com/search?q={text_url}&udm=50",
+        url="https://www.google.com/",
+        window_terms=["Google"],
+        priority=100,
+    ),
     "claude": dict(
         name="send-to-claude",
         icon="linuxpop-claude",
@@ -327,7 +344,7 @@ _SERVICES = {
         window_terms=["claude.ai", "Claude"],
         paste_key="ctrl+v",      # ProseMirror-style editor; Ctrl+V is what it expects
         settle_extra=0.8,        # Claude's input mounts noticeably slower than Gemini's
-        priority=100,
+        priority=101,
     ),
     "chatgpt": dict(
         name="send-to-chatgpt",
@@ -342,7 +359,7 @@ _SERVICES = {
         url="https://chat.openai.com/",
         window_terms=["ChatGPT", "chat.openai.com", "chatgpt.com"],
         auto_submits=False,
-        priority=101,
+        priority=102,
     ),
     "gemini": dict(
         name="send-to-gemini",
@@ -352,7 +369,7 @@ _SERVICES = {
         mode="paste",
         url="https://gemini.google.com/app",
         window_terms=["Gemini", "gemini.google.com"],
-        priority=102,
+        priority=103,
     ),
     "perplexity": dict(
         name="send-to-perplexity",
@@ -363,17 +380,6 @@ _SERVICES = {
         url_template="https://www.perplexity.ai/?q={text_url}",
         url="https://www.perplexity.ai/",
         window_terms=["Perplexity", "perplexity.ai"],
-        priority=103,
-    ),
-    "google_ai": dict(
-        name="send-to-google-ai",
-        icon="linuxpop-google-ai",
-        tooltip="Google AI Search",
-        service="Google AI Search",
-        mode="url",
-        url_template="https://www.google.com/search?q={text_url}&udm=50",
-        url="https://www.google.com/",
-        window_terms=["Google"],
         priority=104,
     ),
 }

@@ -33,12 +33,18 @@ DEFAULTS: dict[str, Any] = {
     "clipboard_hotkey": "super+v",
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",
-    # Milliseconds before the popup auto-hides if the mouse never enters it
-    "auto_hide_initial_ms": 8000,
-    # Milliseconds before hide after the mouse leaves the popup
-    "auto_hide_leave_ms": 1500,
-    # Minimum text length to trigger the popup on selection
-    "min_selection_length": 1,
+    # Milliseconds before the popup auto-hides if the mouse never enters
+    # it. 6.5 s leaves enough time to read the buttons without overstaying
+    # — 8 s felt sluggish in practice. Tunable via Settings → Timing.
+    "auto_hide_initial_ms": 6500,
+    # Milliseconds before hide after the mouse leaves the popup's safe
+    # zone. 4 s is forgiving for re-entry; 1.5 s felt twitchy.
+    "auto_hide_leave_ms": 4000,
+    # Minimum text length to trigger the popup on selection. 2 chars
+    # filters most accidental single-letter selections (drag-overshoot,
+    # stray double-click) without blocking real one-syllable words —
+    # those are typically 3+ chars anyway.
+    "min_selection_length": 2,
     # How long to wait (ms) after the last selection change before showing
     # the popup. Suppresses popup churn while the user is still dragging
     # to extend a selection. ~250-400 ms feels natural; lower = snappier
@@ -51,6 +57,18 @@ DEFAULTS: dict[str, Any] = {
     # for password managers, banking sites, etc. One entry per pattern.
     # Examples: "KeePassXC", "DNB - Mozilla Firefox", "1Password".
     "blocklist_patterns": [],
+    # Extra WM_CLASS substrings to treat as read-only contexts. The
+    # built-in list already covers Evince, Okular, image viewers, file
+    # managers, etc.; add app classes here if their windows are mostly
+    # for reading (Cut/Paste/Backspace buttons get hidden in them).
+    # Only consulted when AT-SPI didn't return a definite answer.
+    "readonly_app_classes": [],
+    # Hard cap on how many action buttons the popup will draw. Plugins
+    # are ranked by priority + your custom plugin_order; anything past
+    # the cap is silently dropped (NOT moved to an overflow menu —
+    # raise this if you want everything visible). Stops the popup from
+    # being a 25-icon bar when many plugins are installed.
+    "max_popup_buttons": 10,
     # If True (default): after the command, drop into an interactive shell so
     #   output stays visible. Close with exit/Ctrl-D/X.
     # If False: terminal closes immediately after the command exits (output lost).
@@ -61,8 +79,12 @@ DEFAULTS: dict[str, Any] = {
     # to their built-in priority. Edit via Plugin Manager → Order tab.
     "plugin_order": [],
     # Which chat-AI services the send_to_ai plugin should expose as buttons.
-    # Recognised: "claude", "chatgpt", "gemini", "perplexity", "google_ai".
-    "ai_services": ["claude", "chatgpt", "gemini"],
+    # Recognised: "google_ai", "claude", "chatgpt", "gemini", "perplexity".
+    # Default is Google AI Search alone — it works without login or any
+    # subscription, opens in any browser, and auto-submits via URL. Add
+    # the others in Settings if you have accounts and want one-click
+    # routing to them.
+    "ai_services": ["google_ai"],
     # Per-service strategy override. "url" prefills via ?q= (fast, but most
     # services auto-submit). "paste" opens the page and pastes via xdotool
     # (slower, lets you review before sending). Unset = use the service's

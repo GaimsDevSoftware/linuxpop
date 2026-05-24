@@ -26,6 +26,12 @@ class Plugin:
     # predicate are treated as False (skip the plugin) — predicates run on
     # every popup show, so they must be cheap.
     predicate: Optional[Callable[[str], bool]] = None
+    # If True, the button is hidden when the currently-focused widget is
+    # not editable (read-only PDF viewer, web page body, image viewer).
+    # The check uses AT-SPI with a WM_CLASS blocklist as fallback. Set on
+    # Cut / Paste / Backspace / Bold / Italic / Underline — actions that
+    # have no effect on read-only text and would just confuse the user.
+    requires_editable: bool = False
 
     def handles(self, content_type: ContentType) -> bool:
         if not self.content_types:

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import random as _random
 import shlex
 import subprocess
 import urllib.parse
@@ -42,6 +43,15 @@ _CTYPE_BY_NAME = {
 VALID_ACTION_TYPES = ("open_url", "run_command", "notify", "copy_transformed")
 
 
+def _mock_case(text: str) -> str:
+    """Random upper/lower per character — the "mocking SpongeBob" meme
+    format. Seeded with the text itself so the same input always gives
+    the same result (so previews and clipboard contents are stable;
+    re-clicking won't produce a different jumble each time)."""
+    rng = _random.Random(text)
+    return "".join(c.upper() if rng.random() < 0.5 else c.lower() for c in text)
+
+
 def _render(template: str, text: str) -> str:
     """Substitute template variables. Unknown placeholders are left as-is."""
     safe = {
@@ -51,6 +61,7 @@ def _render(template: str, text: str) -> str:
         "text_upper": text.upper(),
         "text_lower": text.lower(),
         "text_strip": text.strip(),
+        "text_mock":  _mock_case(text),  # jEg eR sJeFeN — for mocking quotes
     }
     try:
         return template.format_map(_DefaultMissing(safe))
@@ -95,7 +106,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
         # Refuse to register so the bug surfaces in logs instead of as
         # a quiet wormhole.
         import re as _re
-        unsafe = {"text", "text_upper", "text_lower", "text_strip"}
+        unsafe = {"text", "text_upper", "text_lower", "text_strip", "text_mock"}
         placeholders = set(_re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", template))
         bad = placeholders & unsafe
         if bad:

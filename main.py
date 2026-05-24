@@ -32,6 +32,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 import plugin_loader
 import theme
 from classifier import classify
+from editable_detect import is_focus_editable
 from popup import PopupWindow
 from settings import get_settings
 from watcher import SelectionWatcher
@@ -205,14 +206,17 @@ def _pointer_position() -> tuple[int, int]:
 def _active_window_blocked(patterns: list[str]) -> bool:
     """Return True if the currently-focused window's title or WM_CLASS
     matches any of the user's block patterns. Case-insensitive substring
-    match. Empty / unset pattern list short-circuits to False so there's
-    no xdotool call when nothing is blocked."""
+    match. Empty / unset pattern list short-circuits — no X calls when
+    nothing is blocked.
+
+    Window title via `xdotool getwindowname`; WM_CLASS via xprop because
+    `xdotool getwindowclassname` is missing in several distro builds
+    (Mint/Debian ship one that returns 'Unknown command'). xprop is in
+    x11-utils, present on every X11 desktop.
+    """
     if not patterns:
         return False
     try:
-        # getactivewindow gives us the active window's X ID; we then
-        # query name + class. Two short xdotool calls bound at 0.3s
-        # each so a slow X server can't hang the popup path.
         wid = subprocess.run(
             ["xdotool", "getactivewindow"],
             capture_output=True, text=True, timeout=0.3,
@@ -220,22 +224,32 @@ def _active_window_blocked(patterns: list[str]) -> bool:
         if not wid:
             return False
         haystacks: list[str] = []
-        for arg in ("getwindowname", "getwindowclassname"):
-            try:
-                out = subprocess.run(
-                    ["xdotool", arg, wid],
-                    capture_output=True, text=True, timeout=0.3,
-                ).stdout.strip()
-                if out:
-                    haystacks.append(out.lower())
-            except (OSError, subprocess.SubprocessError):
-                continue
+        # Window title via xdotool
+        try:
+            out = subprocess.run(
+                ["xdotool", "getwindowname", wid],
+                capture_output=True, text=True, timeout=0.3,
+            ).stdout.strip()
+            if out:
+                haystacks.append(out.lower())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        # WM_CLASS via xprop (xdotool's getwindowclassname is missing on
+        # some distros — silently returns nothing and breaks the gate).
+        try:
+            out = subprocess.run(
+                ["xprop", "-id", wid, "WM_CLASS"],
+                capture_output=True, text=True, timeout=0.3,
+            ).stdout.strip()
+            if out:
+                haystacks.append(out.lower())
+        except (OSError, subprocess.SubprocessError):
+            pass
         for p in patterns:
             p_lc = (p or "").strip().lower()
             if p_lc and any(p_lc in h for h in haystacks):
                 return True
     except (OSError, subprocess.SubprocessError):
-        # xdotool missing or hung — fail open (show popup as usual)
         return False
     return False
 
@@ -302,7 +316,13 @@ class App:
         ctype = classify(text)
         preview = text[:60].replace("\n", "↵")
         log.info("[%s] %r", ctype.value, preview)
-        self.popup.show_for(text, x, y, ctype)
+        # AT-SPI / WM_CLASS probe — drives which plugins are eligible.
+        # Done here (not in popup.show_for) so the popup module stays
+        # accessibility-agnostic and we can pipe extra user blocklist
+        # classes in from settings without circular imports.
+        extra_ro = tuple(self.settings.get("readonly_app_classes") or [])
+        editable = is_focus_editable(extra_readonly_classes=extra_ro)
+        self.popup.show_for(text, x, y, ctype, editable=editable)
 
     def show_popup_now(self) -> None:
         # Stamped so a "had to press the hotkey 3 times" report comes

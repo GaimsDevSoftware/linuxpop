@@ -196,13 +196,33 @@ class PopupWindow:
         x: int,
         y: int,
         content_type: ContentType,
+        editable: bool = True,
     ) -> None:
         self._current_text = text
         self._clear_buttons()
 
         plugins = plugin_loader.for_content_type(content_type, text)
+        # Strip out plugins that only make sense in editable widgets
+        # (Cut/Paste/Backspace/Bold/Italic/Underline) when the focused
+        # context is read-only. Callers pass editable=False after probing
+        # the focused widget — see main.py / editable_detect.py.
+        if not editable:
+            plugins = [p for p in plugins if not p.requires_editable]
+        # Hard cap so the popup doesn't grow to 25 icons across when
+        # many plugins are installed. for_content_type already returns
+        # in priority/custom-order, so the first N are the highest-
+        # ranked. Users who want everything raise max_popup_buttons.
+        try:
+            from settings import get_settings as _gs
+            max_btns = int(_gs().get("max_popup_buttons") or 10)
+        except Exception:
+            max_btns = 10
+        if max_btns > 0 and len(plugins) > max_btns:
+            print(f"[popup] capping {len(plugins)} plugins to "
+                  f"{max_btns} (max_popup_buttons)")
+            plugins = plugins[:max_btns]
         if not plugins:
-            print(f"[popup] no plugins for {content_type.value}")
+            print(f"[popup] no plugins for {content_type.value} (editable={editable})")
             return
 
         for plugin in plugins:

@@ -37,51 +37,120 @@ _PATH_RE = re.compile(r"^(/|~/|\./)[^\s]*$")
 # Tokens that strongly suggest a shell command on the first word
 _COMMAND_TOKENS = {
     # package managers
-    "sudo", "apt", "apt-get", "aptitude", "pacman", "dnf", "yum", "zypper",
-    "snap", "flatpak", "brew", "nix", "nix-env",
+    "sudo", "doas", "apt", "apt-get", "aptitude", "pacman", "paru", "yay",
+    "dnf", "yum", "zypper", "snap", "flatpak", "brew", "nix", "nix-env",
+    "nix-build", "nix-shell", "nix-store", "apk", "xbps-install", "xbps-query",
+    "eopkg", "emerge",
     # version control + build
-    "git", "svn", "hg", "docker", "podman", "kubectl", "helm",
-    "make", "cmake", "ninja", "meson", "gradle", "mvn",
+    "git", "svn", "hg", "lazygit", "tig", "gh", "glab",
+    "docker", "podman", "nerdctl", "lima", "kubectl", "helm", "kustomize",
+    "terraform", "ansible", "ansible-playbook", "vagrant", "packer",
+    "make", "cmake", "ninja", "meson", "gradle", "mvn", "just", "bazel",
     # file management
-    "ls", "ll", "la", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir",
+    "ls", "ll", "la", "eza", "exa", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir",
     "chmod", "chown", "chgrp", "ln", "touch", "stat", "file", "tree",
+    "mc", "ranger", "lf", "nnn", "vifm",
     # viewing / paging / text inspection
-    "cat", "tac", "tail", "head", "less", "more", "view",
+    "cat", "bat", "tac", "tail", "head", "less", "more", "view",
     "grep", "egrep", "fgrep", "rg", "ag", "ack",
     "sed", "awk", "cut", "paste", "tr", "sort", "uniq", "wc",
     "tee", "column", "fold", "fmt", "nl",
-    "find", "locate", "xargs", "tar", "gzip", "gunzip", "zip", "unzip",
-    "diff", "patch", "cmp",
+    "find", "fd", "locate", "xargs", "tar", "gzip", "gunzip", "zip", "unzip",
+    "7z", "unrar",
+    "diff", "patch", "cmp", "jq", "yq",
     # network
-    "ssh", "scp", "sftp", "rsync", "curl", "wget", "httpie", "http",
-    "ping", "traceroute", "mtr", "dig", "nslookup", "host",
-    "netstat", "ss", "ip", "ifconfig", "iwconfig", "nmap",
+    "ssh", "mosh", "scp", "sftp", "rsync", "curl", "wget", "httpie", "http",
+    "ping", "traceroute", "tracepath", "mtr", "dig", "nslookup", "host", "whois",
+    "netstat", "ss", "ip", "ifconfig", "iwconfig", "iwctl",
+    "nmap", "ncat", "nc", "socat",
+    "nmcli", "networkctl", "wpa_cli", "ufw", "iptables", "nftables", "firewall-cmd",
     # process / system
-    "ps", "kill", "killall", "pkill", "pgrep", "top", "htop", "btop",
+    "ps", "kill", "killall", "pkill", "pgrep", "top", "htop", "btop", "atop",
     "systemctl", "journalctl", "service", "dmesg", "uptime",
-    "df", "du", "free", "lsof", "fuser", "mount", "umount",
+    "df", "du", "duf", "ncdu", "free", "lsof", "fuser", "mount", "umount",
     "uname", "hostname", "whoami", "id", "who", "w", "groups",
+    "crontab", "at", "lsblk", "blkid", "fdisk", "parted", "dd", "mkfs",
+    "swapon", "swapoff",
     # editors
-    "vim", "vi", "nano", "emacs", "code", "gedit", "kate", "nvim",
+    "vim", "vi", "nano", "emacs", "code", "codium", "gedit", "kate", "nvim",
+    "helix", "hx", "micro", "subl",
     # languages / runtimes
-    "python", "python3", "pip", "pip3", "pipx", "uv", "poetry",
-    "node", "npm", "yarn", "pnpm", "npx", "deno", "bun",
-    "cargo", "rustc", "rustup", "go", "java", "javac", "kotlin",
-    "ruby", "gem", "bundle", "rake", "rails", "perl", "php",
+    "python", "python3", "pip", "pip3", "pipx", "uv", "poetry", "pdm", "rye",
+    "pytest", "black", "ruff", "mypy", "flake8", "isort", "tox", "twine",
+    "node", "nodejs", "npm", "yarn", "pnpm", "npx", "deno", "bun", "tsx",
+    "tsc", "eslint", "prettier", "jest", "vitest", "mocha", "vite", "webpack",
+    "cargo", "rustc", "rustup", "rustfmt", "clippy",
+    "go", "java", "javac", "kotlin", "scala", "sbt",
+    "ruby", "gem", "bundle", "rake", "rails", "irb",
+    "perl", "cpan", "php", "composer",
+    "dotnet", "mono", "swift", "lua", "luarocks", "julia",
+    "crystal", "shards", "mix", "iex",
+    # databases
+    "psql", "mysql", "sqlite3", "redis-cli", "mongo", "mongosh", "duckdb",
+    # cloud / devops CLIs
+    "aws", "gcloud", "az", "doctl", "linode-cli", "fly", "flyctl",
+    "kubectl", "k9s", "stern",  # kubectl deliberately duplicated
     # shell builtins / general
     "echo", "printf", "export", "source", "alias", "unalias",
-    "bash", "sh", "zsh", "fish", "dash",
+    "bash", "sh", "zsh", "fish", "dash", "nu", "elvish",
     "env", "which", "type", "whereis", "command",
     "date", "cal", "sleep", "watch", "time", "timeout",
-    "man", "info", "help",
-    "history", "exit", "logout",
-    "nohup", "screen", "tmux",
+    "man", "info", "help", "tldr",
+    "history", "exit", "logout", "clear", "reset",
+    "nohup", "screen", "tmux", "tmate",
+    # media / conversion
+    "ffmpeg", "ffprobe", "magick", "convert", "sox", "pandoc",
+    "yt-dlp", "youtube-dl",
+    # backup / sync
+    "restic", "borg", "rclone", "rsnapshot", "duplicity",
     # X11 / desktop helpers commonly used in tutorials
     "xdotool", "xclip", "xsel", "wmctrl", "xrandr", "xprop", "xev",
     "notify-send", "xdg-open",
+    # env tools
+    "direnv", "asdf", "mise", "nvm", "pyenv", "rbenv", "fnm", "volta",
 }
 
 _COMMAND_HINTS = re.compile(r"(\s&&\s|\s\|\|\s|\s\|\s|\s>\s|\s>>\s|\$\(|`)")
+
+
+def _line_first_token(line: str) -> str:
+    """Return the first 'real' token of a line — peel off a leading
+    shell prompt ('$ ', '> ', '% ', '# ') or shebang ('#!') first."""
+    line = line.strip()
+    if not line:
+        return ""
+    # Two-char prompt prefix (prompt + space)
+    if len(line) >= 2 and line[0] in "$>%#" and line[1] in (" ", "\t"):
+        line = line[2:].strip()
+    elif line.startswith("#!"):
+        # Shebang line — '#!/bin/bash' etc. The interpreter path itself
+        # is enough signal that this is a script.
+        return "#!"
+    if not line:
+        return ""
+    return line.split(maxsplit=1)[0]
+
+
+def _looks_like_command(stripped: str) -> bool:
+    """Scan EVERY non-empty line for a known command token at the start.
+
+    The old logic only checked the first token of the whole selection,
+    which missed the very common 'comment header + command' shape:
+
+        # Install foo
+        sudo apt install foo
+
+    A shebang on any line also counts (the user clearly pasted a script).
+    """
+    for raw in stripped.splitlines():
+        first = _line_first_token(raw)
+        if not first:
+            continue
+        if first == "#!":
+            return True
+        if first in _COMMAND_TOKENS:
+            return True
+    return False
 
 
 def _normalize(text: str) -> str:
@@ -117,14 +186,41 @@ def classify(text: str) -> ContentType:
     if "\n" not in stripped and _PATH_RE.match(stripped):
         return ContentType.PATH
 
-    first_token = stripped.split(maxsplit=1)[0]
-    # Strip a leading '$ ' or '# ' shell prompt marker
-    if first_token in ("$", "#") and len(stripped.split()) > 1:
-        first_token = stripped.split()[1]
-
-    if first_token in _COMMAND_TOKENS:
+    # Multi-line aware: scan every line so a leading comment / blank /
+    # shell-prompt prefix doesn't hide the actual command underneath.
+    if _looks_like_command(stripped):
         return ContentType.COMMAND
     if _COMMAND_HINTS.search(stripped) and len(stripped) < 500:
         return ContentType.COMMAND
 
     return ContentType.PLAIN_TEXT
+
+
+# Extensions that strongly imply "this path is a script you might want
+# to execute". Used by main.py / plugin_loader to also offer the
+# "Run in terminal" button on PATH-classified selections like
+# './build.sh' alongside the default 'Open path'.
+_RUNNABLE_PATH_EXTS = (
+    ".sh", ".bash", ".zsh", ".fish",
+    ".py", ".pl", ".rb", ".js", ".ts", ".lua", ".tcl",
+    ".php", ".awk", ".sed",
+    ".out", ".bin",
+)
+
+
+def is_runnable_path(text: str) -> bool:
+    """True when a PATH-typed selection points at something the user
+    probably wants the option to execute (script extensions, or any
+    './foo' / '~/bin/foo' style)."""
+    s = _normalize(text)
+    if not s or "\n" in s:
+        return False
+    if not _PATH_RE.match(s):
+        return False
+    low = s.lower()
+    if low.endswith(_RUNNABLE_PATH_EXTS):
+        return True
+    # ./foo or ~/bin/foo — likely an executable even without an extension
+    if s.startswith(("./", "~/bin/")):
+        return True
+    return False

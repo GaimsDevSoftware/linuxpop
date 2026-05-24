@@ -28,6 +28,50 @@ def copy_to_clipboard(text: str) -> None:
         print(f"[actions] xclip failed: {exc}")
 
 
+def replace_selection(new_text: str) -> None:
+    """Put new_text on the clipboard AND paste it over the current
+    selection — the in-place transform behaviour PopClip has on macOS.
+
+    Sequence:
+      1. xclip writes the new text to CLIPBOARD
+      2. ~50 ms settle so the X selection-owner change propagates
+      3. xdotool sends Ctrl+V, which the focused app interprets as
+         'paste over the current selection'
+
+    If the focused widget is read-only the Ctrl+V is silently
+    discarded, but the result is still on the clipboard so the user
+    can paste it elsewhere — same fallback as a manual Copy.
+    """
+    if not shutil.which("xclip"):
+        print("[actions] xclip not installed, cannot replace selection")
+        return
+    try:
+        subprocess.run(
+            ["xclip", "-selection", "clipboard"],
+            input=new_text.encode("utf-8"),
+            check=False,
+            timeout=2.0,
+        )
+    except subprocess.TimeoutExpired:
+        print("[actions] xclip write timed out — selection not replaced")
+        return
+    if not shutil.which("xdotool"):
+        # No xdotool: leave the result on the clipboard so the user can
+        # paste manually with Ctrl+V.
+        print("[actions] xdotool missing — text on clipboard only")
+        return
+    import time as _t
+    _t.sleep(0.05)
+    try:
+        subprocess.run(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+            check=False,
+            timeout=2.0,
+        )
+    except subprocess.TimeoutExpired:
+        print("[actions] xdotool paste timed out — text on clipboard only")
+
+
 def open_url(text: str) -> None:
     url = _strip_invisible(text)
     # Naked URLs (no scheme) get https:// so xdg-open routes them to the browser
