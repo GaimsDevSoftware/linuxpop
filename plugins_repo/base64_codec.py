@@ -39,15 +39,12 @@ def _notify(title: str, body: str) -> None:
 
 
 def _to_clipboard(text: str) -> None:
-    try:
-        subprocess.run(
-            ["xclip", "-selection", "clipboard"],
-            input=text.encode("utf-8"),
-            check=True,
-            timeout=2.0,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
+    """Replace the user's selection with the encoded/decoded text. The
+    original 'just copy' behaviour left the user having to manually paste;
+    transformation plugins should swap text in-place — clipboard fallback
+    still works when the focus is read-only."""
+    import actions
+    actions.replace_selection(text)
 
 
 def _encode(text: str) -> None:
@@ -66,6 +63,21 @@ def _decode(text: str) -> None:
     _notify("Base64 decoded", f"Copied: {dec[:120]}")
 
 
+def _worth_encoding(text: str) -> bool:
+    """Base64-encoding casual prose is rarely useful — bias the button
+    toward selections that look like data or keys: 16+ chars, single-line,
+    no natural-language whitespace. Filters out 'Hello world' shaped
+    selections while keeping the action available for things like
+    `MySuperSecretToken123` or pasted binary."""
+    s = text.strip()
+    if len(s) < 16:
+        return False
+    if "\n" in s:
+        return True   # multi-line selections often ARE data dumps
+    # Natural prose has lots of internal whitespace; data tends not to
+    return s.count(" ") <= max(1, len(s) // 12)
+
+
 def register(register_plugin) -> None:
     register_plugin(Plugin(
         name="base64-encode",
@@ -74,6 +86,7 @@ def register(register_plugin) -> None:
         handler=_encode,
         content_types=(ContentType.PLAIN_TEXT,),
         priority=60,
+        predicate=_worth_encoding,
     ))
     register_plugin(Plugin(
         name="base64-decode",

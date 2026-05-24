@@ -10,13 +10,13 @@ from plugin_base import Plugin
 
 
 def _copy(text: str, label: str) -> None:
+    # Replace the user's selection with the result AND keep
+    # it on the clipboard. Fallback (read-only context): the
+    # clipboard still has it so the user can paste manually.
+    import actions
+    actions.replace_selection(text)
     subprocess.run(
-        ["xclip", "-selection", "clipboard"],
-        input=text.encode("utf-8"), check=False,
-        timeout=2.0,
-    )
-    subprocess.run(
-        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "preferences-system-time-symbolic", label, text[:200]],
+        ["notify-send", "--hint=byte:transient:1", "-t", "2500",  "-i", "preferences-system-time-symbolic", label, text[:200]],
         check=False,
     )
 

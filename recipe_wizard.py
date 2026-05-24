@@ -31,54 +31,97 @@ _ACTIONS = [
         title="Open a web page",
         icon="web-browser-symbolic",
         blurb="Search a site, look up a word, open a map.",
-        example="Search Wikipedia for what I selected.",
+        example="Look up a selected word in the dictionary.",
         # Detail page wording
         detail_prompt="What's the address of the page to open?",
-        detail_placeholder="https://en.wikipedia.org/wiki/Special:Search?search=",
+        # Placeholder is a complete working URL with {text_url} visible
+        # at the end — instantly shows where the selection will land.
+        detail_placeholder="https://www.google.com/search?q={text_url}",
         insert_label="Insert the selected text here",
         insert_token="{text_url}",   # URL-safe encoded
         preview_label="If you select \"hello world\" and click your button:",
         preview_verb="Opens this address in your browser:",
+        examples=[
+            ("Google",     "https://www.google.com/search?q={text_url}"),
+            ("Wikipedia",  "https://en.wikipedia.org/wiki/Special:Search?search={text_url}"),
+            ("YouTube",    "https://www.youtube.com/results?search_query={text_url}"),
+            ("Translate",  "https://translate.google.com/?op=translate&text={text_url}"),
+            ("Maps",       "https://www.google.com/maps/search/{text_url}"),
+            ("Dictionary", "https://www.google.com/search?q=define+{text_url}"),
+        ],
     ),
     dict(
         key="run_command",
         title="Run a command",
         icon="utilities-terminal-symbolic",
         blurb="Open a folder, run a script, anything you'd type in a terminal.",
-        example="Run `git status` on a folder I selected.",
+        example="Open the selected file path in VS Code.",
         detail_prompt="What command should run?",
-        detail_placeholder="echo \"You selected:\"",
+        # notify-send is a safe, instantly observable demo — runs without
+        # side-effects and shows the {text_shell} token in context so the
+        # user can see how to use it.
+        detail_placeholder="notify-send 'You selected:' {text_shell}",
         insert_label="Insert the selected text here",
         insert_token="{text_shell}", # shell-quoted
         preview_label="If you select \"hello world\" and click your button:",
         preview_verb="Runs this command in the background:",
         warning="Commands can change or delete files. Test with something harmless first.",
+        examples=[
+            ("Open in default app", "xdg-open {text_shell}"),
+            ("Show notification",   "notify-send 'You selected' {text_shell}"),
+            ("Open in VS Code",     "code {text_shell}"),
+            ("Open folder in Files", "xdg-open \"$(dirname {text_shell})\""),
+            ("Speak aloud",         "spd-say {text_shell}"),
+            ("Count characters",    "echo -n {text_shell} | wc -c | xargs -I N notify-send 'Length' 'N characters'"),
+        ],
     ),
     dict(
         key="notify",
         title="Show a notification",
         icon="dialog-information-symbolic",
         blurb="Pop a short message on your desktop. Handy for confirmations.",
-        example="Show me how long the selection is.",
+        example="Show how many characters you've selected.",
         detail_prompt="What should the notification say?",
-        detail_placeholder="You selected: ",
+        # Show the {text} token inline so the placement is obvious.
+        detail_placeholder="Selected: {text}",
         insert_label="Insert the selected text",
         insert_token="{text}",
         preview_label="If you select \"hello world\" and click your button:",
         preview_verb="Shows this notification:",
+        examples=[
+            ("Plain",       "Selected: {text}"),
+            ("Trimmed",     "Trimmed: {text_strip}"),
+            ("Uppercase",   "{text_upper}"),
+            ("Lowercase",   "{text_lower}"),
+            ("URL-encoded", "URL-safe form: {text_url}"),
+        ],
     ),
     dict(
         key="copy_transformed",
         title="Transform and copy",
         icon="edit-copy-symbolic",
-        blurb="Make a tweaked copy of the text -- uppercase it, URL-encode it, anything.",
-        example="Copy the selection in UPPERCASE.",
+        blurb="Make a tweaked copy of the text — wrap it, change its case, encode it.",
+        example="Wrap the selection in markdown highlight: ==text==",
         detail_prompt="How should the copied text look?",
-        detail_placeholder="",
+        # Markdown highlight is a useful starter that students/note-takers
+        # will recognise. Demonstrates the wrap pattern without being
+        # esoteric.
+        detail_placeholder="=={text}==",
         insert_label="Insert the selected text",
         insert_token="{text}",
         preview_label="If you select \"hello world\" and click your button:",
         preview_verb="Copies this to your clipboard:",
+        examples=[
+            ("Markdown highlight", "=={text}=="),
+            ("Markdown bold",      "**{text}**"),
+            ("Markdown quote",     "> {text}"),
+            ("Markdown code",      "`{text}`"),
+            ("Markdown link",      "[{text}]()"),
+            ("UPPERCASE",          "{text_upper}"),
+            ("lowercase",          "{text_lower}"),
+            ("In quotes",          "\"{text}\""),
+            ("mOcKiNg cAsE",       "{text_mock}"),
+        ],
     ),
 ]
 
@@ -92,6 +135,7 @@ _TRANSFORM_INSERTERS = [
     ("lowercase",           "{text_lower}"),
     ("URL-safe",            "{text_url}"),
     ("Trimmed",             "{text_strip}"),
+    ("mOcKiNg cAsE",        "{text_mock}"),
 ]
 
 _CONTENT_TYPES = [
@@ -601,6 +645,11 @@ class RecipeWizard:
         a.set_page_complete(self._detail_container, self._detail_page_complete())
 
     def _detail_page_complete(self) -> bool:
+        # Pre-filled placeholder text doesn't count — only actual user
+        # input (typed, pasted, or picked from a chip). _placeholder_active
+        # is True only while the dimmed sample is on screen.
+        if getattr(self, "_placeholder_active", False):
+            return False
         return bool((self._state.get("template") or "").strip())
 
     def _refresh_detail_page(self) -> None:
@@ -631,13 +680,41 @@ class RecipeWizard:
             Pango.FontDescription("monospace 11"))
         self._template_buffer = self._template_view.get_buffer()
 
-        # Seed from state, or use placeholder text as starter
-        seed = self._state.get("template") or ""
-        if not seed:
-            seed = spec.get("detail_placeholder", "")
-            self._state["template"] = seed
-        self._template_buffer.set_text(seed)
+        # Style tag for the dimmed sample text. Has to live on the
+        # buffer's tag table — recreated per page render because we
+        # rebuild the whole detail container when action type changes.
+        self._placeholder_tag = self._template_buffer.create_tag(
+            "lp-placeholder",
+            foreground="#6b7080",     # muted grey vs the normal #e8ecf4
+            style=Pango.Style.ITALIC,
+        )
+
+        # If the user already typed something on a previous visit, show
+        # that and treat as real input. Otherwise drop the sample text
+        # in with the dim-italic tag, and remember it's "just a hint".
+        existing = self._state.get("template") or ""
+        if existing:
+            self._template_buffer.set_text(existing)
+            self._placeholder_active = False
+        else:
+            placeholder_text = spec.get("detail_placeholder") or ""
+            if placeholder_text:
+                self._template_buffer.set_text(placeholder_text)
+                start, end = self._template_buffer.get_bounds()
+                self._template_buffer.apply_tag(
+                    self._placeholder_tag, start, end)
+                self._placeholder_active = True
+            else:
+                self._placeholder_active = False
+
+        # Connect AFTER the initial set_text so the seed itself doesn't
+        # trip the change handler and clobber _placeholder_active.
         self._template_buffer.connect("changed", self._on_template_changed)
+        # Wipe the dim sample as soon as the user clicks into the field —
+        # avoids the weird state where their typing lands next to greyed
+        # placeholder content.
+        self._template_view.connect(
+            "focus-in-event", self._on_template_focus_in)
         tmpl_scroll.add(self._template_view)
         self._detail_container.pack_start(tmpl_scroll, False, False, 0)
 
@@ -663,6 +740,32 @@ class RecipeWizard:
             btn.connect("clicked", self._on_insert, spec["insert_token"])
             inserter_row.pack_start(btn, False, False, 0)
         self._detail_container.pack_start(inserter_row, False, False, 0)
+
+        # "Try also" chip row — replaces the template with a known-good
+        # example. Saves the user from having to invent valid patterns
+        # by hand the first time they meet an action type.
+        examples = spec.get("examples") or []
+        if examples:
+            ex_label = Gtk.Label(xalign=0)
+            ex_label.set_markup(
+                "<span foreground='#9aa3b8' size='small'>"
+                "Try one of these — click to fill the box above:</span>")
+            ex_label.set_margin_top(4)
+            self._detail_container.pack_start(ex_label, False, False, 0)
+
+            ex_flow = Gtk.FlowBox()
+            ex_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+            ex_flow.set_homogeneous(False)
+            ex_flow.set_max_children_per_line(8)
+            ex_flow.set_row_spacing(4)
+            ex_flow.set_column_spacing(4)
+            for label, template in examples:
+                btn = Gtk.Button(label=label)
+                btn.set_relief(Gtk.ReliefStyle.NORMAL)
+                btn.set_tooltip_text(template)
+                btn.connect("clicked", self._on_example_pick, template)
+                ex_flow.add(btn)
+            self._detail_container.pack_start(ex_flow, False, False, 0)
 
         # Warning (run_command)
         if spec.get("warning"):
@@ -694,6 +797,13 @@ class RecipeWizard:
         self._detail_container.show_all()
 
     def _on_template_changed(self, buf: Gtk.TextBuffer) -> None:
+        # Any actual buffer mutation means the sample text is no longer
+        # what's there — clear the "this is just a hint" flag so the
+        # Next button enables and the new content is real input.
+        if getattr(self, "_placeholder_active", False):
+            self._placeholder_active = False
+            start, end = buf.get_bounds()
+            buf.remove_tag(self._placeholder_tag, start, end)
         start, end = buf.get_start_iter(), buf.get_end_iter()
         self._state["template"] = buf.get_text(start, end, True)
         if self._assistant is not None:
@@ -702,10 +812,33 @@ class RecipeWizard:
         self._refresh_preview_result()
         self._refresh_confirm_page()
 
+    def _on_template_focus_in(self, _view, _event) -> bool:
+        """Clear the dim placeholder on first focus so the user types into
+        an empty field, not into the middle of the sample."""
+        if getattr(self, "_placeholder_active", False):
+            self._placeholder_active = False
+            self._template_buffer.set_text("")
+        return False  # don't intercept default focus handling
+
     def _on_insert(self, _btn, token: str) -> None:
-        if self._template_buffer.get_has_selection():
-            self._template_buffer.delete_selection(True, True)
-        self._template_buffer.insert_at_cursor(token)
+        # If the sample text is still on screen, replace it wholesale
+        # rather than appending the token to it — otherwise the user
+        # ends up with "=={text}==<their token>" which is rarely what
+        # they want.
+        if getattr(self, "_placeholder_active", False):
+            self._placeholder_active = False
+            self._template_buffer.set_text(token)
+        else:
+            if self._template_buffer.get_has_selection():
+                self._template_buffer.delete_selection(True, True)
+            self._template_buffer.insert_at_cursor(token)
+        self._template_view.grab_focus()
+
+    def _on_example_pick(self, _btn, template: str) -> None:
+        """Replace the template buffer with the chosen example. The user
+        can still hand-edit afterwards — chips are starting points, not
+        final answers."""
+        self._template_buffer.set_text(template)
         self._template_view.grab_focus()
 
     def _refresh_preview_result(self) -> None:
@@ -714,7 +847,14 @@ class RecipeWizard:
         rendered = recipe_loader._render(
             self._state.get("template") or "", _SAMPLE_SELECTION)
         if not rendered.strip():
-            self._preview_result.set_text("(nothing yet -- pick a template above)")
+            # When the placeholder is showing, the box isn't empty but
+            # state.template is — explain that explicitly so the user
+            # doesn't wonder why the preview is blank.
+            hint = ("(the grey text above is just an example — type "
+                    "your own or click one of the chips to set it)"
+                    if getattr(self, "_placeholder_active", False)
+                    else "(nothing yet — pick a template above)")
+            self._preview_result.set_text(hint)
             return
         spec = _ACTION_BY_KEY[self._state["action_type"]]
         if spec["key"] == "open_url":

@@ -107,14 +107,11 @@ def _calc(text: str) -> None:
         )
         return
     result_str = str(result)
+    # Replace "2+2" with "4" in place, fallback to clipboard-only.
+    import actions
+    actions.replace_selection(result_str)
     subprocess.run(
-        ["xclip", "-selection", "clipboard"],
-        input=result_str.encode("utf-8"),
-        check=False,
-        timeout=2.0,
-    )
-    subprocess.run(
-        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-calculator", "Result", f"{expr} = {result_str}"],
+        ["notify-send", "--hint=byte:transient:1", "-t", "2500",  "-i", "accessories-calculator", "Result", f"{expr} = {result_str}"],
         check=False,
     )
 

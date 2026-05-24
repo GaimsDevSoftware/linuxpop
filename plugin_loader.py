@@ -201,14 +201,32 @@ def _register_builtins() -> None:
         priority=10,
     ))
 
-    # COMMAND
+    # COMMAND — also shown for PATH-classified selections that look like
+    # an executable script ('./build.sh', '~/bin/deploy'), via the
+    # predicate. Lets users run a script with one click instead of having
+    # to switch to a terminal and type the path.
+    from classifier import is_runnable_path
+
+    def _can_run(text: str) -> bool:
+        # If classify() already returned COMMAND we wouldn't be here via
+        # the PATH branch — for the COMMAND branch, the plugin's content_types
+        # gate already matched. We only need to gate the PATH case.
+        from classifier import classify as _classify
+        ct = _classify(text)
+        if ct == ContentType.COMMAND:
+            return True
+        if ct == ContentType.PATH:
+            return is_runnable_path(text)
+        return False
+
     register(Plugin(
         name="run-terminal",
         icon="utilities-terminal-symbolic",
         tooltip="Run in terminal",
         handler=actions.run_in_terminal,
-        content_types=(ContentType.COMMAND,),
+        content_types=(ContentType.COMMAND, ContentType.PATH),
         priority=20,
+        predicate=_can_run,
     ))
 
     # URL

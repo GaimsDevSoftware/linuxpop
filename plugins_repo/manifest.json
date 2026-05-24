@@ -1,5 +1,26 @@
 [
   {
+    "file": "editing_actions.py",
+    "title": "Editing — Cut, Paste, Backspace, Select All",
+    "description": "PopClip's bread-and-butter buttons. Cut/Paste/Delete operate on the selection; Select All expands it. Sends Ctrl+X / Ctrl+V / Backspace / Ctrl+A via xdotool.",
+    "category": "Productivity",
+    "tags": ["editing", "essentials"]
+  },
+  {
+    "file": "formatting.py",
+    "title": "Formatting — Bold, Italic, Underline",
+    "description": "Rich-text formatting via Ctrl+B / Ctrl+I / Ctrl+U. Works in Google Docs, Word, LibreOffice, Notion, Obsidian and most webmail composers.",
+    "category": "Productivity",
+    "tags": ["editing", "rich-text"]
+  },
+  {
+    "file": "large_type.py",
+    "title": "Large type",
+    "description": "Show the selection in giant fullscreen text. Useful for reading a number aloud, showing a code across the room, or enlarging tiny menu items.",
+    "category": "Productivity",
+    "tags": ["accessibility", "display"]
+  },
+  {
     "file": "clipboard_history.py",
     "title": "Clipboard history",
     "description": "Keeps the last 25 clipboard entries (text + images). Pick one to copy back.",
@@ -56,6 +77,14 @@
     "description": "Opens Google with the selection pre-filled — auto-submits",
     "category": "Web shortcuts",
     "tags": ["web", "search"]
+  },
+  {
+    "kind": "recipe",
+    "file": "define.json",
+    "title": "Define this word",
+    "description": "Looks up a dictionary definition via Google's 'define' search — the fastest way to clarify an unfamiliar word",
+    "category": "Web shortcuts",
+    "tags": ["web", "dictionary", "essentials"]
   },
   {
     "kind": "recipe",

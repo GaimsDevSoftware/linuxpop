@@ -34,15 +34,11 @@ def _format(text: str) -> None:
         )
         return
     pretty = json.dumps(obj, indent=2, ensure_ascii=False)
+    import actions
+    actions.replace_selection(pretty)
     subprocess.run(
-        ["xclip", "-selection", "clipboard"],
-        input=pretty.encode("utf-8"),
-        check=False,
-        timeout=2.0,
-    )
-    subprocess.run(
-        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "accessories-text-editor",
-         "JSON formatted", f"Copied ({len(pretty)} chars)"],
+        ["notify-send", "--hint=byte:transient:1", "-t", "2500",  "-i", "accessories-text-editor",
+         "JSON formatted", f"Replaced selection ({len(pretty)} chars)"],
         check=False,
     )
 
