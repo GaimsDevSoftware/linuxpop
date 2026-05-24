@@ -286,8 +286,11 @@ class App:
 
     def _show_for_text(self, text: str, x: int, y: int) -> None:
         if not text or len(text) < self.min_len:
+            log.info("[show-for] suppressed -- length %d < min %d",
+                     len(text), self.min_len)
             return
         if self.ignore_ws and not text.strip():
+            log.info("[show-for] suppressed -- whitespace-only")
             return
         # Skip when the active app/site is on the user's blocklist.
         # Checked here (just before the popup would appear) so plugins
@@ -302,8 +305,18 @@ class App:
         self.popup.show_for(text, x, y, ctype)
 
     def show_popup_now(self) -> None:
-        text = _read_selection(self.settings.get("hotkey_source") or "primary")
+        # Stamped so a "had to press the hotkey 3 times" report comes
+        # with breadcrumbs in linuxpop.log: did the trigger reach us at
+        # all? did xclip return empty? did the popup get suppressed by
+        # the min-length / blocklist filters?
+        import time as _t
+        t0 = _t.monotonic()
+        source = self.settings.get("hotkey_source") or "primary"
+        text = _read_selection(source)
+        log.info("[hotkey-fire] read %s: %d chars in %.0f ms",
+                 source, len(text), (_t.monotonic() - t0) * 1000)
         if not text:
+            log.info("[hotkey-fire] suppressed -- selection is empty")
             subprocess.run(
                 ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-information",
                  "LinuxPop", "Nothing selected"],
@@ -314,6 +327,8 @@ class App:
             x, y = _pointer_position()
         except Exception:
             x, y = 0, 0
+        log.info("[hotkey-fire] showing popup at (%d, %d) for %d-char selection",
+                 x, y, len(text))
         self._show_for_text(text, x, y)
 
     # ---- watcher -------------------------------------------------------------
