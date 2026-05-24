@@ -22,6 +22,42 @@ except (ImportError, ValueError):
 Handy.init()
 
 
+def _unwrap_subtitle_labels(root: Gtk.Widget) -> None:
+    """Same treatment as settings_gui — let HdyActionRow subtitles wrap
+    to multiple lines so plugin descriptions stay fully visible instead
+    of being cropped to a single ellipsis-tailed line."""
+    def visit(widget: Gtk.Widget) -> None:
+        if isinstance(widget, Gtk.Label):
+            try:
+                ctx = widget.get_style_context()
+                if ctx.has_class("subtitle"):
+                    widget.set_ellipsize(Pango.EllipsizeMode.NONE)
+                    widget.set_line_wrap(True)
+                    widget.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                    widget.set_max_width_chars(-1)
+                    widget.set_xalign(0)
+                    try:
+                        widget.set_lines(-1)
+                    except AttributeError:
+                        pass
+            except Exception:
+                pass
+        if isinstance(widget, Gtk.Container):
+            children: list[Gtk.Widget] = []
+            try:
+                widget.forall(lambda c, _: children.append(c), None)
+            except Exception:
+                children = widget.get_children()
+            for c in children:
+                visit(c)
+    visit(root)
+    def _again() -> bool:
+        visit(root)
+        return False
+    GLib.idle_add(_again)
+    GLib.timeout_add(150, _again)
+
+
 def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
     """Walk every Gtk.Label under `root` (INCLUDING internal-template
     children) and turn off ellipsize + width-cap.
@@ -227,6 +263,9 @@ class PluginManagerDialog:
         # ellipsize so "Available", "Installed", "Custom" stop being
         # clipped to "Availat", "Installe", "Custor".
         _unellipsize_tab_labels(win)
+        # Same after-show_all patch as the settings dialog: let plugin
+        # description subtitles wrap rather than getting ellipsised.
+        _unwrap_subtitle_labels(win)
         self._window = win
         _force_to_front(win)
 
@@ -398,6 +437,7 @@ class PluginManagerDialog:
             child.destroy()
         self._fill_installed_group(self._installed_group)
         self._installed_group.show_all()
+        _unwrap_subtitle_labels(self._installed_group)
 
     def _on_remove_clicked(self, _btn: Gtk.Button, path: Path) -> None:
         try:
@@ -479,6 +519,7 @@ class PluginManagerDialog:
             child.destroy()
         self._fill_custom_group_with_header(self._custom_group)
         self._custom_group.show_all()
+        _unwrap_subtitle_labels(self._custom_group)
 
     def _fill_custom_group_with_header(self, group: Handy.PreferencesGroup) -> None:
         # "+ New action" row at the top (re-added on refresh)
@@ -608,6 +649,7 @@ class PluginManagerDialog:
             child.destroy()
         self._fill_order_group(self._order_group)
         self._order_group.show_all()
+        _unwrap_subtitle_labels(self._order_group)
 
     def _on_move(self, _btn, index: int, delta: int, sorted_plugins) -> None:
         """Swap index with index+delta; persist the new full ordering."""
@@ -645,5 +687,6 @@ class PluginManagerDialog:
         for group in self._build_catalog_groups():
             page.add(group)
             group.show_all()
+            _unwrap_subtitle_labels(group)
             self._catalog_groups.append(group)
         self._catalog_group = self._catalog_groups[0] if self._catalog_groups else None

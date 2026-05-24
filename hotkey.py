@@ -218,18 +218,57 @@ class Hotkey:
                     break
                 continue
             event = self._dpy.next_event()
+            # MappingNotify (type 34): the X server is telling us the
+            # keyboard mapping changed. Our grab is on a specific keycode,
+            # but the user's keysym (e.g. 'greater') may have moved to a
+            # different keycode — in which case our grab silently stops
+            # catching their presses until we re-grab on the new keycode.
+            # On Norwegian setups with IBus / kbdd that swap layouts per
+            # app, these arrive in floods and were the root cause of
+            # "first press of the hotkey is silently dropped".
+            if event.type == X.MappingNotify:
+                try:
+                    event.refresh_keyboard_mapping()
+                except Exception:
+                    pass
+                new_keycode = self._dpy.keysym_to_keycode(keysym)
+                if new_keycode and new_keycode != keycode:
+                    print(f"[hotkey] '{self._hotkey_str}' keycode shifted "
+                          f"{keycode} -> {new_keycode} after MappingNotify; "
+                          f"re-grabbing")
+                    # Ungrab the old combos, grab the new one
+                    for old_kc, old_mask in list(self._grabbed_combos):
+                        try:
+                            self._root.ungrab_key(old_kc, old_mask)
+                        except Exception:
+                            pass
+                    self._grabbed_combos.clear()
+                    for extra in _lock_variants(self._dpy):
+                        mask = mods | extra
+                        catcher = error.CatchError(error.BadAccess)
+                        try:
+                            self._root.grab_key(
+                                new_keycode, mask, 1,
+                                X.GrabModeAsync, X.GrabModeAsync,
+                                onerror=catcher,
+                            )
+                            self._dpy.sync()
+                            if not catcher.get_error():
+                                self._grabbed_combos.append((new_keycode, mask))
+                        except Exception:
+                            pass
+                    keycode = new_keycode
+                continue
             if event.type == X.KeyPress and event.detail == keycode:
                 # Filter out the lock-only variants by masking expected mods
                 effective = event.state & (
                     X.ShiftMask | X.ControlMask | X.Mod1Mask | X.Mod3Mask | X.Mod4Mask
                 )
                 if effective == mods:
+                    print(f"[hotkey] '{self._hotkey_str}' fired -- "
+                          f"scheduling trigger on GTK main thread")
                     GLib.idle_add(self._safe_trigger)
                 else:
-                    # Helps diagnose "I pressed the hotkey but nothing
-                    # happened": surfaces mismatched mod state so we can
-                    # see whether some other mod (Hyper, ISO_Level3) is
-                    # sneaking into event.state.
                     print(f"[hotkey] '{self._hotkey_str}' press ignored: "
                           f"expected mods=0x{mods:x} got effective=0x{effective:x} "
                           f"(full state=0x{event.state:x})")

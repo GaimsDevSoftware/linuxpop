@@ -15,7 +15,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 gi.require_version("Handy", "1")
-from gi.repository import Gdk, GLib, Gtk, Handy  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk, Handy, Pango  # noqa: E402
 
 # Some PyGObject builds don't expose Gdk.X11 as a top-level submodule —
 # attempt to require it so Gdk.X11.get_server_time is available.
@@ -28,6 +28,53 @@ except (ImportError, ValueError):
 from settings import get_settings
 
 Handy.init()
+
+
+def _unwrap_subtitle_labels(root: Gtk.Widget) -> None:
+    """Walk every label under `root` and let any HdyActionRow / HdyPreferencesRow
+    subtitle wrap onto multiple lines instead of ellipsising.
+
+    libhandy renders the subtitle as a Gtk.Label with style class ``subtitle``
+    and ``ellipsize=END``, ``lines=1`` baked in — there's no public API to
+    flip that off per row. The only way to keep the descriptions readable
+    in a narrow dialog is to walk the realised widget tree after show_all()
+    and patch each subtitle label directly.
+
+    Also re-runs once on idle: HdyPreferencesGroup re-creates / re-styles
+    rows during its own first allocation pass, which would replace the
+    labels we just patched.
+    """
+    def visit(widget: Gtk.Widget) -> None:
+        if isinstance(widget, Gtk.Label):
+            try:
+                ctx = widget.get_style_context()
+                if ctx.has_class("subtitle"):
+                    widget.set_ellipsize(Pango.EllipsizeMode.NONE)
+                    widget.set_line_wrap(True)
+                    widget.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                    widget.set_max_width_chars(-1)
+                    widget.set_xalign(0)
+                    # Allow Pango to use as many lines as it needs.
+                    try:
+                        widget.set_lines(-1)
+                    except AttributeError:
+                        pass
+            except Exception:
+                pass
+        if isinstance(widget, Gtk.Container):
+            children: list[Gtk.Widget] = []
+            try:
+                widget.forall(lambda c, _: children.append(c), None)
+            except Exception:
+                children = widget.get_children()
+            for c in children:
+                visit(c)
+    visit(root)
+    def _again() -> bool:
+        visit(root)
+        return False
+    GLib.idle_add(_again)
+    GLib.timeout_add(150, _again)
 
 
 def _force_to_front(window: Gtk.Window) -> None:
@@ -181,6 +228,9 @@ class SettingsDialog:
 
         win.add(page)
         win.show_all()
+        # Subtitle wrap must be patched AFTER show_all() so the realised
+        # label widgets exist to flip.
+        _unwrap_subtitle_labels(win)
         self._window = win
         _force_to_front(win)
 
@@ -288,14 +338,21 @@ class SettingsDialog:
             lambda s, _p: clip_row.set_sensitive(s.get_active()))
         group.add(clip_row)
 
-        # Hotkey source (combo)
+        # Hotkey source (combo). Defaults to PRIMARY because that's what
+        # "the text I just highlighted" means in X11 — choosing CLIPBOARD
+        # here breaks the obvious use-case (popup says "Nothing selected"
+        # unless you've also pressed Ctrl+C first).
         src_row = Handy.ActionRow()
         src_row.set_title("Hotkey reads from")
-        src_row.set_subtitle("Which X11 selection the hotkey captures")
+        src_row.set_subtitle(
+            "Where the popup hotkey looks for text. Default PRIMARY = the "
+            "selection you just highlighted. CLIPBOARD = only what you "
+            "copied with Ctrl+C — leave on PRIMARY unless you know you "
+            "want the other.")
         src_combo = Gtk.ComboBoxText()
         src_combo.set_valign(Gtk.Align.CENTER)
-        src_combo.append("primary",   "PRIMARY (highlighted)")
-        src_combo.append("clipboard", "CLIPBOARD (Ctrl+C)")
+        src_combo.append("primary",   "PRIMARY — current highlight")
+        src_combo.append("clipboard", "CLIPBOARD — last Ctrl+C")
         src_combo.set_active_id(self._settings.get("hotkey_source") or "primary")
         src_combo.connect(
             "changed",
@@ -310,23 +367,24 @@ class SettingsDialog:
     def _build_timing_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()
         group.set_title("Timing")
-        group.set_description("Milliseconds for popup show / hide behaviour.")
+        group.set_description("Seconds for popup show / hide behaviour.")
 
-        debounce_row = self._spin_row(
+        debounce_row = self._seconds_spin_row(
             "Delay before popup appears",
-            "Wait this long after the selection stops changing — keeps the "
-            "popup from flashing while you're still dragging",
-            "selection_debounce_ms", 0, 2000, 50,
+            "Seconds to wait after the selection stops changing — keeps "
+            "the popup from flashing while you're still dragging",
+            "selection_debounce_ms", 0.0, 2.0, 0.05,
         )
-        initial_row = self._spin_row(
+        initial_row = self._seconds_spin_row(
             "Auto-hide before mouse arrives",
-            "How long to wait if the mouse never reaches the popup",
-            "auto_hide_initial_ms", 500, 30000, 500,
+            "Seconds the popup waits if the mouse never reaches it",
+            "auto_hide_initial_ms", 0.5, 30.0, 0.5,
         )
-        leave_row = self._spin_row(
+        leave_row = self._seconds_spin_row(
             "Auto-hide after mouse leaves safe zone",
-            "Safe zone = popup + 80 px around the original selection",
-            "auto_hide_leave_ms", 200, 20000, 200,
+            "Seconds before hiding once the cursor exits the popup + "
+            "80 px around the original selection",
+            "auto_hide_leave_ms", 0.2, 20.0, 0.2,
         )
         group.add(debounce_row)
         group.add(initial_row)
@@ -539,6 +597,32 @@ class SettingsDialog:
         spin.set_valign(Gtk.Align.CENTER)
         spin.set_value(int(self._settings.get(key)))
         spin.connect("value-changed", self._on_spin, key)
+        row.add(spin)
+        row.set_activatable_widget(spin)
+        return row
+
+    def _seconds_spin_row(
+        self, title: str, subtitle: str, key: str,
+        lo_s: float, hi_s: float, step_s: float,
+    ) -> Handy.ActionRow:
+        """Spinner that DISPLAYS seconds but PERSISTS milliseconds, so
+        the JSON schema (everything in *_ms) stays unchanged while users
+        see and edit numbers that are actually meaningful at a glance."""
+        row = Handy.ActionRow()
+        row.set_title(title)
+        row.set_subtitle(subtitle)
+        spin = Gtk.SpinButton.new_with_range(lo_s, hi_s, step_s)
+        spin.set_digits(2 if step_s < 0.1 else 1)
+        spin.set_valign(Gtk.Align.CENTER)
+        # Trailing 's' unit hint via tooltip — HdyActionRow already shows
+        # the title in bold and a subtitle, no room for an inline suffix.
+        spin.set_tooltip_text("Value in seconds")
+        spin.set_value(float(self._settings.get(key)) / 1000.0)
+
+        def _on_seconds_changed(sb: Gtk.SpinButton) -> None:
+            self._save_key(key, int(round(sb.get_value() * 1000)))
+
+        spin.connect("value-changed", _on_seconds_changed)
         row.add(spin)
         row.set_activatable_widget(spin)
         return row

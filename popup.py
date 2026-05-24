@@ -140,6 +140,11 @@ class PopupWindow:
         self._current_text: str = ""
         self._hide_timeout_id: int | None = None
         self._tracker_id: int | None = None
+        # Absolute ceiling on time the popup will linger if the user
+        # never moves the mouse into it. Armed in show_for, cancelled
+        # the moment the pointer enters the popup. Independent of the
+        # leave-grace timer so a stationary cursor still triggers hide.
+        self._initial_hide_id: int | None = None
         self._initial_grace_ms = initial_grace_ms  # before mouse enters
         self._leave_grace_ms = leave_grace_ms      # after mouse leaves popup AND text zone
         # Logical-pixel radius around the original selection cursor that counts
@@ -296,11 +301,41 @@ class PopupWindow:
             self._prev_button_pressed = True
             self._prev_esc_pressed = True
         self._start_tracking()
+        # Arm the initial-grace timer: if the user never moves the
+        # pointer into the popup, hide it after _initial_grace_ms
+        # regardless of where the cursor is sitting. Cancelled by
+        # _on_enter when the pointer actually reaches the popup.
+        self._arm_initial_hide()
 
     def hide(self) -> None:
         self._cancel_hide_timeout()
+        self._cancel_initial_hide()
         self._stop_tracking()
         self.win.hide()
+
+    def _arm_initial_hide(self) -> None:
+        self._cancel_initial_hide()
+        if self._initial_grace_ms <= 0:
+            return
+        from gi.repository import GLib
+        self._initial_hide_id = GLib.timeout_add(
+            self._initial_grace_ms, self._on_initial_timeout,
+        )
+
+    def _cancel_initial_hide(self) -> None:
+        if self._initial_hide_id is not None:
+            from gi.repository import GLib
+            GLib.source_remove(self._initial_hide_id)
+            self._initial_hide_id = None
+
+    def _on_initial_timeout(self) -> bool:
+        self._initial_hide_id = None
+        # Only auto-hide if the user never reached the popup. If
+        # _hide_timeout_id is None and tick says we're in safe zone,
+        # we still hide here — the contract is "after N ms without
+        # pointer entry, give up".
+        self.hide()
+        return False
 
     def _arm_hide_timeout(self, ms: int) -> None:
         self._cancel_hide_timeout()
@@ -427,6 +462,10 @@ class PopupWindow:
     def _on_enter(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
+        # User reached the popup — both timers should stop. Initial
+        # grace was "give up if they never come"; once they're here,
+        # the leave-grace alone governs disappearance.
+        self._cancel_initial_hide()
         self._cancel_hide_timeout()
         return False
 
