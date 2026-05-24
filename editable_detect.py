@@ -56,10 +56,9 @@ _READONLY_APP_CLASSES = (
 )
 
 
-def _find_focused(node, max_depth: int = 8):
-    """Depth-limited DFS for an accessible with STATE_FOCUSED set.
-    Bounded so a misbehaving app with a huge accessibility tree can't
-    keep us spinning past our timeout budget."""
+def _find_focused_in(node, max_depth: int = 10):
+    """Depth-limited DFS for an accessible with STATE_FOCUSED. Bounded
+    so a huge accessibility tree can't outrun our timeout budget."""
     if node is None or max_depth <= 0:
         return None
     try:
@@ -68,7 +67,7 @@ def _find_focused(node, max_depth: int = 8):
             return node
         for i in range(node.get_child_count()):
             child = node.get_child_at_index(i)
-            found = _find_focused(child, max_depth - 1)
+            found = _find_focused_in(child, max_depth - 1)
             if found is not None:
                 return found
     except Exception:
@@ -76,16 +75,26 @@ def _find_focused(node, max_depth: int = 8):
     return None
 
 
-def _atspi_focus_editable(timeout: float = 0.12) -> bool | None:
-    """Probe AT-SPI for the focused accessible's STATE_EDITABLE.
+def _atspi_focus_editable(timeout: float = 0.15) -> bool | None:
+    """Probe AT-SPI for the editable state of the currently-focused
+    accessible widget.
 
-    Returns True/False if AT-SPI returned a definite answer, None if
-    the framework is unavailable, didn't respond in time, or no
-    focused accessible was found. The caller treats None as "fall
-    back to WM_CLASS heuristic".
+    Strategy (matters!): walk every app on the desktop, but only look
+    inside its windows that have STATE_ACTIVE set. STATE_ACTIVE marks
+    the WM-foreground window — exactly one across the whole desktop.
+    Inside it, find the descendant with STATE_FOCUSED; that's the
+    widget the user is typing/selecting in.
 
-    Wrapped in a worker thread bounded at `timeout` seconds so a
-    misbehaving at-spi2-registryd never freezes the GTK main loop.
+    The previous implementation looked for STATE_FOCUSED anywhere in
+    any app's tree and returned the FIRST hit. On Cinnamon the shell's
+    own panel/desktop window is permanently marked FOCUSED (it's the
+    GNOME-shell-equivalent root accessible), so we always returned
+    'cinnamon: editable=False' regardless of which real app the user
+    was in. Filtering on STATE_ACTIVE first skips that trap.
+
+    Returns True / False on an authoritative AT-SPI answer, None when
+    we couldn't reach one (no AT-SPI, timeout, no active window, etc.)
+    — caller falls back to the WM_CLASS heuristic on None.
     """
     if not _HAS_ATSPI:
         return None
@@ -99,29 +108,68 @@ def _atspi_focus_editable(timeout: float = 0.12) -> bool | None:
             if desktop is None:
                 diag.append("desktop=None")
                 return
-            n = desktop.get_child_count()
-            for i in range(n):
+            n_apps = desktop.get_child_count()
+            for i in range(n_apps):
                 try:
                     app = desktop.get_child_at_index(i)
                 except Exception:
                     continue
                 if app is None:
                     continue
-                focused = _find_focused(app, max_depth=8)
-                if focused is not None:
+                # Iterate the app's top-level windows; pick the one
+                # whose window has STATE_ACTIVE (= WM-frontmost).
+                try:
+                    n_win = app.get_child_count()
+                except Exception:
+                    continue
+                for j in range(n_win):
                     try:
-                        state = focused.get_state_set()
+                        win = app.get_child_at_index(j)
+                    except Exception:
+                        continue
+                    if win is None:
+                        continue
+                    try:
+                        win_state = win.get_state_set()
+                    except Exception:
+                        continue
+                    if not win_state.contains(Atspi.StateType.ACTIVE):
+                        continue
+                    # Active window found. Find focused descendant.
+                    focused = _find_focused_in(win, max_depth=10)
+                    if focused is None:
+                        # Window is active but accessibility tree doesn't
+                        # expose a STATE_FOCUSED widget. Common with
+                        # Electron apps (Claude desktop, VSCode, Slack)
+                        # whose Chromium layer can't always be drilled
+                        # into via at-spi2. The window-frame itself isn't
+                        # 'editable' even when its embedded input is, so
+                        # checking the frame would lie. Return None to
+                        # punt to WM_CLASS heuristic, which defaults to
+                        # editable=True for unknown apps and lets the
+                        # buttons show.
+                        diag.append(
+                            f"app={app.get_name()!r} "
+                            f"win.role={win.get_role_name()} "
+                            f"-- no focused descendant (likely Electron) "
+                            f"-- punting to WM_CLASS"
+                        )
+                        return  # result[0] stays None
+                    try:
+                        fstate = focused.get_state_set()
                         editable = bool(
-                            state.contains(Atspi.StateType.EDITABLE))
+                            fstate.contains(Atspi.StateType.EDITABLE))
                         result[0] = editable
                         diag.append(
-                            f"focused via app#{i} name={app.get_name()!r} "
-                            f"role={focused.get_role_name()} editable={editable}"
+                            f"app={app.get_name()!r} "
+                            f"win.role={win.get_role_name()} "
+                            f"focused.role={focused.get_role_name()} "
+                            f"editable={editable}"
                         )
                     except Exception as exc:
                         diag.append(f"state-fetch failed: {exc}")
                     return
-            diag.append(f"no focused accessible across {n} apps")
+            diag.append(f"no active window across {n_apps} apps")
         except Exception as exc:
             diag.append(f"atspi error: {exc}")
 
@@ -130,8 +178,8 @@ def _atspi_focus_editable(timeout: float = 0.12) -> bool | None:
     t.start()
     t.join(timeout=timeout)
     if t.is_alive():
-        _log.info("[editable] AT-SPI probe timed out (>%.0f ms) — "
-                  "falling back to WM_CLASS", timeout * 1000)
+        _log.info("[editable] AT-SPI probe timed out (>%.0f ms)",
+                  timeout * 1000)
         return None
     if diag:
         _log.info("[editable] AT-SPI: %s", " | ".join(diag))

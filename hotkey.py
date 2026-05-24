@@ -106,9 +106,17 @@ class Hotkey:
         self,
         hotkey_str: str,
         on_trigger: Callable[[], None],
+        use_polling: bool = False,
     ) -> None:
         self._hotkey_str = hotkey_str
         self._on_trigger = on_trigger
+        # `use_polling` switches from XGrabKey (event-driven) to
+        # XQueryKeymap polling (~50 ms). Polling bypasses grab races —
+        # e.g. Cinnamon briefly grabbing the keyboard on Super-down for
+        # its overview gesture, which silently eats the first press of
+        # any Super-based hotkey. Costs ~3-5 % CPU per hotkey and
+        # ~25 ms median trigger latency. Off by default.
+        self._use_polling = use_polling
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._mods: int = 0
@@ -156,6 +164,20 @@ class Hotkey:
         self._mods = mods
         self._keycode = keycode
         self._root = self._dpy.screen().root
+
+        # Polling mode bypasses XGrabKey entirely — just samples the
+        # keymap every 50 ms and edge-detects 0→1 transitions. Used as
+        # the escape hatch for hotkeys that fight with WM-level grabs
+        # (Cinnamon Super-overview is the canonical example).
+        if self._use_polling:
+            print(f"[hotkey] '{self._hotkey_str}' polling mode "
+                  f"(keycode={keycode}, mods=0x{mods:x})")
+            self._poll_loop()
+            try:
+                self._dpy.close()
+            except Exception:
+                pass
+            return
 
         # Grab the key with every lock-modifier variant, checking each for
         # an async BadAccess (= another client already owns this combo).
@@ -283,6 +305,49 @@ class Hotkey:
             self._dpy.close()
         except Exception:
             pass
+
+    def _poll_loop(self) -> None:
+        """Sample the keyboard 20×/sec and fire on rising-edge of the
+        hotkey combo. Bypasses XGrabKey entirely — used when another
+        client (Cinnamon's Super-overview detector etc.) keeps eating
+        the first press of our combo.
+
+        Mod-state read from query_pointer().mask (X's only way to get
+        current modifier state at runtime). Key state read from
+        query_keymap() — a 32-byte bitmap with one bit per keycode.
+        """
+        import time as _time
+        keycode = self._keycode
+        mods = self._mods
+        mod_mask = (X.ShiftMask | X.ControlMask
+                    | X.Mod1Mask | X.Mod3Mask | X.Mod4Mask)
+        byte_idx = keycode // 8
+        bit_idx = keycode % 8
+        bit_val = 1 << bit_idx
+        prev_pressed = False
+        # Seed prev_pressed from current state so a held key at startup
+        # isn't treated as a rising edge.
+        try:
+            keymap = self._dpy.query_keymap()
+            prev_pressed = bool(keymap[byte_idx] & bit_val)
+        except Exception:
+            pass
+        while not self._stop.is_set():
+            try:
+                keymap = self._dpy.query_keymap()
+                pressed = bool(keymap[byte_idx] & bit_val)
+                if pressed and not prev_pressed:
+                    # Rising edge — verify modifier state right now.
+                    data = self._root.query_pointer()
+                    effective = data.mask & mod_mask
+                    if effective == mods:
+                        print(f"[hotkey] '{self._hotkey_str}' fired "
+                              "(polling) -- scheduling trigger")
+                        GLib.idle_add(self._safe_trigger)
+                prev_pressed = pressed
+            except Exception as exc:  # noqa: BLE001
+                print(f"[hotkey] poll error: {exc}")
+            _time.sleep(0.05)
 
     def _safe_trigger(self) -> bool:
         try:

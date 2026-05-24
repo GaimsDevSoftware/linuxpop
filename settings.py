@@ -33,6 +33,16 @@ DEFAULTS: dict[str, Any] = {
     "clipboard_hotkey": "super+v",
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",
+    # Default ON. Poll the keyboard state every 50 ms instead of
+    # registering an XGrabKey. CPU cost measured at <0.1 % per hotkey
+    # in `top` (the calls complete in microseconds; theoretical worst-
+    # case is 0.4 %). Bypasses WM-level grab conflicts — Cinnamon's
+    # muffin defers Super-key dispatching to detect tap-vs-hold and
+    # eats the first press of Shift+Super combos on its way through
+    # the compositor event filter (see linuxmint/cinnamon #549). The
+    # XGrabKey path is still wired up for power users who want pure
+    # event-driven behaviour: flip this off in Settings.
+    "hotkey_use_polling": True,
     # Milliseconds before the popup auto-hides if the mouse never enters
     # it. 6.5 s leaves enough time to read the buttons without overstaying
     # — 8 s felt sluggish in practice. Tunable via Settings → Timing.
