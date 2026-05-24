@@ -281,6 +281,10 @@ class App:
         # mirrors are the source of truth for the live-rebind diff.
         self._bound_hotkey: str = ""
         self._bound_clipboard_hotkey: str = ""
+        # Same mirror for the polling toggle — flipping it has to
+        # rebuild both hotkey threads (poll vs grab is decided at
+        # thread start, not per-event).
+        self._bound_use_polling: bool = False
         self._watcher_active = False
         self.tray = None
         # Single-instance dialogs: created lazily, reused on subsequent opens
@@ -395,9 +399,12 @@ class App:
             self._bound_hotkey = ""
             return
         from hotkey import Hotkey
-        self.hotkey = Hotkey(hotkey_str, self.show_popup_now)
+        use_polling = bool(self.settings.get("hotkey_use_polling", False))
+        self.hotkey = Hotkey(hotkey_str, self.show_popup_now,
+                             use_polling=use_polling)
         self.hotkey.start()
         self._bound_hotkey = hotkey_str
+        self._bound_use_polling = use_polling
 
     def _start_clipboard_hotkey(self) -> None:
         if not bool(self.settings.get("clipboard_history_enabled", True)):
@@ -410,7 +417,9 @@ class App:
             self._bound_clipboard_hotkey = ""
             return
         from hotkey import Hotkey
-        self.clipboard_hotkey = Hotkey(hotkey_str, self._on_clipboard_hotkey)
+        use_polling = bool(self.settings.get("hotkey_use_polling", False))
+        self.clipboard_hotkey = Hotkey(hotkey_str, self._on_clipboard_hotkey,
+                                       use_polling=use_polling)
         self.clipboard_hotkey.start()
         self._bound_clipboard_hotkey = hotkey_str
 
@@ -493,18 +502,24 @@ class App:
                 # a burst of saves (textarea editing, multi-toggle bulk
                 # changes) only triggers one reload after activity quiets.
                 self._schedule_plugin_reload()
-                if new_hotkey != self._bound_hotkey:
-                    log.info("hotkey changed: %r → %r — rebinding",
-                             self._bound_hotkey, new_hotkey)
+                new_polling = bool(self.settings.get("hotkey_use_polling", False))
+                polling_changed = new_polling != self._bound_use_polling
+                if polling_changed:
+                    log.info("hotkey polling mode changed: %s → %s — "
+                             "rebuilding both hotkey threads",
+                             self._bound_use_polling, new_polling)
+                if new_hotkey != self._bound_hotkey or polling_changed:
+                    log.info("hotkey: %r → %r (polling=%s) — rebinding",
+                             self._bound_hotkey, new_hotkey, new_polling)
                     if self.hotkey is not None:
                         self.hotkey.stop()
                         self.hotkey = None
                     self._bound_hotkey = ""
                     if new_hotkey:
                         self._start_hotkey()
-                if new_clip != self._bound_clipboard_hotkey:
-                    log.info("clipboard hotkey changed: %r → %r — rebinding",
-                             self._bound_clipboard_hotkey, new_clip)
+                if new_clip != self._bound_clipboard_hotkey or polling_changed:
+                    log.info("clipboard hotkey: %r → %r (polling=%s) — rebinding",
+                             self._bound_clipboard_hotkey, new_clip, new_polling)
                     if self.clipboard_hotkey is not None:
                         self.clipboard_hotkey.stop()
                         self.clipboard_hotkey = None

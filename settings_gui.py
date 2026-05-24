@@ -362,6 +362,26 @@ class SettingsDialog:
         src_row.set_activatable_widget(src_combo)
         group.add(src_row)
 
+        # Polling fallback for hotkeys. Default off (XGrabKey, event-
+        # driven, zero idle CPU). Turn on if a Super-based combo needs
+        # two presses because Cinnamon's overview-gesture detector
+        # grabs the keyboard on Super-down and eats the first event.
+        poll_row = Handy.ActionRow()
+        poll_row.set_title("Hotkey polling (bypasses WM grab conflicts)")
+        poll_row.set_subtitle(
+            "Sample the keyboard 20×/sec instead of using XGrabKey. "
+            "CPU cost is statistically invisible in top (<0.1 % per "
+            "hotkey in practice). Recommended on Cinnamon — its "
+            "overlay-key handler eats the first press of Shift+Super "
+            "combos, polling sidesteps the issue entirely.")
+        poll_switch = Gtk.Switch()
+        poll_switch.set_valign(Gtk.Align.CENTER)
+        poll_switch.set_active(bool(self._settings.get("hotkey_use_polling", False)))
+        poll_switch.connect("notify::active", self._on_switch, "hotkey_use_polling")
+        poll_row.add(poll_switch)
+        poll_row.set_activatable_widget(poll_switch)
+        group.add(poll_row)
+
         return group
 
     def _build_timing_group(self) -> Handy.PreferencesGroup:
