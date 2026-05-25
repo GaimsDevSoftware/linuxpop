@@ -401,11 +401,16 @@ class App:
             return
 
         def on_selection(text: str, x: int, y: int) -> None:
-            # Watcher-only filter: very short selections are usually
-            # misclicks or double-tap noise, so skip the auto-popup
-            # for them. The hotkey path bypasses this — see
+            # Watcher-only filter, opt-in via settings:
+            # 'min_selection_length_enabled' gates whether we trim
+            # very short selections at all. Default off (PopClip
+            # convention — show the popup for any selection).
+            # The hotkey path bypasses this entirely; see
             # _show_for_text's docstring.
-            if not text or len(text) < self.min_len:
+            if not text:
+                return
+            if bool(self.settings.get("min_selection_length_enabled")) \
+                    and len(text) < self.min_len:
                 log.info("[watcher] skipping short selection (%d < %d)",
                          len(text), self.min_len)
                 return

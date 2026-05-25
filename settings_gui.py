@@ -414,13 +414,37 @@ class SettingsDialog:
         group.set_title("Filters")
         group.set_description("When the popup should stay hidden.")
 
+        # Minimum-length filter is a two-part control: a toggle (default
+        # off, matches PopClip) gates whether the auto-popup ignores
+        # short selections at all, and a spinner under it picks the
+        # threshold. The spinner only goes 'live' when the toggle is on.
+        min_toggle_row = Handy.ActionRow()
+        min_toggle_row.set_title("Skip short auto-popup selections")
+        min_toggle_row.set_subtitle(
+            "If on, the auto-popup ignores selections shorter than the "
+            "number below — useful if you keep getting popups for "
+            "single-character misclicks. The hotkey is unaffected and "
+            "always opens the popup, even with no text selected.")
+        min_switch = Gtk.Switch()
+        min_switch.set_valign(Gtk.Align.CENTER)
+        min_switch.set_active(
+            bool(self._settings.get("min_selection_length_enabled")))
+        min_switch.connect(
+            "notify::active", self._on_switch, "min_selection_length_enabled")
+        min_toggle_row.add(min_switch)
+        min_toggle_row.set_activatable_widget(min_switch)
+        group.add(min_toggle_row)
+
         min_row = self._spin_row(
-            "Minimum characters (auto-popup)",
-            "Don't auto-popup for very short selections — stops it from "
-            "flashing when you misclick or double-tap. The hotkey "
-            "ignores this and always opens the popup.",
+            "Minimum characters",
+            "Selections shorter than this are skipped by the "
+            "auto-popup (only when the switch above is on).",
             "min_selection_length", 1, 100, 1,
         )
+        min_row.set_sensitive(min_switch.get_active())
+        min_switch.connect(
+            "notify::active",
+            lambda s, _p: min_row.set_sensitive(s.get_active()))
         group.add(min_row)
 
         # Blocklist: one substring per line. Matches against the active
