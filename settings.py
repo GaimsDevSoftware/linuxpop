@@ -120,9 +120,7 @@ DEFAULTS: dict[str, Any] = {
     # Conventional defaults are pre-filled assuming the GitHub org name
     # matches the upstream repo; update or blank out as needed.
     "support_paypal_url":   "https://paypal.me/linuxpop",
-    "support_kofi_url":     "https://ko-fi.com/gaimsdev",
     "support_sponsors_url": "https://github.com/sponsors/GaimsDevSoftware",
-    "support_bmc_url":      "",  # https://www.buymeacoffee.com/<name>
     # If True, show the one-time welcome dialog on first run. Set to False
     # to skip it (mostly useful for screencasts / CI testing).
     "show_welcome_dialog": True,
