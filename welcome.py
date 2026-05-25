@@ -25,16 +25,15 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 _SUPPORT_BUTTONS = [
     # (settings-key, icon, label, accent-class)
-    # Two channels only: PayPal as the primary donate target and
-    # GitHub Sponsors as the secondary. Ko-fi and Buy Me a Coffee
-    # were removed in May 2026 — the maintainer never set up
-    # accounts on either, so they only ever pointed at 404s. To
-    # re-enable them later, add their settings key here AND the
-    # default URL in settings.py.
+    # PayPal is the only donation channel exposed in the picker —
+    # Ko-fi, Buy Me a Coffee and GitHub Sponsors were removed in
+    # May 2026 because no real account existed behind any of them,
+    # so the buttons led to 404s. (GitHub still shows its own
+    # Sponsor button via .github/FUNDING.yml — that goes straight
+    # to paypal.me/linuxpop too.) To add another channel later,
+    # add its key here AND the default URL in settings.py.
     ("support_paypal_url",   "emblem-favorite-symbolic",
      "Support on PayPal",        "suggested-action"),
-    ("support_sponsors_url", "starred-symbolic",
-     "Sponsor on GitHub",        ""),
 ]
 
 
@@ -217,8 +216,8 @@ def open_support_picker(settings, parent: Gtk.Window | None = None) -> None:
         msg.set_markup(
             "<span foreground='#b8c0d4'>"
             "No donation links are configured. Set "
-            "<tt>support_paypal_url</tt> or <tt>support_sponsors_url</tt> "
-            "in your settings.json to enable them."
+            "<tt>support_paypal_url</tt> in your settings.json to "
+            "enable the PayPal button."
             "</span>")
         msg.set_line_wrap(True)
         box.pack_start(msg, False, False, 0)
