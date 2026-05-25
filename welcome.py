@@ -25,18 +25,16 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 _SUPPORT_BUTTONS = [
     # (settings-key, icon, label, accent-class)
-    # PayPal is listed first and given the primary (suggested) accent
-    # because it's the project's main donation channel — set up in
-    # May 2026 with the LinuxPop name. The other rows render only when
-    # their URL is filled in settings.json, so absent ones are silent.
+    # Two channels only: PayPal as the primary donate target and
+    # GitHub Sponsors as the secondary. Ko-fi and Buy Me a Coffee
+    # were removed in May 2026 — the maintainer never set up
+    # accounts on either, so they only ever pointed at 404s. To
+    # re-enable them later, add their settings key here AND the
+    # default URL in settings.py.
     ("support_paypal_url",   "emblem-favorite-symbolic",
      "Support on PayPal",        "suggested-action"),
-    ("support_kofi_url",     "emblem-favorite-symbolic",
-     "Buy us a coffee on Ko-fi", ""),
     ("support_sponsors_url", "starred-symbolic",
      "Sponsor on GitHub",        ""),
-    ("support_bmc_url",      "emblem-favorite-symbolic",
-     "Buy Me a Coffee",          ""),
 ]
 
 
@@ -219,8 +217,7 @@ def open_support_picker(settings, parent: Gtk.Window | None = None) -> None:
         msg.set_markup(
             "<span foreground='#b8c0d4'>"
             "No donation links are configured. Set "
-            "<tt>support_paypal_url</tt>, <tt>support_kofi_url</tt>, "
-            "<tt>support_sponsors_url</tt> or <tt>support_bmc_url</tt> "
+            "<tt>support_paypal_url</tt> or <tt>support_sponsors_url</tt> "
             "in your settings.json to enable them."
             "</span>")
         msg.set_line_wrap(True)
