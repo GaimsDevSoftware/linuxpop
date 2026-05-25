@@ -106,9 +106,27 @@ def _on_focus_event(event) -> None:
 
 def _start_focus_listener() -> None:
     """Register the AT-SPI focus-change listener. Idempotent — first
-    caller wins, the listener runs for the daemon's lifetime."""
+    caller wins, the listener runs for the daemon's lifetime.
+
+    Gated on the 'editable_atspi_listener_enabled' setting, which
+    defaults off. Registration was correlated with a Cinnamon panel
+    segfault on 2026-05-25 — see knowledge/linuxpop.md. Falling back
+    to the synchronous tree-walk + WM_CLASS path is safe; users who
+    want the Electron-specific smartness can opt in.
+    """
     global _focus_listener_started, _focus_listener_ref
     if _focus_listener_started or not _HAS_ATSPI:
+        return
+    # Local import — avoids settings module circulars at module load.
+    try:
+        from settings import get_settings
+        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+            _log.info("[editable] AT-SPI focus listener disabled by setting "
+                      "(editable_atspi_listener_enabled=false)")
+            return
+    except Exception as exc:
+        _log.info("[editable] could not read AT-SPI listener setting (%s) — "
+                  "leaving listener off", exc)
         return
     _focus_listener_started = True
 
