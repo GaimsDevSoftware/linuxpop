@@ -5,10 +5,36 @@ import os
 import shlex
 import shutil
 import subprocess
+import threading
 import urllib.parse
 from typing import Optional
 
 from classifier import _normalize as _strip_invisible
+
+
+# Thread-local 'force copy only' flag. When set, replace_selection
+# writes to the clipboard but skips the Ctrl+V step — the popup uses
+# this to honour Shift-click on a transform action: result lands on the
+# clipboard for manual paste elsewhere, never overwrites the original
+# selection. Mirrors PopClip's Shift-modifier behaviour where Shift
+# forces a copy instead of a paste.
+_local = threading.local()
+
+
+def force_copy_active() -> bool:
+    return bool(getattr(_local, "force_copy", False))
+
+
+class force_copy_mode:
+    """Context manager: while active, replace_selection skips the paste
+    step and leaves the result on the clipboard only. Thread-local so
+    concurrent plugin executions don't interfere."""
+
+    def __enter__(self) -> None:
+        _local.force_copy = True
+
+    def __exit__(self, *_exc) -> None:
+        _local.force_copy = False
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -54,6 +80,12 @@ def replace_selection(new_text: str) -> None:
         )
     except subprocess.TimeoutExpired:
         print("[actions] xclip write timed out — selection not replaced")
+        return
+    if force_copy_active():
+        # Shift-modifier on the popup button: result goes to the
+        # clipboard, but we deliberately skip the Ctrl+V so the
+        # original selection stays put.
+        print("[actions] force-copy mode — clipboard only, no paste")
         return
     if not shutil.which("xdotool"):
         # No xdotool: leave the result on the clipboard so the user can
