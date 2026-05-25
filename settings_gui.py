@@ -226,6 +226,7 @@ class SettingsDialog:
         page.add(self._build_search_group())
         page.add(self._build_terminal_group())
         page.add(self._build_ai_group())
+        page.add(self._build_advanced_group())
         # Donation entry-points live in the tray menu, the About dialog
         # and the first-run welcome — see welcome.open_support_picker.
         # Settings stays focused on configuration.
@@ -610,6 +611,35 @@ class SettingsDialog:
 
         engine_combo.connect("changed", _on_engine_changed)
         custom_entry.connect("changed", _on_custom_changed)
+        return group
+
+    def _build_advanced_group(self) -> Handy.PreferencesGroup:
+        group = Handy.PreferencesGroup()
+        group.set_title("Advanced")
+        group.set_description(
+            "Experimental switches. Leave alone unless you know what "
+            "you're doing.")
+
+        atspi_row = Handy.ActionRow()
+        atspi_row.set_title("Smarter editable detection (experimental)")
+        atspi_row.set_subtitle(
+            "Listens on the system accessibility bus so the popup can "
+            "tell apart 'cursor in chat input' from 'cursor in read-only "
+            "history' inside Electron apps like Claude desktop. Off by "
+            "default — it was correlated with a Cinnamon desktop-panel "
+            "crash. The popup still works fine without it; it just "
+            "falls back to a permissive default for unknown Electron "
+            "widgets.")
+        atspi_switch = Gtk.Switch()
+        atspi_switch.set_valign(Gtk.Align.CENTER)
+        atspi_switch.set_active(
+            bool(self._settings.get("editable_atspi_listener_enabled")))
+        atspi_switch.connect(
+            "notify::active", self._on_switch,
+            "editable_atspi_listener_enabled")
+        atspi_row.add(atspi_switch)
+        atspi_row.set_activatable_widget(atspi_switch)
+        group.add(atspi_row)
         return group
 
     def _build_terminal_group(self) -> Handy.PreferencesGroup:
