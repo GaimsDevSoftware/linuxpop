@@ -247,6 +247,50 @@ class PopupWindow:
                 return _on_click
             self._add_button(plugin.icon, plugin.tooltip, make_handler(plugin))
 
+        self._present_near(x, y)
+
+    def show_actions(
+        self,
+        items: list[tuple[str, str, "Callable[[], None]"]],
+        x: int,
+        y: int,
+    ) -> None:
+        """Show the popup with a hard-coded list of (icon, tooltip, callback)
+        actions instead of going through plugin_loader. Used for the
+        no-selection popup that surfaces paste-oriented entry points
+        when the hotkey fires without highlighted text.
+
+        Each callback takes no arguments — it should encapsulate whatever
+        the click needs to do (open a picker, paste, etc.). Callbacks run
+        on a worker thread so a slow handler can't freeze the GTK loop.
+        """
+        self._current_text = ""
+        self._clear_buttons()
+        if not items:
+            return
+
+        for icon, tooltip, callback in items:
+            def make_handler(cb, name):
+                def _on_click(_btn):
+                    def _worker():
+                        try:
+                            cb()
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"[popup] action '{name}' failed: {exc}")
+                    threading.Thread(
+                        target=_worker, daemon=True, name=f"action-{name}",
+                    ).start()
+                    self.hide()
+                return _on_click
+            self._add_button(icon, tooltip, make_handler(callback, tooltip))
+
+        self._present_near(x, y)
+
+    def _present_near(self, x: int, y: int) -> None:
+        """Render the popup near physical screen coords (x, y) and arm
+        the tracking/auto-hide machinery. Extracted from show_for so
+        both show_for() and show_actions() share the same positioning
+        + lifecycle code path."""
         self._bar.show_all()
         self._outer.show_all()
 

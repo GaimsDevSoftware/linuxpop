@@ -339,21 +339,54 @@ class App:
         text = _read_selection(source)
         log.info("[hotkey-fire] read %s: %d chars in %.0f ms",
                  source, len(text), (_t.monotonic() - t0) * 1000)
-        if not text:
-            log.info("[hotkey-fire] suppressed -- selection is empty")
-            subprocess.run(
-                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-information",
-                 "LinuxPop", "Nothing selected"],
-                check=False,
-            )
-            return
         try:
             x, y = _pointer_position()
         except Exception:
             x, y = 0, 0
+        if not text:
+            # PopClip-style: hotkey without a selection still shows a
+            # popup, but populated with paste-oriented entry points
+            # (clipboard history, snippets) instead of the usual
+            # transforms-and-actions for the selected text. The popup is
+            # the single portal; the dedicated clipboard hotkey stays
+            # available as a power-user shortcut.
+            log.info("[hotkey-fire] no selection — showing paste menu")
+            self._show_no_selection_popup(x, y)
+            return
         log.info("[hotkey-fire] showing popup at (%d, %d) for %d-char selection",
                  x, y, len(text))
         self._show_for_text(text, x, y)
+
+    def _show_no_selection_popup(self, x: int, y: int) -> None:
+        """Build a small paste-menu popup for the no-selection case.
+
+        Right now this surfaces a single entry point — the clipboard /
+        snippets picker — which is the natural answer to 'I want to
+        paste something'. Future entries (Paste latest, Paste plain,
+        Paste snippet by name) slot in here as the snippet engine and
+        modifier support land.
+        """
+        if _active_window_blocked(list(self.settings.get("blocklist_patterns") or [])):
+            log.info("[blocked] suppressed no-selection popup -- active window blocked")
+            return
+        items: list[tuple[str, str, "Callable[[], None]"]] = []
+        if bool(self.settings.get("clipboard_history_enabled", True)):
+            items.append((
+                "edit-paste-symbolic",
+                "Paste from clipboard history",
+                self._on_clipboard_hotkey,
+            ))
+        if not items:
+            # Nothing to offer — fall back to the old toast so the user
+            # at least gets feedback that the hotkey was received.
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                 "-i", "dialog-information",
+                 "LinuxPop", "Nothing selected"],
+                check=False,
+            )
+            return
+        self.popup.show_actions(items, x, y)
 
     # ---- watcher -------------------------------------------------------------
 
