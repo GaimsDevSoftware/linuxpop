@@ -8,6 +8,7 @@ Apply-on-change semantics: edits save immediately, no Save/Cancel buttons.
 """
 from __future__ import annotations
 
+import subprocess
 from typing import Callable
 
 import gi
@@ -226,6 +227,7 @@ class SettingsDialog:
         page.add(self._build_search_group())
         page.add(self._build_terminal_group())
         page.add(self._build_ai_group())
+        page.add(self._build_support_group())
 
         win.add(page)
         win.show_all()
@@ -582,6 +584,40 @@ class SettingsDialog:
 
         engine_combo.connect("changed", _on_engine_changed)
         custom_entry.connect("changed", _on_custom_changed)
+        return group
+
+    def _build_support_group(self) -> Handy.PreferencesGroup:
+        group = Handy.PreferencesGroup()
+        group.set_title("Support development")
+        group.set_description(
+            "LinuxPop is free and built by one person in their spare time. "
+            "If it's saved you some clicks, a small contribution helps keep "
+            "it going. Entirely optional.")
+
+        row = Handy.ActionRow()
+        row.set_title("Buy me a coffee on PayPal")
+        row.set_subtitle("Opens paypal.me/linuxpop in your browser.")
+        btn = Gtk.Button.new_from_icon_name(
+            "emblem-favorite-symbolic", Gtk.IconSize.BUTTON)
+        btn.set_valign(Gtk.Align.CENTER)
+        btn.set_tooltip_text("Open paypal.me/linuxpop")
+        btn.set_label("Support")
+        btn.set_always_show_image(True)
+        btn.get_style_context().add_class("suggested-action")
+
+        def _on_donate_clicked(_button):
+            try:
+                subprocess.Popen(
+                    ["xdg-open", "https://paypal.me/linuxpop"],
+                    start_new_session=True,
+                )
+            except FileNotFoundError:
+                print("[settings] xdg-open not available — cannot open donation URL")
+
+        btn.connect("clicked", _on_donate_clicked)
+        row.add(btn)
+        row.set_activatable_widget(btn)
+        group.add(row)
         return group
 
     def _build_terminal_group(self) -> Handy.PreferencesGroup:
