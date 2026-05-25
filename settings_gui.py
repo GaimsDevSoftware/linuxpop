@@ -219,7 +219,8 @@ class SettingsDialog:
         page.set_title("General")
         page.set_icon_name("preferences-system-symbolic")
 
-        page.add(self._build_general_group())
+        page.add(self._build_activation_group())
+        page.add(self._build_hotkeys_group())
         page.add(self._build_timing_group())
         page.add(self._build_filter_group())
         page.add(self._build_search_group())
@@ -239,7 +240,7 @@ class SettingsDialog:
 
     # ---- groups --------------------------------------------------------------
 
-    def _build_general_group(self) -> Handy.PreferencesGroup:
+    def _build_activation_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()
         group.set_title("Activation")
         group.set_description("How LinuxPop is summoned.")
@@ -279,6 +280,14 @@ class SettingsDialog:
         auto_row.add(auto_switch)
         auto_row.set_activatable_widget(auto_switch)
         group.add(auto_row)
+
+        return group
+
+    def _build_hotkeys_group(self) -> Handy.PreferencesGroup:
+        group = Handy.PreferencesGroup()
+        group.set_title("Hotkeys")
+        group.set_description(
+            "Keyboard shortcuts for opening the popup and the clipboard picker.")
 
         # Selection-popup hotkey row
         hk_row = Handy.ActionRow()
@@ -362,18 +371,12 @@ class SettingsDialog:
         src_row.set_activatable_widget(src_combo)
         group.add(src_row)
 
-        # Polling fallback for hotkeys. Default off (XGrabKey, event-
-        # driven, zero idle CPU). Turn on if a Super-based combo needs
-        # two presses because Cinnamon's overview-gesture detector
-        # grabs the keyboard on Super-down and eats the first event.
         poll_row = Handy.ActionRow()
-        poll_row.set_title("Hotkey polling (bypasses WM grab conflicts)")
+        poll_row.set_title("Trigger on first press")
         poll_row.set_subtitle(
-            "Sample the keyboard 20×/sec instead of using XGrabKey. "
-            "CPU cost is statistically invisible in top (<0.1 % per "
-            "hotkey in practice). Recommended on Cinnamon — its "
-            "overlay-key handler eats the first press of Shift+Super "
-            "combos, polling sidesteps the issue entirely.")
+            "Some desktops (especially Cinnamon) swallow the first "
+            "hotkey press, so the popup only appears after 2–3 tries. "
+            "Turn this on to fix it. Uses very little CPU (under 0.1%).")
         poll_switch = Gtk.Switch()
         poll_switch.set_valign(Gtk.Align.CENTER)
         poll_switch.set_active(bool(self._settings.get("hotkey_use_polling", False)))
