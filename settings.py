@@ -120,6 +120,13 @@ DEFAULTS: dict[str, Any] = {
     # Conventional defaults are pre-filled assuming the GitHub org name
     # matches the upstream repo; update or blank out as needed.
     "support_paypal_url":   "https://paypal.me/linuxpop",
+    # 'Skip short auto-popup selections' filter. Off by default to
+    # match PopClip out of the box (no minimum-size knob there). When
+    # on, the watcher silently drops selections shorter than
+    # min_selection_length — useful if a flaky app keeps firing
+    # X selection events for accidental clicks. The hotkey always
+    # ignores this filter; see main.py _start_watcher.
+    "min_selection_length_enabled": False,
     # If True, show the one-time welcome dialog on first run. Set to False
     # to skip it (mostly useful for screencasts / CI testing).
     "show_welcome_dialog": True,
