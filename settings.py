@@ -119,6 +119,7 @@ DEFAULTS: dict[str, Any] = {
     # (each is independent — show only the ones you've actually set up).
     # Conventional defaults are pre-filled assuming the GitHub org name
     # matches the upstream repo; update or blank out as needed.
+    "support_paypal_url":   "https://paypal.me/linuxpop",
     "support_kofi_url":     "https://ko-fi.com/gaimsdev",
     "support_sponsors_url": "https://github.com/sponsors/GaimsDevSoftware",
     "support_bmc_url":      "",  # https://www.buymeacoffee.com/<name>
