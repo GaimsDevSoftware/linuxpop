@@ -243,12 +243,13 @@ class SettingsDialog:
     def _build_activation_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()
         group.set_title("Activation")
-        group.set_description("How LinuxPop is summoned.")
+        group.set_description("How LinuxPop appears.")
 
         # Auto-popup on selection (switch row)
         sel_row = Handy.ActionRow()
         sel_row.set_title("Auto-popup on selection")
-        sel_row.set_subtitle("Show the popup when you highlight text in any app")
+        sel_row.set_subtitle(
+            "Show the popup automatically whenever you highlight text in any app.")
         sel_switch = Gtk.Switch()
         sel_switch.set_valign(Gtk.Align.CENTER)
         sel_switch.set_active(bool(self._settings.get("show_on_selection")))
@@ -262,7 +263,7 @@ class SettingsDialog:
         # the DE actually reads. We just toggle the file from here.
         auto_row = Handy.ActionRow()
         auto_row.set_title("Start at login")
-        auto_row.set_subtitle("Launch LinuxPop automatically when you log in")
+        auto_row.set_subtitle("Launch LinuxPop automatically when you sign in.")
         auto_switch = Gtk.Switch()
         auto_switch.set_valign(Gtk.Align.CENTER)
         try:
@@ -291,8 +292,11 @@ class SettingsDialog:
 
         # Selection-popup hotkey row
         hk_row = Handy.ActionRow()
-        hk_row.set_title("Selection-popup hotkey")
-        hk_row.set_subtitle("Pops up actions for the current highlighted text.")
+        hk_row.set_title("Popup hotkey")
+        hk_row.set_subtitle(
+            "Press this anywhere to open the popup. If you have text "
+            "highlighted, it shows actions for that text. If not, it "
+            "shows a paste menu instead.")
         recorder = HotkeyRecorder(
             self._settings.get("hotkey") or "",
             on_changed=lambda v: self._save_key("hotkey", v),
@@ -309,10 +313,10 @@ class SettingsDialog:
         # selection-watcher thread is not started, the picker hotkey
         # doesn't bind, and the popup button is hidden.
         clip_master_row = Handy.ActionRow()
-        clip_master_row.set_title("Clipboard history & picker")
+        clip_master_row.set_title("Clipboard history")
         clip_master_row.set_subtitle(
-            "Track recent clipboard contents and pin snippets. "
-            "Off = no clipboard watching at all.")
+            "Remember things you've recently copied so you can paste them "
+            "later. Turn off to stop LinuxPop from watching the clipboard.")
         clip_master_switch = Gtk.Switch()
         clip_master_switch.set_valign(Gtk.Align.CENTER)
         clip_master_switch.set_active(
@@ -327,8 +331,11 @@ class SettingsDialog:
         # switch above is on, but we keep it visible so the binding can
         # be configured ahead of enabling.
         clip_row = Handy.ActionRow()
-        clip_row.set_title("Clipboard picker hotkey")
-        clip_row.set_subtitle("Opens the clipboard history + snippets picker at the cursor.")
+        clip_row.set_title("Optional clipboard shortcut")
+        clip_row.set_subtitle(
+            "A direct shortcut that opens the clipboard picker at the "
+            "cursor. You don't have to set one — the popup hotkey above "
+            "already gets you there when nothing is highlighted.")
         clip_recorder = HotkeyRecorder(
             self._settings.get("clipboard_hotkey") or "",
             on_changed=lambda v: self._save_key("clipboard_hotkey", v),
@@ -347,36 +354,21 @@ class SettingsDialog:
             lambda s, _p: clip_row.set_sensitive(s.get_active()))
         group.add(clip_row)
 
-        # Hotkey source (combo). Defaults to PRIMARY because that's what
-        # "the text I just highlighted" means in X11 — choosing CLIPBOARD
-        # here breaks the obvious use-case (popup says "Nothing selected"
-        # unless you've also pressed Ctrl+C first).
-        src_row = Handy.ActionRow()
-        src_row.set_title("Hotkey reads from")
-        src_row.set_subtitle(
-            "Where the popup hotkey looks for text. Default PRIMARY = the "
-            "selection you just highlighted. CLIPBOARD = only what you "
-            "copied with Ctrl+C — leave on PRIMARY unless you know you "
-            "want the other.")
-        src_combo = Gtk.ComboBoxText()
-        src_combo.set_valign(Gtk.Align.CENTER)
-        src_combo.append("primary",   "PRIMARY — current highlight")
-        src_combo.append("clipboard", "CLIPBOARD — last Ctrl+C")
-        src_combo.set_active_id(self._settings.get("hotkey_source") or "primary")
-        src_combo.connect(
-            "changed",
-            lambda c: self._save_key("hotkey_source", c.get_active_id() or "primary"),
-        )
-        src_row.add(src_combo)
-        src_row.set_activatable_widget(src_combo)
-        group.add(src_row)
+        # 'Hotkey reads from' (PRIMARY vs CLIPBOARD) was removed from the
+        # UI here when the no-selection popup landed — with the paste
+        # menu always available, the only reason to ever flip the source
+        # to CLIPBOARD was the old 'I don't have a selection but I want
+        # the hotkey to do something' case, which now Just Works.
+        # The setting is still read from settings.json on launch for
+        # power users who want to flip it manually.
 
         poll_row = Handy.ActionRow()
         poll_row.set_title("Trigger on first press")
         poll_row.set_subtitle(
             "Some desktops (especially Cinnamon) swallow the first "
             "hotkey press, so the popup only appears after 2–3 tries. "
-            "Turn this on to fix it. Uses very little CPU (under 0.1%).")
+            "Turn this on to fix it. Runs a tiny background check — no "
+            "noticeable impact on performance.")
         poll_switch = Gtk.Switch()
         poll_switch.set_valign(Gtk.Align.CENTER)
         poll_switch.set_active(bool(self._settings.get("hotkey_use_polling", False)))
@@ -394,19 +386,19 @@ class SettingsDialog:
 
         debounce_row = self._seconds_spin_row(
             "Delay before popup appears",
-            "Seconds to wait after the selection stops changing — keeps "
-            "the popup from flashing while you're still dragging",
+            "Seconds to wait after you finish selecting — keeps the "
+            "popup from flashing while you're still dragging.",
             "selection_debounce_ms", 0.0, 2.0, 0.05,
         )
         initial_row = self._seconds_spin_row(
             "Auto-hide before mouse arrives",
-            "Seconds the popup waits if the mouse never reaches it",
+            "Seconds the popup waits if you never move the mouse to it.",
             "auto_hide_initial_ms", 0.5, 30.0, 0.5,
         )
         leave_row = self._seconds_spin_row(
-            "Auto-hide after mouse leaves safe zone",
-            "Seconds before hiding once the cursor exits the popup + "
-            "80 px around the original selection",
+            "Auto-hide after mouse leaves",
+            "Seconds the popup stays visible after you move the cursor "
+            "away from it.",
             "auto_hide_leave_ms", 0.2, 20.0, 0.2,
         )
         group.add(debounce_row)
@@ -421,7 +413,8 @@ class SettingsDialog:
 
         min_row = self._spin_row(
             "Minimum characters",
-            "Ignore selections shorter than this",
+            "Don't show the popup for very short selections — stops it "
+            "from flashing when you misclick or double-tap.",
             "min_selection_length", 1, 100, 1,
         )
         group.add(min_row)
@@ -597,7 +590,9 @@ class SettingsDialog:
 
         term_row = Handy.ActionRow()
         term_row.set_title("Keep terminal open after running")
-        term_row.set_subtitle("Drops into an interactive shell so you can see output and continue")
+        term_row.set_subtitle(
+            "After running a command, leaves the terminal window open "
+            "so you can read the output. Otherwise it closes right away.")
         sw = Gtk.Switch()
         sw.set_valign(Gtk.Align.CENTER)
         sw.set_active(bool(self._settings.get("terminal_keep_open", True)))
