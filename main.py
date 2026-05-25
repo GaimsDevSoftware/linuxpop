@@ -303,9 +303,15 @@ class App:
     # ---- popup invocation ----------------------------------------------------
 
     def _show_for_text(self, text: str, x: int, y: int) -> None:
-        if not text or len(text) < self.min_len:
-            log.info("[show-for] suppressed -- length %d < min %d",
-                     len(text), self.min_len)
+        # No min-length check here on purpose — that filter belongs to
+        # the watcher (auto-popup on selection), not to this routine.
+        # show_popup_now() routes empty text into the no-selection
+        # paste menu, but non-empty text of *any* length should still
+        # surface the selection popup when the user explicitly fires
+        # the hotkey. PopClip works the same way: 'minimum size' is
+        # an auto-popup filter, long-press always shows the popup.
+        if not text:
+            log.info("[show-for] suppressed -- empty text")
             return
         if self.ignore_ws and not text.strip():
             log.info("[show-for] suppressed -- whitespace-only")
@@ -395,6 +401,14 @@ class App:
             return
 
         def on_selection(text: str, x: int, y: int) -> None:
+            # Watcher-only filter: very short selections are usually
+            # misclicks or double-tap noise, so skip the auto-popup
+            # for them. The hotkey path bypasses this — see
+            # _show_for_text's docstring.
+            if not text or len(text) < self.min_len:
+                log.info("[watcher] skipping short selection (%d < %d)",
+                         len(text), self.min_len)
+                return
             GLib.idle_add(self._show_for_text, text, x, y)
 
         self.watcher = SelectionWatcher(

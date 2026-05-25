@@ -415,9 +415,10 @@ class SettingsDialog:
         group.set_description("When the popup should stay hidden.")
 
         min_row = self._spin_row(
-            "Minimum characters",
-            "Don't show the popup for very short selections — stops it "
-            "from flashing when you misclick or double-tap.",
+            "Minimum characters (auto-popup)",
+            "Don't auto-popup for very short selections — stops it from "
+            "flashing when you misclick or double-tap. The hotkey "
+            "ignores this and always opens the popup.",
             "min_selection_length", 1, 100, 1,
         )
         group.add(min_row)
