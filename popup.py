@@ -16,6 +16,7 @@ from gi.repository import Gdk, Gtk  # noqa: E402
 
 from Xlib import X, XK, display as xdisplay  # noqa: E402
 
+import actions
 import plugin_loader
 from classifier import ContentType
 
@@ -60,6 +61,22 @@ button.linuxpop-action image {
     color: #f0f3fa;
 }
 """
+
+
+def _shift_held_in_current_event() -> bool:
+    """Return True if Shift was held when the GTK event currently being
+    dispatched was generated. Read inside a 'clicked' callback to know
+    whether the user shift-clicked the button. Falls back to False if
+    GTK didn't surface an event state (rare — happens for
+    programmatically-fired clicks).
+    """
+    try:
+        ok, state = Gtk.get_current_event_state()
+    except Exception:
+        return False
+    if not ok:
+        return False
+    return bool(state & Gdk.ModifierType.SHIFT_MASK)
 
 
 def _install_css() -> None:
@@ -233,10 +250,22 @@ class PopupWindow:
                     # freeze the GTK main loop.
                     text_snapshot = self._current_text
                     plugin_name = p.name
+                    # Read the modifier state on the GTK event that
+                    # triggered this click. Shift means 'copy the
+                    # result instead of pasting it back' (PopClip
+                    # convention) — relevant when the plugin uses
+                    # actions.replace_selection() for an in-place
+                    # transform. Plugins that don't paste are
+                    # unaffected by the flag.
+                    shift_held = _shift_held_in_current_event()
 
                     def _worker():
                         try:
-                            p.execute(text_snapshot)
+                            if shift_held:
+                                with actions.force_copy_mode():
+                                    p.execute(text_snapshot)
+                            else:
+                                p.execute(text_snapshot)
                         except Exception as exc:  # noqa: BLE001
                             print(f"[popup] plugin '{plugin_name}' failed: {exc}")
 
