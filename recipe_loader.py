@@ -192,7 +192,13 @@ def validate(recipe: dict) -> list[str]:
     return errors
 
 
-_DEFAULT_RECIPE_SEEDS = ("wikipedia.json", "youtube-search.json")
+_DEFAULT_RECIPE_SEEDS = (
+    "google-search.json",
+    "define.json",
+    "wikipedia.json",
+    "google-translate.json",
+    "youtube-search.json",
+)
 _SEED_MARKER = RECIPES_DIR.parent / ".default-recipes-seeded"
 
 

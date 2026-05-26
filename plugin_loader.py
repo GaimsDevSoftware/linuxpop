@@ -22,8 +22,23 @@ _PLUGINS: List[Plugin] = []
 
 USER_PLUGIN_DIR = Path(os.path.expanduser("~/.config/linuxpop/plugins"))
 LINUXPOP_DIR = str(Path(__file__).resolve().parent)
+REPO_PLUGIN_DIR = Path(LINUXPOP_DIR) / "plugins_repo"
 ICONS_DIR = Path(LINUXPOP_DIR) / "icons"
 HICOLOR_APPS = Path.home() / ".local/share/icons/hicolor/scalable/apps"
+
+# Curated set seeded into a brand-new install. Aim is "useful within
+# 5 seconds of first selection" without overwhelming the popup. Dev-
+# heavy plugins (base64, json_format, etc.) and niche transforms stay
+# in the catalogue — they're one click away from Plugin Manager.
+DEFAULT_PLUGIN_SEEDS = (
+    "editing_actions.py",       # Cut / Paste / Backspace / Select All
+    "clipboard_history.py",     # the core picker
+    "wordcount.py",
+    "large_type.py",
+    "text_transformations.py",  # case + sort/dedupe/trim, all predicate-guarded
+    "send_to_ai.py",
+)
+_PLUGIN_SEED_MARKER = USER_PLUGIN_DIR.parent / ".default-plugins-seeded"
 
 
 def _ensure_on_path() -> None:
@@ -270,8 +285,40 @@ def _register_builtins() -> None:
     ))
 
 
+def _seed_default_plugins() -> None:
+    """First-run only: drop the curated DEFAULT_PLUGIN_SEEDS into the
+    user's plugin dir so a fresh install ships with a useful popup
+    out of the box. Skipped if the seed marker is present OR the dir
+    already has any .py files (a user who curated their own set
+    should not get clobbered)."""
+    if _PLUGIN_SEED_MARKER.is_file():
+        return
+    USER_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    has_existing = any(USER_PLUGIN_DIR.glob("*.py"))
+    if has_existing:
+        _PLUGIN_SEED_MARKER.touch()
+        return
+    if not REPO_PLUGIN_DIR.is_dir():
+        _PLUGIN_SEED_MARKER.touch()
+        return
+    for filename in DEFAULT_PLUGIN_SEEDS:
+        src = REPO_PLUGIN_DIR / filename
+        if not src.is_file():
+            continue
+        dst = USER_PLUGIN_DIR / filename
+        if dst.is_file():
+            continue
+        try:
+            shutil.copy2(src, dst)
+            print(f"[plugin_loader] seeded default plugin: {filename}")
+        except OSError as exc:
+            print(f"[plugin_loader] could not seed {filename}: {exc}")
+    _PLUGIN_SEED_MARKER.touch()
+
+
 def _load_user_plugins() -> None:
     _ensure_on_path()
+    _seed_default_plugins()
     if not USER_PLUGIN_DIR.is_dir():
         return
     for path in sorted(USER_PLUGIN_DIR.glob("*.py")):

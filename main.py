@@ -697,8 +697,19 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
-    if args.reset_first_run and FIRST_RUN_MARKER.is_file():
-        FIRST_RUN_MARKER.unlink()
+    if args.reset_first_run:
+        # Wipe every first-run marker so the welcome flow AND the
+        # plugin/recipe seeders fire again. Useful for testing the
+        # curated default bundle from a clean state.
+        for marker in (
+            FIRST_RUN_MARKER,
+            Path(os.path.expanduser("~/.config/linuxpop/.default-plugins-seeded")),
+            Path(os.path.expanduser("~/.config/linuxpop/.default-recipes-seeded")),
+        ):
+            try:
+                marker.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     _setup_logging(args.debug)
     _check_x11_or_exit()
