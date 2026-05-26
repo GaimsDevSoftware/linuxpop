@@ -114,7 +114,7 @@ _COMMAND_HINTS = re.compile(r"(\s&&\s|\s\|\|\s|\s\|\s|\s>\s|\s>>\s|\$\(|`)")
 
 
 def _line_first_token(line: str) -> str:
-    """Return the first 'real' token of a line — peel off a leading
+    """Return the first 'real' token of a line - peel off a leading
     shell prompt ('$ ', '> ', '% ', '# ') or shebang ('#!') first."""
     line = line.strip()
     if not line:
@@ -123,7 +123,7 @@ def _line_first_token(line: str) -> str:
     if len(line) >= 2 and line[0] in "$>%#" and line[1] in (" ", "\t"):
         line = line[2:].strip()
     elif line.startswith("#!"):
-        # Shebang line — '#!/bin/bash' etc. The interpreter path itself
+        # Shebang line - '#!/bin/bash' etc. The interpreter path itself
         # is enough signal that this is a script.
         return "#!"
     if not line:
@@ -220,7 +220,7 @@ def is_runnable_path(text: str) -> bool:
     low = s.lower()
     if low.endswith(_RUNNABLE_PATH_EXTS):
         return True
-    # ./foo or ~/bin/foo — likely an executable even without an extension
+    # ./foo or ~/bin/foo - likely an executable even without an extension
     if s.startswith(("./", "~/bin/")):
         return True
     return False

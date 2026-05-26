@@ -1,6 +1,6 @@
 """Generate a QR code for the selected text and show it.
 
-Uses a rolling cache directory under ~/.cache/linuxpop/qr/ — keeps the
+Uses a rolling cache directory under ~/.cache/linuxpop/qr/ - keeps the
 last 20 QR images and trims older ones, so /tmp doesn't accumulate forever.
 """
 from __future__ import annotations

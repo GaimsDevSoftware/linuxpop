@@ -41,7 +41,7 @@ _reachable_cache: dict[str, float | bool] = {"value": False, "checked_at": 0.0}
 
 
 def _ollama_reachable() -> bool:
-    """Cached for 60s — plugin_loader.load_all() runs on every settings
+    """Cached for 60s - plugin_loader.load_all() runs on every settings
     change and was blocking GTK 0.5s per reload before this cache.
     """
     import time
@@ -83,7 +83,7 @@ def _call_ollama(prompt: str) -> str:
 
 def _run_async(prompt: str, label: str, text: str) -> None:
     """Run Ollama on a thread so GTK keeps responding, then notify."""
-    _notify(f"Ollama — {label}", "Thinking… (may take a few seconds)")
+    _notify(f"Ollama - {label}", "Thinking… (may take a few seconds)")
 
     def worker():
         try:
@@ -95,7 +95,7 @@ def _run_async(prompt: str, label: str, text: str) -> None:
             _notify("Ollama error", str(exc), urgent=True)
             return
         if not answer:
-            _notify(f"Ollama — {label}", "Empty response")
+            _notify(f"Ollama - {label}", "Empty response")
             return
         subprocess.run(
             ["xclip", "-selection", "clipboard"],
@@ -103,7 +103,7 @@ def _run_async(prompt: str, label: str, text: str) -> None:
             check=False,
             timeout=2.0,
         )
-        _notify(f"Ollama — {label} (copied)", answer)
+        _notify(f"Ollama - {label} (copied)", answer)
 
     threading.Thread(target=worker, daemon=True, name=f"ollama-{label}").start()
 
@@ -156,7 +156,7 @@ def _rewrite(text: str) -> None:
 
 def register(register_plugin) -> None:
     if not _ollama_reachable():
-        print(f"[ollama_ai] {OLLAMA_URL} unreachable — skipping registration")
+        print(f"[ollama_ai] {OLLAMA_URL} unreachable - skipping registration")
         return
 
     print(f"[ollama_ai] connecting to {OLLAMA_URL} (model: {OLLAMA_MODEL})")

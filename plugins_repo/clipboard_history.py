@@ -140,7 +140,7 @@ class Entry:
         if self.name:
             return self.name
         if self.kind == "image":
-            return f"🖼  Image — {Path(self.image_path).name}"
+            return f"🖼  Image - {Path(self.image_path).name}"
         s = self.text.replace("\n", "↵").replace("\t", "  ")
         return s[:max_len] + "…" if len(s) > max_len else s
 
@@ -175,7 +175,7 @@ def _load_list(path: Path, target: List[Entry]) -> bool:
     """Return True on a successful load (including empty list), False if
     the file existed but couldn't be parsed. Callers use this to decide
     whether subsequent reference-tracking operations (like orphan-image
-    sweeps) are safe — sweeping when the load failed would treat every
+    sweeps) are safe - sweeping when the load failed would treat every
     image as unreferenced and delete the lot."""
     if not path.is_file():
         return True
@@ -318,7 +318,7 @@ def _rename_snippet(snippet_id: str, new_name: str) -> None:
 # ----- trigger watcher (XRecord) -----------------------------------------
 
 # Characters that, when typed, cause us to check whether the buffer ends
-# with a known trigger. Whitespace only — espanso / AutoKey use the same
+# with a known trigger. Whitespace only - espanso / AutoKey use the same
 # rule. Including punctuation here breaks snippets that *start* with a
 # punctuation prefix (e.g. ";mvh"), so we keep the boundary set minimal.
 _TRIGGER_CHARS = set(" \t\n")
@@ -343,7 +343,7 @@ class _TriggerWatcher:
         self._thread: Optional[threading.Thread] = None
         self._buffer: List[str] = []
         self._lock = threading.Lock()
-        # Two Display handles — XRecord needs a dedicated one for the
+        # Two Display handles - XRecord needs a dedicated one for the
         # passive context; the other is used for keycode→char lookups.
         self._record_display = None
         self._local_display = None
@@ -377,7 +377,7 @@ class _TriggerWatcher:
             from Xlib.ext import record
             from Xlib.protocol import rq
         except ImportError:
-            print("[triggers] python-xlib missing record extension — disabled")
+            print("[triggers] python-xlib missing record extension - disabled")
             return
         try:
             self._record_display = Xdisplay.Display()
@@ -430,7 +430,7 @@ class _TriggerWatcher:
 
     def _on_keypress(self, event, X, XK) -> None:
         # Drop chord modifiers (Ctrl/Alt) so Ctrl-S doesn't pollute the
-        # buffer with 's'. Pure shift is fine — that's just capitalisation.
+        # buffer with 's'. Pure shift is fine - that's just capitalisation.
         state = event.state
         if state & (X.ControlMask | X.Mod1Mask | X.Mod4Mask):
             # Ctrl, Alt, Super → reset buffer so a chord can't be mistaken
@@ -485,7 +485,7 @@ class _TriggerWatcher:
             else:
                 return None
         # Caps Lock without Shift uppercases alphabetic chars; with Shift
-        # the two cancel out. (Approximation — non-Latin caps behavior
+        # the two cancel out. (Approximation - non-Latin caps behavior
         # varies by layout.)
         if caps_lock and not shift and s.isalpha():
             return s.upper()
@@ -539,7 +539,7 @@ def _trigger_word_boundary_ok(buf: str, trig_lc: str) -> bool:
       - it's at the very start of the buffer, OR
       - the char immediately before it is NOT a word char (letters /
         digits / underscore), OR
-      - the trigger itself starts with a non-word char (e.g. ';mvh') —
+      - the trigger itself starts with a non-word char (e.g. ';mvh') -
         the punctuation is its own boundary.
     Trailing boundary is implicit because we're called from a boundary
     handler (space/tab/enter just triggered the check).
@@ -564,7 +564,7 @@ def _detect_case_style(typed: str) -> str:
     if all(c.islower() for c in letters):
         return "lower"
     if all(c.isupper() for c in letters):
-        # Need at least 2 letters to call it intentional UPPER — a
+        # Need at least 2 letters to call it intentional UPPER - a
         # single capital letter is ambiguous with title-case.
         return "upper" if len(letters) >= 2 else "title"
     # First letter capital, rest lower → title
@@ -652,16 +652,16 @@ def _fire_trigger_expansion(
     once."""
     if snippet.kind != "text":
         return False
-    # Snippets with {ask:} can't run inline from a trigger — a blocking
+    # Snippets with {ask:} can't run inline from a trigger - a blocking
     # dialog mid-keystroke is jarring. Skip silently; the user can still
     # invoke them via the picker.
     if "{ask:" in snippet.text:
-        print(f"[triggers] '{trigger}' has {{ask:}} — skipping (use picker)")
+        print(f"[triggers] '{trigger}' has {{ask:}} - skipping (use picker)")
         return False
     # Per-app/site blocklist: skip expansion in user-configured apps
     # (password managers, terminals, banking sites, etc.).
     if _trigger_blocked():
-        print(f"[triggers] '{trigger}' skipped — active window is in blocklist")
+        print(f"[triggers] '{trigger}' skipped - active window is in blocklist")
         return False
     rendered, cursor_left, _ = render_placeholders(
         snippet.text, lambda _label: None,
@@ -686,7 +686,7 @@ def _fire_trigger_expansion(
         # for human-rate key timing; 16 ms (~1 frame at 60 Hz) is fast
         # enough that the user never sees the typed chars, but slow
         # enough that every BackSpace lands. --clearmodifiers is
-        # unnecessary here — Backspace doesn't care about modifier
+        # unnecessary here - Backspace doesn't care about modifier
         # state, and the modifier dance occasionally leaves Ctrl wedged.
         n_delete = len(trigger) + 1
         subprocess.run(
@@ -933,13 +933,13 @@ def _start_watcher_once() -> None:
     _load_dedup_state()       # keep dedup hash across daemon restarts
     # Only sweep when both reference sources loaded cleanly. A failed
     # load returns an empty list, which would mark every cached image
-    # as orphan and wipe the cache — silently destroying history that
+    # as orphan and wipe the cache - silently destroying history that
     # might be recoverable by hand-editing history.json.
     if history_ok and snippets_ok:
         _sweep_orphan_images()
     else:
         print("[clipboard] skipping orphan-image sweep "
-              "— a reference file failed to load")
+              "- a reference file failed to load")
     _watcher_stop.clear()
     _watcher_thread = threading.Thread(
         target=_watcher_loop, daemon=True, name="linuxpop-clipboard",
@@ -1018,8 +1018,8 @@ def _paste_to_window(
 
 # Recognises:
 #   {date} {time} {datetime} {weekday} {clipboard} {cursor} {name}
-#   {date:FORMAT}  — strftime; FORMAT runs up to the next "}"
-#   {ask:Label}    — label runs up to the next "}"
+#   {date:FORMAT}  - strftime; FORMAT runs up to the next "}"
+#   {ask:Label}    - label runs up to the next "}"
 _PLACEHOLDER_RE = re.compile(
     r"\{("
     r"date(?::[^}]+)?|time|datetime|weekday|clipboard|cursor|name"
@@ -1031,7 +1031,7 @@ _PLACEHOLDER_RE = re.compile(
 
 def _render_shell_token(cmd: str) -> str:
     """Run `cmd` through bash, return stdout (trailing newline stripped).
-    Gated behind snippet_shell_enabled — when off, returns the literal
+    Gated behind snippet_shell_enabled - when off, returns the literal
     {shell:...} token so the user sees that it didn't run. Timeout 5 s
     so a runaway snippet can't freeze the paste.
     """
@@ -1068,7 +1068,7 @@ def _render_date_token(spec: str, now_struct) -> str:
 
     - Pure strftime: `%A`, `%Y-%m-%d %H:%M`, ...
     - Math: `+7d`, `-1w`, `+3m`, `-2y`. m=30 days, y=365 days (good
-      enough for everyday writing — calendar-correct month math is a
+      enough for everyday writing - calendar-correct month math is a
       surprise gift no one asked for).
     - Math + format: `+7d:%A`.
     """
@@ -1113,13 +1113,13 @@ def render_placeholders(
     found in the snippet. `options` is None for free-text fields, or a
     list of strings for dropdown fields ({ask:Status|Open|Closed}).
     Callback returns {label: answer} or None on cancel. Multiple
-    {ask:Label} for the same Label share one field — three sequential
+    {ask:Label} for the same Label share one field - three sequential
     prompts collapse into one dialog with three fields.
 
     Returns (rendered_text, cursor_left_count, cancelled).
       - cursor_left_count is the number of Left arrows to send after paste
         so the caret lands where the first {cursor} token was.
-      - cancelled=True if the user dismissed the {ask:} dialog — caller
+      - cancelled=True if the user dismissed the {ask:} dialog - caller
         should abort the paste.
 
     {clipboard} is captured BEFORE we mutate the clipboard ourselves.
@@ -1167,9 +1167,9 @@ def render_placeholders(
             return time.strftime("%Y-%m-%d", now)
         if token.startswith("date:"):
             # Three shapes:
-            #   {date:%A}        — strftime now
-            #   {date:+7d}       — now + 7d, default %Y-%m-%d
-            #   {date:+7d:%A}    — now + 7d, formatted
+            #   {date:%A}        - strftime now
+            #   {date:+7d}       - now + 7d, default %Y-%m-%d
+            #   {date:+7d:%A}    - now + 7d, formatted
             # Math units: d (day), w (week), m (≈30 days), y (≈365 days).
             spec = token[5:]
             try:
@@ -1252,14 +1252,14 @@ class _PickerDialog:
         self.target_window = target_window
 
         win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-        win.set_title("LinuxPop — Clipboard & Snippets")
+        win.set_title("LinuxPop - Clipboard & Snippets")
         win.set_default_size(580, 540)
         win.set_position(Gtk.WindowPosition.CENTER)
         win.set_icon_name("linuxpop")
         win.set_skip_taskbar_hint(True)
         win.set_skip_pager_hint(True)
         win.set_keep_above(True)
-        # Borderless, ephemeral picker — no title bar, no min/max/close
+        # Borderless, ephemeral picker - no title bar, no min/max/close
         # decorations. Dismissed by Esc, click-outside, or focus-out.
         win.set_decorated(False)
         win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
@@ -1294,7 +1294,7 @@ class _PickerDialog:
         recent_scroll.add(self.recent_listbox)
         self.notebook.append_page(recent_scroll, Gtk.Label(label="Recent"))
 
-        # Snippets tab — listbox plus a "+ New snippet" button under it.
+        # Snippets tab - listbox plus a "+ New snippet" button under it.
         snippets_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         snippets_scroll = Gtk.ScrolledWindow()
         snippets_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -1334,7 +1334,7 @@ class _PickerDialog:
         _force_to_front(win)
         _stamp("force_to_front")
         # Defer search-entry focus until AFTER the WM has had a chance to
-        # process our focus request — calling grab_focus immediately after
+        # process our focus request - calling grab_focus immediately after
         # show_all races the FocusIn event and silently fails.
         if self.search_entry is not None:
             GLib.idle_add(self._grab_search_focus)
@@ -1346,7 +1346,7 @@ class _PickerDialog:
         return False  # one-shot
 
     def _on_focus_out(self, _widget, _event) -> bool:
-        # Don't close while a rename / pin prompt is showing — that
+        # Don't close while a rename / pin prompt is showing - that
         # dialog is transient_for=self.dialog and tearing it down would
         # orphan the prompt.
         if self._modal_child_open:
@@ -1356,7 +1356,7 @@ class _PickerDialog:
         # ping, etc.) and immediately give it back. Destroying on the
         # first focus-out makes the picker vanish mid-search. Defer the
         # check: if focus has actually moved elsewhere 120 ms from now,
-        # close. Otherwise the picker is still focused — keep it.
+        # close. Otherwise the picker is still focused - keep it.
         if self.dialog is None:
             return False
         def _confirm_focus_lost() -> bool:
@@ -1396,7 +1396,7 @@ class _PickerDialog:
             entries = list(_history)
         if not entries:
             self.recent_listbox.add(self._empty_row("History is empty",
-                                                   "Copy something — it appears here."))
+                                                   "Copy something - it appears here."))
         else:
             for entry in entries:
                 self.recent_listbox.add(self._make_row(entry, is_snippet=False))
@@ -1548,7 +1548,7 @@ class _PickerDialog:
         target = self.target_window  # captured before we showed
         cursor_left = 0
         # Only snippets get placeholder substitution. Recent-history entries
-        # are pasted verbatim — a "{date}" the user copied from somewhere
+        # are pasted verbatim - a "{date}" the user copied from somewhere
         # else should stay literal.
         if is_snippet and entry.kind == "text" and "{" in entry.text:
             rendered, cursor_left, cancelled = render_placeholders(
@@ -1632,7 +1632,7 @@ class _PickerDialog:
             return  # cancelled
         name, trigger = result
         _pin_entry(entry, name)
-        # _pin_entry inserts at index 0 — find that newest snippet and
+        # _pin_entry inserts at index 0 - find that newest snippet and
         # write the trigger through. Avoids reaching into internals.
         if trigger:
             with _snippets_lock:
@@ -1665,7 +1665,7 @@ class _PickerDialog:
     def _show_snippet_help_dialog(self, parent: Gtk.Window) -> None:
         """A friendly walkthrough of what snippets are, how triggers work,
         and what every placeholder does. Intentionally written for the
-        person who is NOT a programmer — heavy on examples, light on jargon."""
+        person who is NOT a programmer - heavy on examples, light on jargon."""
         self._modal_child_open = True
         try:
             dlg = Gtk.Dialog(
@@ -1695,7 +1695,7 @@ class _PickerDialog:
                 "<span foreground='#b8c0d4'>A <b>snippet</b> is a "
                 "piece of text you save once and reuse forever. Your "
                 "email signature, a phone number, a reply to a "
-                "frequently asked question, a bug-report template — "
+                "frequently asked question, a bug-report template - "
                 "anything you find yourself typing more than twice.</span>")
             outer.pack_start(intro, False, False, 0)
 
@@ -1718,13 +1718,13 @@ class _PickerDialog:
                  "you can type <tt>;email</tt> followed by a space "
                  "anywhere on your computer and LinuxPop replaces it "
                  "with the full text. One snippet can have many "
-                 "triggers — write them comma-separated: "
+                 "triggers - write them comma-separated: "
                  "<tt>rraak, rb, email</tt>. Triggers must be turned "
                  "on in Settings → Hotkeys."),
                 ("3.", "Let it fill in the blanks",
                  "A snippet can contain little tags like <tt>{date}</tt> "
                  "or <tt>{ask:Name}</tt>. They're called <b>placeholders</b> "
-                 "and they get filled in for you when you paste — "
+                 "and they get filled in for you when you paste - "
                  "today's date, your clipboard, an answer to a question, etc."),
             ]:
                 row = Gtk.Box(
@@ -1756,13 +1756,13 @@ class _PickerDialog:
             grid.set_margin_top(4)
             ph_rows = [
                 ("{date}",
-                 "Today's date — e.g. 2026-05-27."),
+                 "Today's date - e.g. 2026-05-27."),
                 ("{time}",
-                 "Current time — e.g. 14:30."),
+                 "Current time - e.g. 14:30."),
                 ("{datetime}",
-                 "Both at once — 2026-05-27 14:30."),
+                 "Both at once - 2026-05-27 14:30."),
                 ("{weekday}",
-                 "Name of the day, in your system language — Wednesday / onsdag."),
+                 "Name of the day, in your system language - Wednesday / onsdag."),
                 ("{date:FORMAT}",
                  "Custom date format. <tt>%A</tt>=weekday, <tt>%d</tt>=day, "
                  "<tt>%B</tt>=month name, <tt>%Y</tt>=year, <tt>%V</tt>=week number. "
@@ -1788,7 +1788,7 @@ class _PickerDialog:
                  "<tt>{ask:Status|Open|Closed|WIP}</tt> gives you a picker."),
                 ("{shell:CMD}",
                  "Runs a shell command and pastes its output. Off by "
-                 "default for safety — turn on in Settings if you want it. "
+                 "default for safety - turn on in Settings if you want it. "
                  "Example: <tt>{shell:date -u}</tt> for UTC time."),
             ]
             for i, (tag, desc) in enumerate(ph_rows):
@@ -1830,7 +1830,7 @@ class _PickerDialog:
                  "Renders e.g. <i>Møte om onsdag 03. juni</i>."),
                 ("Empty checkbox where the cursor lands after",
                  "[ ] {cursor}",
-                 "Paste, then start typing the to-do — the cursor is already in place."),
+                 "Paste, then start typing the to-do - the cursor is already in place."),
             ]:
                 head = Gtk.Label(xalign=0)
                 head.set_markup(f"<b>{GLib.markup_escape_text(title)}</b>")
@@ -1920,7 +1920,7 @@ class _PickerDialog:
             triggers_on = bool(_cfg("snippet_triggers_enabled", False))
             if triggers_on:
                 trig_entry.set_placeholder_text(
-                    "e.g. rraak, rb — any of them auto-expands"
+                    "e.g. rraak, rb - any of them auto-expands"
                 )
             else:
                 trig_entry.set_placeholder_text(
@@ -1999,7 +1999,7 @@ class _PickerDialog:
             trigger_entry = Gtk.Entry()
             if triggers_on:
                 trigger_entry.set_placeholder_text(
-                    "e.g. rraak, rb — any of them + space/tab auto-expands"
+                    "e.g. rraak, rb - any of them + space/tab auto-expands"
                 )
             else:
                 trigger_entry.set_placeholder_text(
@@ -2009,7 +2009,7 @@ class _PickerDialog:
 
             body_label = Gtk.Label(xalign=0, margin_top=6)
             body_label.set_markup(
-                "<b>Text</b>  <small>(this is the snippet body — "
+                "<b>Text</b>  <small>(this is the snippet body - "
                 "type or paste what you want to expand to)</small>"
             )
             content.add(body_label)
@@ -2069,7 +2069,7 @@ class _PickerDialog:
                 ("{date}",        "{date}",        "Current date (YYYY-MM-DD)", 0, 0),
                 ("{time}",        "{time}",        "Current time (HH:MM)",      0, 0),
                 ("{datetime}",    "{datetime}",    "Date + time together",      0, 0),
-                ("{weekday}",     "{weekday}",     "Name of the day (Tirsdag / Tuesday — follows your system language)", 0, 0),
+                ("{weekday}",     "{weekday}",     "Name of the day (Tirsdag / Tuesday - follows your system language)", 0, 0),
                 ("{date:FORMAT}", "{date:%A %d %B}", "Custom date format. Codes: %A=weekday, %d=day, %B=month name, %V=week number, %Y=year. Edit the highlighted part to change.", 6, 8),
                 ("{date:+7d}",    "{date:+7d}",    "Date math: shift by days (d) / weeks (w) / months (m≈30d) / y. Edit the number to change. Combine with format like {date:+7d:%A}.", 6, 3),
                 ("{name}",        "{name}",        "Your full name (from your user account)", 0, 0),
@@ -2077,7 +2077,7 @@ class _PickerDialog:
                 ("{cursor}",      "{cursor}",      "Where the caret lands after paste", 0, 0),
                 ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Multiple {ask:} fields show in one dialog. Rename 'Label' to what you want the prompt to say.", 5, 5),
                 ("{ask:Label|Opt}", "{ask:Status|Open|Closed|WIP}", "Dropdown variant: pipe-separated options after the label give a chooser instead of free text. Edit the label and options to match your case.", 5, 6),
-                ("{shell:CMD}",   "{shell:date -u}", "Run a shell command and paste its output. Requires 'Shell expansion' enabled in Settings — disabled by default for safety.", 7, 8),
+                ("{shell:CMD}",   "{shell:date -u}", "Run a shell command and paste its output. Requires 'Shell expansion' enabled in Settings - disabled by default for safety.", 7, 8),
             ]
             for label, token, tip, sel_off, sel_len in chip_specs:
                 btn = Gtk.Button(label=label)
@@ -2196,7 +2196,7 @@ def register(register_plugin) -> None:
     # clipboard plugin off (no watcher thread, no hotkey, no popup
     # button) without having to uninstall the file.
     if not bool(_cfg("clipboard_history_enabled", True)):
-        print("[clipboard] disabled in settings — not registering")
+        print("[clipboard] disabled in settings - not registering")
         return
     _start_watcher_once()
     register_plugin(Plugin(

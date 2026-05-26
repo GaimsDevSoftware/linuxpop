@@ -5,7 +5,7 @@ Shown exactly once, on the first time LinuxPop starts. The goal is to:
   1. Explain in 10 seconds how to use the app (select text, get popup).
   2. Point at the tray icon so the user knows where to find settings.
   3. Quietly offer a way to support the project. The support row is a
-     calm secondary CTA — no nag, no countdown, no modal-blocking guilt
+     calm secondary CTA - no nag, no countdown, no modal-blocking guilt
      trip. Research is clear that nag screens kill goodwill and don't
      meaningfully lift conversion.
 
@@ -25,11 +25,11 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 _SUPPORT_BUTTONS = [
     # (settings-key, icon, label, accent-class)
-    # PayPal is the only donation channel exposed in the picker —
+    # PayPal is the only donation channel exposed in the picker -
     # Ko-fi, Buy Me a Coffee and GitHub Sponsors were removed in
     # May 2026 because no real account existed behind any of them,
     # so the buttons led to 404s. (GitHub still shows its own
-    # Sponsor button via .github/FUNDING.yml — that goes straight
+    # Sponsor button via .github/FUNDING.yml - that goes straight
     # to paypal.me/linuxpop too.) To add another channel later,
     # add its key here AND the default URL in settings.py.
     ("support_paypal_url",   "emblem-favorite-symbolic",

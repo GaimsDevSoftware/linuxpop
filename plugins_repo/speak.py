@@ -20,7 +20,7 @@ def _speak(text: str) -> None:
         subprocess.Popen(["espeak", "--", text], start_new_session=True)
         return
     subprocess.run(
-        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Speak — missing dependency",
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Speak - missing dependency",
          "Install spd-say (speech-dispatcher) or espeak"],
         check=False,
     )

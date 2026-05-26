@@ -29,7 +29,7 @@ HICOLOR_APPS = Path.home() / ".local/share/icons/hicolor/scalable/apps"
 # Curated set seeded into a brand-new install. Aim is "useful within
 # 5 seconds of first selection" without overwhelming the popup. Dev-
 # heavy plugins (base64, json_format, etc.) and niche transforms stay
-# in the catalogue — they're one click away from Plugin Manager.
+# in the catalogue - they're one click away from Plugin Manager.
 DEFAULT_PLUGIN_SEEDS = (
     "editing_actions.py",       # Cut / Paste / Backspace / Select All
     "clipboard_history.py",     # the core picker
@@ -42,7 +42,7 @@ _PLUGIN_SEED_MARKER = USER_PLUGIN_DIR.parent / ".default-plugins-seeded"
 
 
 def _ensure_on_path() -> None:
-    """User plugins import classifier/plugin_base — make sure those resolve."""
+    """User plugins import classifier/plugin_base - make sure those resolve."""
     if LINUXPOP_DIR not in sys.path:
         sys.path.insert(0, LINUXPOP_DIR)
 
@@ -120,7 +120,7 @@ def _install_all_icons() -> None:
     if copied_any:
         # Rebuild on-disk cache so future GTK processes pick them up faster.
         # Cold-cache runs of gtk-update-icon-cache have been seen to take
-        # 3-6 seconds on machines with large icon dirs — blocking the GTK
+        # 3-6 seconds on machines with large icon dirs - blocking the GTK
         # main thread during startup. Detach to a daemon thread; the
         # in-process icon theme has already been refreshed via the
         # rescan_if_needed() call above, so the daemon doesn't need this
@@ -216,7 +216,7 @@ def _register_builtins() -> None:
         priority=10,
     ))
 
-    # COMMAND — also shown for PATH-classified selections that look like
+    # COMMAND - also shown for PATH-classified selections that look like
     # an executable script ('./build.sh', '~/bin/deploy'), via the
     # predicate. Lets users run a script with one click instead of having
     # to switch to a terminal and type the path.
@@ -224,7 +224,7 @@ def _register_builtins() -> None:
 
     def _can_run(text: str) -> bool:
         # If classify() already returned COMMAND we wouldn't be here via
-        # the PATH branch — for the COMMAND branch, the plugin's content_types
+        # the PATH branch - for the COMMAND branch, the plugin's content_types
         # gate already matched. We only need to gate the PATH case.
         from classifier import classify as _classify
         ct = _classify(text)
@@ -330,7 +330,7 @@ def _load_user_plugins() -> None:
             if spec is None or spec.loader is None:
                 continue
             module = importlib.util.module_from_spec(spec)
-            # Register in sys.modules BEFORE exec — Python 3.12 dataclass
+            # Register in sys.modules BEFORE exec - Python 3.12 dataclass
             # introspection needs cls.__module__ to resolve.
             sys.modules[mod_name] = module
             spec.loader.exec_module(module)

@@ -9,12 +9,12 @@ action declaration. Four action types cover ~90% of real plugin ideas:
   - copy_transformed: render template, put result on clipboard
 
 Available substitution variables in templates:
-  {text}        — raw selection
-  {text_url}    — percent-encoded (safe for URLs)
-  {text_shell}  — shlex.quoted (safe for shell)
-  {text_upper}  — uppercased
-  {text_lower}  — lowercased
-  {text_strip}  — whitespace-trimmed
+  {text}        - raw selection
+  {text_url}    - percent-encoded (safe for URLs)
+  {text_shell}  - shlex.quoted (safe for shell)
+  {text_upper}  - uppercased
+  {text_lower}  - lowercased
+  {text_strip}  - whitespace-trimmed
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ VALID_ACTION_TYPES = ("open_url", "run_command", "notify", "copy_transformed")
 
 
 def _mock_case(text: str) -> str:
-    """Random upper/lower per character — the "mocking SpongeBob" meme
+    """Random upper/lower per character - the "mocking SpongeBob" meme
     format. Seeded with the text itself so the same input always gives
     the same result (so previews and clipboard contents are stable;
     re-clicking won't produce a different jumble each time)."""
@@ -61,7 +61,7 @@ def _render(template: str, text: str) -> str:
         "text_upper": text.upper(),
         "text_lower": text.lower(),
         "text_strip": text.strip(),
-        "text_mock":  _mock_case(text),  # jEg eR sJeFeN — for mocking quotes
+        "text_mock":  _mock_case(text),  # jEg eR sJeFeN - for mocking quotes
     }
     try:
         return template.format_map(_DefaultMissing(safe))
@@ -72,7 +72,7 @@ def _render(template: str, text: str) -> str:
 
 class _DefaultMissing(dict):
     """str.format_map dict that returns '{name}' for missing keys instead of
-    raising KeyError — keeps the template usable even with typos."""
+    raising KeyError - keeps the template usable even with typos."""
     def __missing__(self, key):
         return "{" + key + "}"
 
@@ -112,14 +112,14 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
         if bad:
             name = recipe.get("name") or recipe.get("tooltip") or "unnamed"
             print(f"[recipe] REFUSED to load run_command recipe {name!r}: "
-                  f"template uses unsafe placeholder(s) {sorted(bad)} — "
+                  f"template uses unsafe placeholder(s) {sorted(bad)} - "
                   f"replace with {{text_shell}} (shell-quoted) or "
                   f"{{text_url}} (URL-encoded).")
             def disabled_handler(_text: str) -> None:
                 subprocess.run(
                     ["notify-send", "--hint=byte:transient:1", "-t", "5000",  "-u", "critical",
                      "-i", "dialog-warning", "LinuxPop recipe disabled",
-                     f"{name}: unsafe template — see ~/.cache/linuxpop/linuxpop.log"],
+                     f"{name}: unsafe template - see ~/.cache/linuxpop/linuxpop.log"],
                     check=False,
                 )
             return disabled_handler
@@ -159,7 +159,7 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
             )
         return handler
 
-    # Unknown type — visible no-op so the popup button still appears
+    # Unknown type - visible no-op so the popup button still appears
     def handler(text: str) -> None:
         print(f"[recipe] unknown action type for {recipe.get('name')!r}: {atype!r}")
     return handler
@@ -206,12 +206,12 @@ def _seed_default_recipes() -> None:
     """First-run only: if the user has no recipes yet, copy a small curated
     set from the repo's plugins_repo/recipes/ so a fresh install shows
     useful buttons (Wikipedia, YouTube) right away. Touches a marker so
-    this never runs twice — users who later delete a default recipe
+    this never runs twice - users who later delete a default recipe
     don't get it re-installed."""
     if _SEED_MARKER.is_file():
         return
     RECIPES_DIR.mkdir(parents=True, exist_ok=True)
-    # If the user has already curated this dir, respect it — don't seed
+    # If the user has already curated this dir, respect it - don't seed
     # on top of an existing setup.
     has_existing = any(RECIPES_DIR.glob("*.json"))
     if has_existing:

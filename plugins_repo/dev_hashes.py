@@ -14,7 +14,7 @@ from classifier import ContentType
 from plugin_base import Plugin
 
 # JWT: three base64url segments separated by dots. Header decodes to JSON
-# starting with '{' — we don't validate that here, just shape-match.
+# starting with '{' - we don't validate that here, just shape-match.
 _JWT_SHAPE = re.compile(r"^[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*$")
 
 
@@ -84,7 +84,7 @@ def _jwt_decode(text: str) -> None:
 def register(register_plugin) -> None:
     types = (ContentType.PLAIN_TEXT,)
     # Predicate: don't offer to hash 'Hello world' or a two-letter
-    # selection — typical use is hashing a key, password, or file
+    # selection - typical use is hashing a key, password, or file
     # contents, all of which are at least 8 chars and rarely natural
     # sentences. Same shape as the base64-encode gate.
     def _worth_hashing(text: str) -> bool:

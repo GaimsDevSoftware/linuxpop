@@ -12,7 +12,7 @@ ICON_DIR = str(Path(__file__).resolve().parent / "icons")
 ICON_NAME = "linuxpop-tray-symbolic"  # monochrome icon for the panel
 APP_ICON_NAME = "linuxpop"             # colored icon for dialogs / launcher
 
-# Standard XDG user icon location — required for AppIndicator to find it via
+# Standard XDG user icon location - required for AppIndicator to find it via
 # the GTK theme machinery on most desktops.
 USER_ICON_DIR = Path.home() / ".local/share/icons/hicolor/scalable/apps"
 
@@ -94,7 +94,7 @@ class Tray:
         self._indicator = None
 
         if AppIndicator is None:
-            print("[tray] AppIndicator not available — tray icon disabled")
+            print("[tray] AppIndicator not available - tray icon disabled")
             return
 
         # Make sure the icon is in the standard XDG location so the panel

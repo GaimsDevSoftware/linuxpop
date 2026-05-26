@@ -2,9 +2,9 @@
 
 > A PopClip-inspired floating action popup for Linux.
 
-Select any text on your screen — LinuxPop pops up a small bar of context-aware
+Select any text on your screen - LinuxPop pops up a small bar of context-aware
 actions right above the selection. Copy, open URLs, run shell commands, ask an
-AI, encode/decode, calculate — all without leaving the keyboard or mouse where
+AI, encode/decode, calculate - all without leaving the keyboard or mouse where
 your work is.
 
 Works on X11 (Cinnamon, GNOME on X11, KDE, XFCE, MATE, ...). Free, open
@@ -14,13 +14,13 @@ source, no accounts, no telemetry.
 
 ## Features
 
-- **Context-aware actions** — different buttons for URLs, shell commands, plain
+- **Context-aware actions** - different buttons for URLs, shell commands, plain
   text, paths and emails
-- **Global hotkey** — summon the popup on the current selection from any app
-- **System tray icon** — quick access to settings, plugin manager and toggle
-- **Plugin system** — drop a `.py` file in `~/.config/linuxpop/plugins/` or
+- **Global hotkey** - summon the popup on the current selection from any app
+- **System tray icon** - quick access to settings, plugin manager and toggle
+- **Plugin system** - drop a `.py` file in `~/.config/linuxpop/plugins/` or
   install from the built-in catalog
-- **Bundled plugins** — Base64, JSON pretty-print, URL encode/decode,
+- **Bundled plugins** - Base64, JSON pretty-print, URL encode/decode,
   calculator, case conversion, slugify, QR codes, send-to-AI, local Ollama AI
 - **No data leaves your machine** unless a plugin explicitly does so (e.g.
   "Send to Claude" opens a browser)
@@ -125,15 +125,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full plugin API.
 
 ## Limitations
 
-- **X11 only** — Wayland session APIs don't expose selection or global hotkeys
+- **X11 only** - Wayland session APIs don't expose selection or global hotkeys
   the same way. A Wayland port is planned.
-- **HiDPI** — works, but tested mainly on 2× scaling. File an issue if
+- **HiDPI** - works, but tested mainly on 2× scaling. File an issue if
   positioning is off on your setup.
-- **Some panel grabs** — if another app holds an X11 input grab (e.g. an open
+- **Some panel grabs** - if another app holds an X11 input grab (e.g. an open
   menu), the popup may not catch outside-clicks instantly.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

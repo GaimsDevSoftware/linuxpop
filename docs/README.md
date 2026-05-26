@@ -5,13 +5,13 @@ developer docs. Hosted on GitHub Pages directly from this `/docs` folder.
 
 ## Files
 
-- `index.html` — landing page (hero + features + install)
-- `plugins.html` — plugin store (live search + tag filter)
-- `develop.html` — wizard + Python plugin guide
-- `assets/style.css` — all styling
-- `assets/script.js` — store search/filter
-- `assets/icons/*.svg` — copied from the app's `icons/` directory
-- `.nojekyll` — tells GitHub Pages not to run Jekyll on this folder
+- `index.html` - landing page (hero + features + install)
+- `plugins.html` - plugin store (live search + tag filter)
+- `develop.html` - wizard + Python plugin guide
+- `assets/style.css` - all styling
+- `assets/script.js` - store search/filter
+- `assets/icons/*.svg` - copied from the app's `icons/` directory
+- `.nojekyll` - tells GitHub Pages not to run Jekyll on this folder
   (so the `assets/` directory isn't filtered)
 
 ## Enable GitHub Pages

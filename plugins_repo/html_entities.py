@@ -8,7 +8,7 @@ import subprocess
 from classifier import ContentType
 from plugin_base import Plugin
 
-# Named or numeric HTML entities — &amp; &#39; &#x2F; etc.
+# Named or numeric HTML entities - &amp; &#39; &#x2F; etc.
 _HTML_ENTITY = re.compile(r"&(?:[a-zA-Z][a-zA-Z0-9]{1,31}|#[0-9]+|#x[0-9a-fA-F]+);")
 
 

@@ -1,14 +1,14 @@
 [
   {
     "file": "editing_actions.py",
-    "title": "Editing — Cut, Paste, Backspace, Select All",
+    "title": "Editing - Cut, Paste, Backspace, Select All",
     "description": "PopClip's bread-and-butter buttons. Cut/Paste/Delete operate on the selection; Select All expands it. Sends Ctrl+X / Ctrl+V / Backspace / Ctrl+A via xdotool.",
     "category": "Productivity",
     "tags": ["editing", "essentials"]
   },
   {
     "file": "formatting.py",
-    "title": "Formatting — Bold, Italic, Underline",
+    "title": "Formatting - Bold, Italic, Underline",
     "description": "Rich-text formatting via Ctrl+B / Ctrl+I / Ctrl+U. Works in Google Docs, Word, LibreOffice, Notion, Obsidian and most webmail composers.",
     "category": "Productivity",
     "tags": ["editing", "rich-text"]
@@ -58,7 +58,7 @@
   {
     "file": "text_transformations.py",
     "title": "Text transformations bundle",
-    "description": "Reverse, sort lines, deduplicate, trim, strip HTML, remove diacritics, ASCII-only, swap case — 8 buttons in one plugin",
+    "description": "Reverse, sort lines, deduplicate, trim, strip HTML, remove diacritics, ASCII-only, swap case - 8 buttons in one plugin",
     "category": "Productivity",
     "tags": ["text", "utility"]
   },
@@ -74,7 +74,7 @@
     "kind": "recipe",
     "file": "google-search.json",
     "title": "Search Google",
-    "description": "Opens Google with the selection pre-filled — auto-submits",
+    "description": "Opens Google with the selection pre-filled - auto-submits",
     "category": "Web shortcuts",
     "tags": ["web", "search"]
   },
@@ -82,7 +82,7 @@
     "kind": "recipe",
     "file": "define.json",
     "title": "Define this word",
-    "description": "Looks up a dictionary definition via Google's 'define' search — the fastest way to clarify an unfamiliar word",
+    "description": "Looks up a dictionary definition via Google's 'define' search - the fastest way to clarify an unfamiliar word",
     "category": "Web shortcuts",
     "tags": ["web", "dictionary", "essentials"]
   },
@@ -130,7 +130,7 @@
     "kind": "recipe",
     "file": "mdn-docs.json",
     "title": "Search MDN web docs",
-    "description": "Mozilla Developer Network — HTML/CSS/JS reference",
+    "description": "Mozilla Developer Network - HTML/CSS/JS reference",
     "category": "Web shortcuts",
     "tags": ["web", "developer"]
   },
@@ -162,14 +162,14 @@
   {
     "file": "send_to_ai.py",
     "title": "Send to chat AI",
-    "description": "Copies text and opens Claude/ChatGPT/Gemini/Perplexity/Google AI — no setup, no API keys",
+    "description": "Copies text and opens Claude/ChatGPT/Gemini/Perplexity/Google AI - no setup, no API keys",
     "category": "AI",
     "tags": ["ai", "web"]
   },
   {
     "file": "ollama_ai.py",
     "title": "Local AI (Ollama)",
-    "description": "Explain, summarize, translate, rewrite — runs locally via Ollama (free, offline). Requires Ollama with a model installed.",
+    "description": "Explain, summarize, translate, rewrite - runs locally via Ollama (free, offline). Requires Ollama with a model installed.",
     "category": "AI",
     "tags": ["ai", "local", "offline"]
   },
@@ -198,7 +198,7 @@
   {
     "file": "dev_hashes.py",
     "title": "Hashes and JWT decode",
-    "description": "SHA-256, MD5 and JWT payload decode — output to clipboard with a notification",
+    "description": "SHA-256, MD5 and JWT payload decode - output to clipboard with a notification",
     "category": "Developer",
     "tags": ["developer", "encoding"]
   },

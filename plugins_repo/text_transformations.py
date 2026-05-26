@@ -15,7 +15,7 @@ from plugin_base import Plugin
 
 def _copy(text: str, label: str) -> None:
     """Replace the user's selection with `text` AND copy to clipboard.
-    Falls back to clipboard-only if the focused widget is read-only —
+    Falls back to clipboard-only if the focused widget is read-only -
     user still gets the transformed text, they just have to paste it
     themselves. Imported from actions so all transformers share the
     same paste-over-selection behaviour."""
@@ -130,12 +130,12 @@ def _worth_reversing(text: str) -> bool:
 
 
 def _worth_mocking(text: str) -> bool:
-    """Mocking SpongeBob is for full quotes — single words look silly."""
+    """Mocking SpongeBob is for full quotes - single words look silly."""
     return _has_letters(text) and len(text.strip()) >= 4
 
 
 def _mock_case(text: str) -> None:
-    """Random upper/lower per char — the SpongeBob mocking format.
+    """Random upper/lower per char - the SpongeBob mocking format.
     Seeded with the selection so the result is stable across re-clicks
     on the same text (less surprising than fresh randomness each time)."""
     rng = _random.Random(text)
@@ -145,7 +145,7 @@ def _mock_case(text: str) -> None:
 
 def register(register_plugin) -> None:
     types = (ContentType.PLAIN_TEXT,)
-    # Reverse: any non-empty selection — no predicate needed.
+    # Reverse: any non-empty selection - no predicate needed.
     register_plugin(Plugin(name="reverse-text", icon="object-flip-horizontal-symbolic",
         tooltip="Reverse text", handler=_reverse, content_types=types, priority=150,
         predicate=_worth_reversing))

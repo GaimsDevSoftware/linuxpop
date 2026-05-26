@@ -9,7 +9,7 @@ from plugin_base import Plugin
 
 
 def _looks_like_json(text: str) -> bool:
-    """Cheap shape check — does the text *start* with a JSON container or
+    """Cheap shape check - does the text *start* with a JSON container or
     string? We deliberately don't json.loads() here (too slow to run on
     every popup show)."""
     s = text.lstrip()
@@ -18,7 +18,7 @@ def _looks_like_json(text: str) -> bool:
     first = s[0]
     if first not in '{["':
         return False
-    # A lone '{' or '[' is too eager — require at least a paired closer
+    # A lone '{' or '[' is too eager - require at least a paired closer
     # somewhere in the selection.
     last = s.rstrip()[-1:]
     return (first, last) in (("{", "}"), ("[", "]"), ('"', '"'))
