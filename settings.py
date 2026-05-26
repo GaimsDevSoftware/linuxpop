@@ -42,6 +42,11 @@ DEFAULTS: dict[str, Any] = {
     # Use it to silence expansion in password managers, terminals, your
     # bank's website, etc. without disabling triggers globally.
     "trigger_blocklist_patterns": [],
+    # Shell extension in snippets — when ON, {shell:CMD} tokens execute
+    # bash and inject stdout. Off by default because importing a snippet
+    # from elsewhere with a hostile {shell:...} would run code on your
+    # machine; treat this like enabling macros in a document. 5 s timeout.
+    "snippet_shell_enabled": False,
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",
     # Default ON. Poll the keyboard state every 50 ms instead of
