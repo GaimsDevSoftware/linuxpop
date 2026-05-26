@@ -358,6 +358,84 @@ class SettingsDialog:
             lambda s, _p: clip_row.set_sensitive(s.get_active()))
         group.add(clip_row)
 
+        # Snippet triggers (text expansion). Off by default — turning it
+        # on means LinuxPop attaches to the X11 RECORD extension and sees
+        # every keystroke on the desktop. Be honest about that in the
+        # subtitle so the user can decide.
+        trigger_row = Handy.ActionRow()
+        trigger_row.set_title("Snippet triggers (text expansion)")
+        trigger_row.set_subtitle(
+            "When ON, typing a snippet's trigger code (e.g. 'rraak') followed "
+            "by space or tab auto-expands it. Requires LinuxPop to watch "
+            "global keystrokes locally — keys are matched against your "
+            "snippet triggers only, never logged or sent anywhere.")
+        trigger_switch = Gtk.Switch()
+        trigger_switch.set_valign(Gtk.Align.CENTER)
+        trigger_switch.set_active(
+            bool(self._settings.get("snippet_triggers_enabled", False)))
+        trigger_switch.connect(
+            "notify::active", self._on_switch, "snippet_triggers_enabled")
+        trigger_switch.connect(
+            "notify::active", lambda *_: self._apply_trigger_toggle())
+        trigger_row.add(trigger_switch)
+        trigger_row.set_activatable_widget(trigger_switch)
+        trigger_row.set_sensitive(
+            bool(self._settings.get("clipboard_history_enabled", True)))
+        clip_master_switch.connect(
+            "notify::active",
+            lambda s, _p: trigger_row.set_sensitive(s.get_active()))
+        group.add(trigger_row)
+
+        # Per-app/site blocklist for trigger expansion.
+        tblock_row = Handy.ActionRow()
+        tblock_row.set_title("Don't expand triggers in these apps or sites")
+        tblock_row.set_subtitle(
+            "One match per line. Matched against the focused window's title "
+            "and class (e.g. 'KeePassXC', 'gnome-terminal', 'bank.no'). "
+            "Useful for password fields, terminals, and security-sensitive sites.")
+        group.add(tblock_row)
+
+        tblock_scroll = Gtk.ScrolledWindow()
+        tblock_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
+                                  Gtk.PolicyType.AUTOMATIC)
+        tblock_scroll.set_min_content_height(90)
+        tblock_scroll.set_shadow_type(Gtk.ShadowType.IN)
+        tblock_scroll.set_margin_top(2)
+        tblock_scroll.set_margin_bottom(8)
+        tblock_scroll.set_margin_start(14)
+        tblock_scroll.set_margin_end(14)
+        tblock_view = Gtk.TextView()
+        tblock_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        try:
+            tblock_view.set_monospace(True)
+        except AttributeError:
+            pass
+        tblock_buf = tblock_view.get_buffer()
+        tblock_buf.set_text("\n".join(
+            self._settings.get("trigger_blocklist_patterns") or []))
+
+        self._tblock_save_pending_id: int | None = None
+
+        def _flush_tblock(buf: Gtk.TextBuffer) -> bool:
+            self._tblock_save_pending_id = None
+            start, end = buf.get_start_iter(), buf.get_end_iter()
+            raw = buf.get_text(start, end, True)
+            patterns = [
+                line.strip() for line in raw.splitlines() if line.strip()
+            ]
+            self._save_key("trigger_blocklist_patterns", patterns)
+            return False
+
+        def _on_tblock_changed(buf: Gtk.TextBuffer) -> None:
+            if self._tblock_save_pending_id is not None:
+                GLib.source_remove(self._tblock_save_pending_id)
+            self._tblock_save_pending_id = GLib.timeout_add(
+                350, _flush_tblock, buf,
+            )
+        tblock_buf.connect("changed", _on_tblock_changed)
+        tblock_scroll.add(tblock_view)
+        group.add(tblock_scroll)
+
         # 'Hotkey reads from' (PRIMARY vs CLIPBOARD) was removed from the
         # UI here when the no-selection popup landed — with the paste
         # menu always available, the only reason to ever flip the source
@@ -714,3 +792,17 @@ class SettingsDialog:
         self._settings.save()
         if self._on_changed:
             self._on_changed()
+
+    def _apply_trigger_toggle(self) -> None:
+        """Start or stop the snippet-trigger XRecord watcher live, so the
+        setting takes effect without a daemon restart. Looks up the
+        already-loaded clipboard_history user module — that's where the
+        watcher lives."""
+        try:
+            import sys
+            mod = (sys.modules.get("linuxpop_user_clipboard_history")
+                   or sys.modules.get("clipboard_history"))
+            if mod is not None and hasattr(mod, "_maybe_start_trigger_watcher"):
+                mod._maybe_start_trigger_watcher()
+        except Exception as exc:
+            print(f"[settings] could not apply trigger toggle: {exc}")

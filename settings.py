@@ -31,6 +31,17 @@ DEFAULTS: dict[str, Any] = {
     # Enter to paste at the cursor. Ignored if clipboard_history_enabled
     # is False.
     "clipboard_hotkey": "super+v",
+    # Snippet triggers — when ON, typing a snippet's shortcode followed
+    # by space/tab/enter/punctuation auto-expands it in place. Requires
+    # global keystroke monitoring via the X11 RECORD extension. Off by
+    # default because of the privacy implication; keystrokes are matched
+    # against your snippet triggers locally and never logged or sent.
+    "snippet_triggers_enabled": False,
+    # Per-app/site blocklist for trigger expansion only. Case-insensitive
+    # substring match against the focused window's title AND WM_CLASS.
+    # Use it to silence expansion in password managers, terminals, your
+    # bank's website, etc. without disabling triggers globally.
+    "trigger_blocklist_patterns": [],
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",
     # Default ON. Poll the keyboard state every 50 ms instead of

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import select as _select
 import shutil
 import subprocess
@@ -28,7 +29,7 @@ import time
 import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import gi
 
@@ -125,6 +126,7 @@ class Entry:
     text: str = ""
     image_path: str = ""
     name: str = ""    # only used for snippets
+    trigger: str = "" # only used for snippets — auto-expansion shortcode
 
     def preview(self, max_len: int = 80) -> str:
         if self.name:
@@ -135,7 +137,7 @@ class Entry:
         return s[:max_len] + "…" if len(s) > max_len else s
 
     def search_haystack(self) -> str:
-        return f"{self.name}\n{self.text}\n{self.image_path}".lower()
+        return f"{self.name}\n{self.trigger}\n{self.text}\n{self.image_path}".lower()
 
 
 _history: List[Entry] = []
@@ -233,12 +235,64 @@ def _pin_entry(entry: Entry, name: str = "") -> None:
     with _snippets_lock:
         _snippets.insert(0, snippet)
     _save_snippets()
+    _rebuild_trigger_index()
 
 
 def _unpin_snippet(snippet_id: str) -> None:
     with _snippets_lock:
         _snippets[:] = [s for s in _snippets if s.id != snippet_id]
     _save_snippets()
+    _rebuild_trigger_index()
+
+
+def _create_snippet(name: str, text: str, trigger: str = "") -> None:
+    """Make a brand-new snippet from scratch (not derived from history)."""
+    snippet = Entry(
+        id=uuid.uuid4().hex[:12],
+        timestamp=time.time(),
+        kind="text",
+        text=text,
+        name=name,
+        trigger=trigger.strip(),
+    )
+    with _snippets_lock:
+        _snippets.insert(0, snippet)
+    _save_snippets()
+    _rebuild_trigger_index()
+
+
+def _set_snippet_trigger(snippet_id: str, trigger: str) -> None:
+    with _snippets_lock:
+        for s in _snippets:
+            if s.id == snippet_id:
+                s.trigger = trigger.strip()
+                break
+    _save_snippets()
+    _rebuild_trigger_index()
+
+
+# ----- trigger index -----------------------------------------------------
+
+# Built from snippets every time the list changes. Keyed by trigger
+# string (case-sensitive). Read by the XRecord watcher thread; built
+# on the GLib thread via _rebuild_trigger_index().
+_trigger_index: dict[str, Entry] = {}
+_trigger_index_lock = threading.Lock()
+
+
+def _rebuild_trigger_index() -> None:
+    new_index: dict[str, Entry] = {}
+    with _snippets_lock:
+        for s in _snippets:
+            t = (s.trigger or "").strip()
+            if t and s.kind == "text":
+                # Last-write-wins on collision. Snippets are inserted at
+                # index 0, so the most-recently-edited snippet for a given
+                # trigger naturally wins here (iteration order = newest first).
+                new_index.setdefault(t, s)
+    with _trigger_index_lock:
+        _trigger_index.clear()
+        _trigger_index.update(new_index)
 
 
 def _rename_snippet(snippet_id: str, new_name: str) -> None:
@@ -248,6 +302,365 @@ def _rename_snippet(snippet_id: str, new_name: str) -> None:
                 s.name = new_name
                 break
     _save_snippets()
+    _rebuild_trigger_index()
+
+
+# ----- trigger watcher (XRecord) -----------------------------------------
+
+# Characters that, when typed, cause us to check whether the buffer ends
+# with a known trigger. Whitespace only — espanso / AutoKey use the same
+# rule. Including punctuation here breaks snippets that *start* with a
+# punctuation prefix (e.g. ";mvh"), so we keep the boundary set minimal.
+_TRIGGER_CHARS = set(" \t\n")
+_TRIGGER_BUFFER_MAX = 64
+
+_trigger_watcher: Optional["_TriggerWatcher"] = None
+
+
+class _TriggerWatcher:
+    """Background XRecord listener. When the user types a snippet trigger
+    followed by a word-boundary character (space, tab, enter, punctuation),
+    expand it in place: backspace the shortcode + the boundary char,
+    paste the rendered snippet, optionally reposition the caret.
+
+    Privacy: this thread sees every keystroke, but stores at most the
+    last 64 characters in memory and never writes them to disk. Disabled
+    by default; opt-in via the 'snippet_triggers_enabled' setting.
+    """
+
+    def __init__(self) -> None:
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._buffer: List[str] = []
+        self._lock = threading.Lock()
+        # Two Display handles — XRecord needs a dedicated one for the
+        # passive context; the other is used for keycode→char lookups.
+        self._record_display = None
+        self._local_display = None
+        self._ctx = None
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="linuxpop-triggers",
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        # disable_context returns control of the recording display so
+        # the blocking enable_context() call in _run() unwinds.
+        try:
+            if self._local_display is not None and self._ctx is not None:
+                self._local_display.record_disable_context(self._ctx)
+                self._local_display.flush()
+        except Exception:
+            pass
+
+    # -- internals --
+
+    def _run(self) -> None:
+        try:
+            from Xlib import display as Xdisplay, X, XK
+            from Xlib.ext import record
+            from Xlib.protocol import rq
+        except ImportError:
+            print("[triggers] python-xlib missing record extension — disabled")
+            return
+        try:
+            self._record_display = Xdisplay.Display()
+            self._local_display = Xdisplay.Display()
+            v = self._local_display.record_get_version(0, 0)
+            print(f"[triggers] XRecord {v.major_version}.{v.minor_version} ready")
+        except Exception as exc:
+            print(f"[triggers] could not open X displays: {exc}")
+            return
+
+        self._ctx = self._local_display.record_create_context(
+            0,
+            [record.AllClients],
+            [{
+                "core_requests": (0, 0),
+                "core_replies": (0, 0),
+                "ext_requests": (0, 0, 0, 0),
+                "ext_replies": (0, 0, 0, 0),
+                "delivered_events": (0, 0),
+                "device_events": (X.KeyPress, X.KeyRelease),
+                "errors": (0, 0),
+                "client_started": False,
+                "client_died": False,
+            }],
+        )
+
+        def handler(reply):
+            if reply.category != record.FromServer:
+                return
+            if reply.client_swapped:
+                return
+            data = reply.data
+            while len(data):
+                event, data = rq.EventField(None).parse_binary_value(
+                    data, self._record_display.display, None, None,
+                )
+                if event.type == X.KeyPress:
+                    self._on_keypress(event, X, XK)
+
+        try:
+            self._local_display.record_enable_context(self._ctx, handler)
+        except Exception as exc:
+            print(f"[triggers] record_enable_context exited: {exc}")
+        finally:
+            try:
+                self._local_display.record_free_context(self._ctx)
+            except Exception:
+                pass
+            self._ctx = None
+
+    def _on_keypress(self, event, X, XK) -> None:
+        # Drop chord modifiers (Ctrl/Alt) so Ctrl-S doesn't pollute the
+        # buffer with 's'. Pure shift is fine — that's just capitalisation.
+        state = event.state
+        if state & (X.ControlMask | X.Mod1Mask | X.Mod4Mask):
+            # Ctrl, Alt, Super → reset buffer so a chord can't be mistaken
+            # for a partial trigger.
+            with self._lock:
+                self._buffer.clear()
+            return
+
+        shift = bool(state & X.ShiftMask)
+        caps = bool(state & X.LockMask)
+        index = 1 if shift else 0
+
+        keysym = self._local_display.keycode_to_keysym(event.detail, index)
+        if keysym == 0:
+            return
+
+        # Special non-printable handling
+        if keysym == XK.XK_BackSpace:
+            with self._lock:
+                if self._buffer:
+                    self._buffer.pop()
+            return
+        if keysym in (XK.XK_Return, XK.XK_KP_Enter):
+            self._handle_char("\n")
+            return
+        if keysym == XK.XK_Tab:
+            self._handle_char("\t")
+            return
+        if keysym == XK.XK_Escape:
+            with self._lock:
+                self._buffer.clear()
+            return
+        # Ignore pure modifier keys, arrow keys, F-keys, etc.
+        if 0xff00 <= keysym <= 0xffff and keysym not in (
+            XK.XK_space,
+        ):
+            return
+
+        ch = self._keysym_to_char(keysym, caps, shift, XK)
+        if not ch:
+            return
+        self._handle_char(ch)
+
+    @staticmethod
+    def _keysym_to_char(keysym, caps_lock: bool, shift: bool, XK) -> Optional[str]:
+        # XK.keysym_to_string covers Latin-1 and common Unicode aliases.
+        s = XK.keysym_to_string(keysym)
+        if s is None or len(s) > 1:
+            # Latin-1 fallback for codes XK doesn't have a name for.
+            if 0x20 <= keysym <= 0xff:
+                s = chr(keysym)
+            else:
+                return None
+        # Caps Lock without Shift uppercases alphabetic chars; with Shift
+        # the two cancel out. (Approximation — non-Latin caps behavior
+        # varies by layout.)
+        if caps_lock and not shift and s.isalpha():
+            return s.upper()
+        if caps_lock and shift and s.isalpha():
+            return s.lower()
+        return s
+
+    def _handle_char(self, ch: str) -> None:
+        is_boundary = ch in _TRIGGER_CHARS
+        with self._lock:
+            if is_boundary:
+                # Check whether buffer ends with a known trigger. Try the
+                # longest matches first so "abcd" wins over "cd" if both
+                # are registered.
+                buf = "".join(self._buffer)
+                with _trigger_index_lock:
+                    triggers = sorted(_trigger_index.keys(), key=len,
+                                       reverse=True)
+                    matched = None
+                    for trig in triggers:
+                        if buf.endswith(trig):
+                            matched = (trig, _trigger_index[trig])
+                            break
+                self._buffer.clear()
+                if matched is not None:
+                    trig, snippet = matched
+                    GLib.idle_add(_fire_trigger_expansion, trig, ch, snippet)
+                    return
+                # Boundary char that isn't part of a trigger: start fresh.
+                return
+            self._buffer.append(ch)
+            if len(self._buffer) > _TRIGGER_BUFFER_MAX:
+                # Trim oldest. Keep the tail; trigger matches are
+                # always at the end.
+                del self._buffer[:len(self._buffer) - _TRIGGER_BUFFER_MAX]
+
+
+def _active_window_haystacks() -> list[str]:
+    """Lower-cased window title + WM_CLASS of the focused window. Used
+    by the trigger blocklist to decide whether to expand here. xprop
+    rather than xdotool getwindowclassname because the latter is missing
+    on Mint/Debian builds."""
+    out: list[str] = []
+    try:
+        wid = subprocess.run(
+            ["xdotool", "getactivewindow"],
+            capture_output=True, text=True, timeout=0.3,
+        ).stdout.strip()
+        if not wid:
+            return out
+        try:
+            name = subprocess.run(
+                ["xdotool", "getwindowname", wid],
+                capture_output=True, text=True, timeout=0.3,
+            ).stdout.strip()
+            if name:
+                out.append(name.lower())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        try:
+            klass = subprocess.run(
+                ["xprop", "-id", wid, "WM_CLASS"],
+                capture_output=True, text=True, timeout=0.3,
+            ).stdout.strip()
+            if klass:
+                out.append(klass.lower())
+        except (OSError, subprocess.SubprocessError):
+            pass
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return out
+
+
+def _trigger_blocked() -> bool:
+    """Return True if the active window matches any pattern in the
+    user's trigger_blocklist_patterns setting."""
+    patterns = list(_cfg("trigger_blocklist_patterns", []) or [])
+    if not patterns:
+        return False
+    haystacks = _active_window_haystacks()
+    if not haystacks:
+        return False
+    for p in patterns:
+        p_lc = (p or "").strip().lower()
+        if p_lc and any(p_lc in h for h in haystacks):
+            return True
+    return False
+
+
+def _fire_trigger_expansion(trigger: str, boundary_char: str, snippet: Entry) -> bool:
+    """GLib-main-thread callback. Backspace over the typed shortcode +
+    boundary, then paste the rendered snippet. Returns False so idle_add
+    fires only once."""
+    if snippet.kind != "text":
+        return False
+    # Snippets with {ask:} can't run inline from a trigger — a blocking
+    # dialog mid-keystroke is jarring. Skip silently; the user can still
+    # invoke them via the picker.
+    if "{ask:" in snippet.text:
+        print(f"[triggers] '{trigger}' has {{ask:}} — skipping (use picker)")
+        return False
+    # Per-app/site blocklist: skip expansion in user-configured apps
+    # (password managers, terminals, banking sites, etc.).
+    if _trigger_blocked():
+        print(f"[triggers] '{trigger}' skipped — active window is in blocklist")
+        return False
+    rendered, cursor_left, _ = render_placeholders(
+        snippet.text, lambda _label: None,
+    )
+
+    def worker():
+        if not shutil.which("xdotool"):
+            return
+        # Wait for the user to physically release the boundary key
+        # (space/tab/enter) before we start synthesising keystrokes.
+        # Without this, xdotool's --clearmodifiers reads the live key
+        # state mid-press and leaves modifiers like Ctrl in a "stuck"
+        # logical state in the receiving app (scroll-zooms instead of
+        # scroll, etc.). 60 ms is generous; humans don't tap-release
+        # that fast.
+        time.sleep(0.06)
+        # Delete the typed shortcode + the boundary char.
+        # --delay 0 drops events in Electron/Chrome targets that filter
+        # for human-rate key timing; 16 ms (~1 frame at 60 Hz) is fast
+        # enough that the user never sees the typed chars, but slow
+        # enough that every BackSpace lands. --clearmodifiers is
+        # unnecessary here — Backspace doesn't care about modifier
+        # state, and the modifier dance occasionally leaves Ctrl wedged.
+        n_delete = len(trigger) + 1
+        subprocess.run(
+            ["xdotool", "key",
+             "--repeat", str(n_delete), "--delay", "16", "BackSpace"],
+            check=False,
+        )
+        # Give the receiving app a moment to settle before we move on
+        # to clipboard staging + paste.
+        time.sleep(0.08)
+        # Stage the rendered text on the clipboard.
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=rendered.encode("utf-8"), check=False, timeout=2.0,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return
+        subprocess.run(
+            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+            check=False,
+        )
+        if cursor_left > 0:
+            time.sleep(0.05)
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers",
+                 "--repeat", str(cursor_left), "--delay", "0", "Left"],
+                check=False,
+            )
+        # Defensive: force-release every modifier we might have nudged.
+        # xdotool's --clearmodifiers is supposed to restore modifier
+        # state, but the restoration races with the user's own key-up
+        # event for the boundary key and sometimes leaves Ctrl/Shift
+        # logically stuck (Firefox starts zooming on scroll, etc.).
+        # Cheap insurance: explicit keyups on the usual suspects.
+        time.sleep(0.02)
+        subprocess.run(
+            ["xdotool", "keyup", "ctrl", "shift", "alt",
+             "super", "Control_L", "Control_R"],
+            check=False,
+        )
+
+    threading.Thread(target=worker, daemon=True,
+                     name="trigger-expansion").start()
+    return False
+
+
+def _maybe_start_trigger_watcher() -> None:
+    """Honour the snippet_triggers_enabled setting. Idempotent."""
+    global _trigger_watcher
+    enabled = bool(_cfg("snippet_triggers_enabled", False))
+    if enabled:
+        if _trigger_watcher is None:
+            _trigger_watcher = _TriggerWatcher()
+        _trigger_watcher.start()
+    else:
+        if _trigger_watcher is not None:
+            _trigger_watcher.stop()
 
 
 # ----- clipboard reading -------------------------------------------------
@@ -448,8 +861,11 @@ def _start_watcher_once() -> None:
         target=_watcher_loop, daemon=True, name="linuxpop-clipboard",
     )
     _watcher_thread.start()
+    _rebuild_trigger_index()
+    _maybe_start_trigger_watcher()
     print(f"[clipboard] watcher started (size={HISTORY_SIZE}, "
-          f"images={CAPTURE_IMAGES}, snippets={len(_snippets)})")
+          f"images={CAPTURE_IMAGES}, snippets={len(_snippets)}, "
+          f"triggers={len(_trigger_index)})")
 
 
 # ----- paste-at-cursor ---------------------------------------------------
@@ -467,8 +883,16 @@ def _get_active_window() -> str | None:
         return None
 
 
-def _paste_to_window(entry: Entry, target_window: str | None) -> None:
-    """Put the entry on the clipboard, focus the target window, send Ctrl+V."""
+def _paste_to_window(
+    entry: Entry,
+    target_window: str | None,
+    cursor_left: int = 0,
+) -> None:
+    """Put the entry on the clipboard, focus the target window, send Ctrl+V.
+
+    If cursor_left > 0, send that many Left arrows after the paste so the
+    caret lands where a {cursor} placeholder was rendered out.
+    """
     if entry.kind == "text":
         subprocess.run(
             ["xclip", "-selection", "clipboard"],
@@ -494,8 +918,126 @@ def _paste_to_window(entry: Entry, target_window: str | None) -> None:
                 ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
                 check=False,
             )
+            if cursor_left > 0:
+                # Give the paste a tick to land before we move the caret.
+                time.sleep(0.05)
+                subprocess.run(
+                    ["xdotool", "key", "--clearmodifiers",
+                     "--repeat", str(cursor_left), "--delay", "0", "Left"],
+                    check=False,
+                )
 
     threading.Thread(target=worker, daemon=True, name="clipboard-paste").start()
+
+
+# ----- placeholders ------------------------------------------------------
+
+# Recognises:
+#   {date} {time} {datetime} {weekday} {clipboard} {cursor} {name}
+#   {date:FORMAT}  — strftime; FORMAT runs up to the next "}"
+#   {ask:Label}    — label runs up to the next "}"
+_PLACEHOLDER_RE = re.compile(
+    r"\{("
+    r"date(?::[^}]+)?|time|datetime|weekday|clipboard|cursor|name"
+    r"|ask:[^}]+"
+    r")\}"
+)
+
+# Sentinel for the cursor position. U+E000 is in the BMP private-use area
+# and will never appear in real clipboard text; safer than NUL which some
+# pipelines drop.
+_CURSOR_SENTINEL = "CURSOR"
+
+
+def _full_user_name() -> str:
+    """Best-effort: full name from /etc/passwd GECOS, falling back to
+    $USER, then "User". GECOS is comma-separated; field 0 is the name."""
+    try:
+        import pwd
+        gecos = pwd.getpwuid(os.getuid()).pw_gecos or ""
+        first = gecos.split(",", 1)[0].strip()
+        if first:
+            return first
+    except (KeyError, OSError, ImportError):
+        pass
+    return os.environ.get("USER") or "User"
+
+
+def render_placeholders(
+    text: str,
+    ask_callback: Callable[[str], Optional[str]],
+) -> Tuple[str, int, bool]:
+    """Expand {date}/{time}/{datetime}/{clipboard}/{cursor}/{ask:Label}.
+
+    Returns (rendered_text, cursor_left_count, cancelled).
+      - cursor_left_count is the number of Left arrows to send after paste
+        so the caret lands where the first {cursor} token was.
+      - cancelled=True if the user dismissed an {ask:} prompt — caller
+        should abort the paste.
+
+    {clipboard} is captured BEFORE we mutate the clipboard ourselves.
+    Only the first {cursor} is honoured; additional ones are stripped.
+    """
+    if "{" not in text:
+        return text, 0, False
+
+    clipboard_value: Optional[str] = None
+    cancelled = False
+
+    def repl(m: "re.Match[str]") -> str:
+        nonlocal clipboard_value, cancelled
+        if cancelled:
+            return ""
+        token = m.group(1)
+        now = time.localtime()
+        if token == "date":
+            return time.strftime("%Y-%m-%d", now)
+        if token.startswith("date:"):
+            # {date:FORMAT} — pass FORMAT straight to strftime. The
+            # try/except keeps a typo'd format from blowing up the
+            # whole paste; on failure we leave the token literal so
+            # the user notices.
+            fmt = token[5:]
+            try:
+                return time.strftime(fmt, now)
+            except (ValueError, TypeError):
+                return m.group(0)
+        if token == "time":
+            return time.strftime("%H:%M", now)
+        if token == "datetime":
+            return time.strftime("%Y-%m-%d %H:%M", now)
+        if token == "weekday":
+            # %A is locale-aware: "Tirsdag" on nb_NO, "Tuesday" on en_US.
+            return time.strftime("%A", now)
+        if token == "name":
+            return _full_user_name()
+        if token == "clipboard":
+            if clipboard_value is None:
+                clipboard_value = _read_clipboard_text() or ""
+            return clipboard_value
+        if token == "cursor":
+            return _CURSOR_SENTINEL
+        if token.startswith("ask:"):
+            label = token[4:].strip() or "Value"
+            answer = ask_callback(label)
+            if answer is None:
+                cancelled = True
+                return ""
+            return answer
+        return m.group(0)
+
+    rendered = _PLACEHOLDER_RE.sub(repl, text)
+    if cancelled:
+        return text, 0, True
+
+    cursor_left = 0
+    if _CURSOR_SENTINEL in rendered:
+        idx = rendered.find(_CURSOR_SENTINEL)
+        before = rendered[:idx].replace(_CURSOR_SENTINEL, "")
+        after = rendered[idx + len(_CURSOR_SENTINEL):].replace(_CURSOR_SENTINEL, "")
+        rendered = before + after
+        cursor_left = len(after)
+    return rendered, cursor_left, False
 
 
 # ----- picker dialog -----------------------------------------------------
@@ -575,7 +1117,8 @@ class _PickerDialog:
         recent_scroll.add(self.recent_listbox)
         self.notebook.append_page(recent_scroll, Gtk.Label(label="Recent"))
 
-        # Snippets tab
+        # Snippets tab — listbox plus a "+ New snippet" button under it.
+        snippets_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         snippets_scroll = Gtk.ScrolledWindow()
         snippets_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.snippets_listbox = Gtk.ListBox()
@@ -583,16 +1126,24 @@ class _PickerDialog:
         self.snippets_listbox.set_filter_func(self._row_filter)
         self.snippets_listbox.connect("row-activated", self._on_row_activated)
         snippets_scroll.add(self.snippets_listbox)
-        self.notebook.append_page(snippets_scroll, Gtk.Label(label="Snippets"))
+        snippets_box.pack_start(snippets_scroll, True, True, 0)
+        new_snippet_btn = Gtk.Button(label="＋ New snippet…")
+        new_snippet_btn.set_halign(Gtk.Align.START)
+        new_snippet_btn.set_margin_top(4)
+        new_snippet_btn.connect("clicked", self._on_new_snippet_clicked)
+        snippets_box.pack_start(new_snippet_btn, False, False, 0)
+        self.notebook.append_page(snippets_box, Gtk.Label(label="Snippets"))
 
         outer.pack_start(self.notebook, True, True, 0)
 
         # Hint
         hint = Gtk.Label(xalign=0, margin_top=6)
         hint.set_markup(
-            "<small>Enter to paste at cursor · Ctrl+P pin · Ctrl+R rename · "
-            "Esc to close</small>"
+            "<small>Enter to paste · Ctrl+P pin · Ctrl+R rename · "
+            "Snippets support <tt>{date} {time} {datetime} {clipboard} "
+            "{cursor} {ask:Label}</tt> · Esc to close</small>"
         )
+        hint.set_line_wrap(True)
         outer.pack_start(hint, False, False, 0)
 
         win.add(outer)
@@ -732,7 +1283,13 @@ class _PickerDialog:
         # Text
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         title = Gtk.Label(xalign=0)
-        title.set_markup(f"<b>{GLib.markup_escape_text(entry.preview())}</b>")
+        title_markup = f"<b>{GLib.markup_escape_text(entry.preview())}</b>"
+        if is_snippet and entry.trigger:
+            title_markup += (
+                f"  <small><span foreground='#5B7DF5'>"
+                f"⇥ {GLib.markup_escape_text(entry.trigger)}</span></small>"
+            )
+        title.set_markup(title_markup)
         title.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
         title.set_max_width_chars(60)
         vbox.pack_start(title, False, False, 0)
@@ -805,22 +1362,79 @@ class _PickerDialog:
 
     def _on_row_activated(self, _listbox, row) -> None:
         entry = getattr(row, "entry", None)
+        is_snippet = bool(getattr(row, "is_snippet", False))
         if entry is not None:
-            self._paste_and_close(entry)
+            self._paste_and_close(entry, is_snippet=is_snippet)
 
-    def _paste_and_close(self, entry: Entry) -> None:
+    def _paste_and_close(self, entry: Entry, is_snippet: bool = False) -> None:
         target = self.target_window  # captured before we showed
+        cursor_left = 0
+        # Only snippets get placeholder substitution. Recent-history entries
+        # are pasted verbatim — a "{date}" the user copied from somewhere
+        # else should stay literal.
+        if is_snippet and entry.kind == "text" and "{" in entry.text:
+            rendered, cursor_left, cancelled = render_placeholders(
+                entry.text, self._ask_placeholder_value,
+            )
+            if cancelled:
+                # Keep the picker open so the user can try again.
+                return
+            if rendered != entry.text or cursor_left:
+                entry = Entry(
+                    id=entry.id, timestamp=entry.timestamp, kind=entry.kind,
+                    text=rendered, image_path=entry.image_path, name=entry.name,
+                )
         if self.dialog is not None:
             self.dialog.destroy()
-        _paste_to_window(entry, target)
+        _paste_to_window(entry, target, cursor_left=cursor_left)
+
+    def _ask_placeholder_value(self, label: str) -> Optional[str]:
+        """Bridge for render_placeholders → blocking Gtk input dialog.
+        Sets _modal_child_open so the picker doesn't self-destruct from
+        focus-out while the prompt is up."""
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.Dialog(title=label, transient_for=self.dialog, flags=0)
+            dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
+                            "OK", Gtk.ResponseType.OK)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            entry = Gtk.Entry()
+            entry.set_activates_default(True)
+            entry.set_margin_top(8)
+            entry.set_margin_bottom(8)
+            entry.set_margin_start(12)
+            entry.set_margin_end(12)
+            entry.set_width_chars(40)
+            dlg.get_content_area().add(entry)
+            dlg.show_all()
+            response = dlg.run()
+            value = entry.get_text()
+            dlg.destroy()
+            if response != Gtk.ResponseType.OK:
+                return None
+            return value
+        finally:
+            self._modal_child_open = False
 
     def _on_pin_clicked(self, _btn, entry: Entry) -> None:
-        name = self._ask_for_name(default=entry.preview(40))
-        if name is None:
+        result = self._ask_edit_snippet_meta(
+            default_name=entry.preview(40), default_trigger="",
+        )
+        if result is None:
             return  # cancelled
+        name, trigger = result
         _pin_entry(entry, name)
+        # _pin_entry inserts at index 0 — find that newest snippet and
+        # write the trigger through. Avoids reaching into internals.
+        if trigger:
+            with _snippets_lock:
+                if _snippets:
+                    new_id = _snippets[0].id
+                else:
+                    new_id = None
+            if new_id is not None:
+                _set_snippet_trigger(new_id, trigger)
         self._populate_snippets()
-        # Switch to snippets tab so user sees the result
         if self.notebook is not None:
             self.notebook.set_current_page(1)
 
@@ -829,11 +1443,210 @@ class _PickerDialog:
         self._populate_snippets()
 
     def _on_rename_clicked(self, _btn, entry: Entry) -> None:
-        new_name = self._ask_for_name(default=entry.name or entry.preview(40))
-        if new_name is None:
+        result = self._ask_edit_snippet_meta(
+            default_name=entry.name or entry.preview(40),
+            default_trigger=entry.trigger,
+        )
+        if result is None:
             return
+        new_name, new_trigger = result
         _rename_snippet(entry.id, new_name)
+        _set_snippet_trigger(entry.id, new_trigger)
         self._populate_snippets()
+
+    def _ask_edit_snippet_meta(
+        self, default_name: str = "", default_trigger: str = "",
+    ) -> Optional[Tuple[str, str]]:
+        """Edit name + trigger for an existing snippet."""
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.Dialog(title="Edit snippet",
+                             transient_for=self.dialog, flags=0)
+            dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
+                            "Save", Gtk.ResponseType.OK)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            content = dlg.get_content_area()
+            content.set_spacing(4)
+            content.set_margin_top(8)
+            content.set_margin_bottom(8)
+            content.set_margin_start(12)
+            content.set_margin_end(12)
+
+            name_lbl = Gtk.Label(xalign=0)
+            name_lbl.set_markup("<b>Name</b>")
+            content.add(name_lbl)
+            name_entry = Gtk.Entry()
+            name_entry.set_text(default_name)
+            name_entry.set_activates_default(True)
+            name_entry.set_width_chars(36)
+            content.add(name_entry)
+
+            trig_lbl = Gtk.Label(xalign=0, margin_top=6)
+            trig_lbl.set_markup("<b>Trigger</b>  <small>(optional)</small>")
+            content.add(trig_lbl)
+            trig_entry = Gtk.Entry()
+            trig_entry.set_text(default_trigger)
+            trig_entry.set_activates_default(True)
+            triggers_on = bool(_cfg("snippet_triggers_enabled", False))
+            if triggers_on:
+                trig_entry.set_placeholder_text(
+                    "Typed + space/tab/enter auto-expands"
+                )
+            else:
+                trig_entry.set_placeholder_text(
+                    "Enable 'Snippet triggers' in Settings to use"
+                )
+            content.add(trig_entry)
+
+            dlg.show_all()
+            name_entry.grab_focus()
+            response = dlg.run()
+            name = name_entry.get_text().strip()
+            trig = trig_entry.get_text().strip()
+            dlg.destroy()
+            if response != Gtk.ResponseType.OK:
+                return None
+            return (name, trig)
+        finally:
+            self._modal_child_open = False
+
+    def _on_new_snippet_clicked(self, _btn) -> None:
+        result = self._ask_new_snippet()
+        if result is None:
+            return
+        name, body, trigger = result
+        if not body.strip():
+            return
+        _create_snippet(name=name, text=body, trigger=trigger)
+        self._populate_snippets()
+        if self.notebook is not None:
+            self.notebook.set_current_page(1)
+
+    def _ask_new_snippet(self) -> Optional[Tuple[str, str, str]]:
+        """Modal dialog: name (Entry) + body (TextView) + trigger (Entry).
+        Returns (name, body, trigger) on OK, None on Cancel."""
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.Dialog(title="New snippet",
+                             transient_for=self.dialog, flags=0)
+            dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
+                            "Save", Gtk.ResponseType.OK)
+            dlg.set_default_response(Gtk.ResponseType.OK)
+            dlg.set_default_size(480, 360)
+
+            content = dlg.get_content_area()
+            content.set_spacing(6)
+            content.set_margin_top(8)
+            content.set_margin_bottom(8)
+            content.set_margin_start(12)
+            content.set_margin_end(12)
+
+            name_label = Gtk.Label(xalign=0)
+            name_label.set_markup("<b>Name</b>")
+            content.add(name_label)
+            name_entry = Gtk.Entry()
+            name_entry.set_placeholder_text("Short label (optional)")
+            content.add(name_entry)
+
+            triggers_on = bool(_cfg("snippet_triggers_enabled", False))
+            trigger_label = Gtk.Label(xalign=0, margin_top=6)
+            trigger_label.set_markup("<b>Trigger</b>  <small>(optional)</small>")
+            content.add(trigger_label)
+            trigger_entry = Gtk.Entry()
+            if triggers_on:
+                trigger_entry.set_placeholder_text(
+                    "e.g. ;email — typed followed by space/tab auto-expands"
+                )
+            else:
+                trigger_entry.set_placeholder_text(
+                    "Set, then enable 'Snippet triggers' in Settings to auto-expand"
+                )
+            content.add(trigger_entry)
+
+            body_label = Gtk.Label(xalign=0, margin_top=6)
+            body_label.set_markup("<b>Text</b>")
+            content.add(body_label)
+            body_scroll = Gtk.ScrolledWindow()
+            body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
+                                   Gtk.PolicyType.AUTOMATIC)
+            body_scroll.set_min_content_height(180)
+            body_view = Gtk.TextView()
+            body_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            body_view.set_accepts_tab(False)
+            body_scroll.add(body_view)
+            content.pack_start(body_scroll, True, True, 0)
+
+            help_intro = Gtk.Label(xalign=0, margin_top=6)
+            help_intro.set_markup(
+                "<small>Click to insert a placeholder (rendered at paste time):</small>"
+            )
+            content.add(help_intro)
+
+            chips = Gtk.FlowBox()
+            chips.set_selection_mode(Gtk.SelectionMode.NONE)
+            chips.set_max_children_per_line(6)
+            chips.set_row_spacing(4)
+            chips.set_column_spacing(4)
+
+            def insert_token(token: str, select_offset: int = 0,
+                             select_len: int = 0) -> None:
+                buf = body_view.get_buffer()
+                if buf.get_has_selection():
+                    buf.delete_selection(False, True)
+                start_offset = buf.get_iter_at_mark(buf.get_insert()).get_offset()
+                buf.insert_at_cursor(token)
+                if select_len > 0:
+                    sel_start = buf.get_iter_at_offset(start_offset + select_offset)
+                    sel_end = buf.get_iter_at_offset(
+                        start_offset + select_offset + select_len)
+                    buf.select_range(sel_start, sel_end)
+                body_view.grab_focus()
+
+            # (label, token, tooltip, select_offset_in_token, select_len)
+            # select_* are non-zero for {ask:Label} / {date:FORMAT} so
+            # the editable part is auto-selected and the user can just
+            # type to overwrite it.
+            chip_specs = [
+                ("{date}",        "{date}",        "Current date (YYYY-MM-DD)", 0, 0),
+                ("{time}",        "{time}",        "Current time (HH:MM)",      0, 0),
+                ("{datetime}",    "{datetime}",    "Date + time together",      0, 0),
+                ("{weekday}",     "{weekday}",     "Name of the day (Tirsdag / Tuesday — follows your system language)", 0, 0),
+                ("{date:FORMAT}", "{date:%A %d %B}", "Custom date format. Codes: %A=weekday, %d=day, %B=month name, %V=week number, %Y=year. Edit the highlighted part to change.", 6, 8),
+                ("{name}",        "{name}",        "Your full name (from your user account)", 0, 0),
+                ("{clipboard}",   "{clipboard}",   "Current clipboard contents", 0, 0),
+                ("{cursor}",      "{cursor}",      "Where the caret lands after paste", 0, 0),
+                ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Rename 'Label' to what you want the prompt to say.", 5, 5),
+            ]
+            for label, token, tip, sel_off, sel_len in chip_specs:
+                btn = Gtk.Button(label=label)
+                btn.set_tooltip_text(tip)
+                # Monospace makes the brace syntax read like code.
+                child = btn.get_child()
+                if isinstance(child, Gtk.Label):
+                    child.set_use_markup(False)
+                    attrs = child.get_attributes()
+                    child.get_style_context().add_class("monospace")
+                btn.connect(
+                    "clicked",
+                    lambda _b, t=token, so=sel_off, sl=sel_len:
+                        insert_token(t, so, sl),
+                )
+                chips.add(btn)
+            content.add(chips)
+
+            dlg.show_all()
+            name_entry.grab_focus()
+            response = dlg.run()
+            name = name_entry.get_text().strip()
+            trigger = trigger_entry.get_text().strip()
+            buf = body_view.get_buffer()
+            body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True)
+            dlg.destroy()
+            if response != Gtk.ResponseType.OK:
+                return None
+            return (name, body, trigger)
+        finally:
+            self._modal_child_open = False
 
     def _ask_for_name(self, default: str = "") -> str | None:
         self._modal_child_open = True
