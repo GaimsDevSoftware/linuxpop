@@ -126,7 +126,15 @@ class Entry:
     text: str = ""
     image_path: str = ""
     name: str = ""    # only used for snippets
-    trigger: str = "" # only used for snippets — auto-expansion shortcode
+    # Snippet auto-expansion shortcode(s). Comma-separated to allow more
+    # than one trigger per snippet ("rraak, rb, email" all → same text).
+    # Single-trigger entries from older saves load as-is because the
+    # parser strips whitespace and ignores empty parts.
+    trigger: str = ""
+
+    def trigger_list(self) -> List[str]:
+        """Parse `trigger` into a list of clean shortcodes."""
+        return [t.strip() for t in self.trigger.split(",") if t.strip()]
 
     def preview(self, max_len: int = 80) -> str:
         if self.name:
@@ -284,12 +292,14 @@ def _rebuild_trigger_index() -> None:
     new_index: dict[str, Entry] = {}
     with _snippets_lock:
         for s in _snippets:
-            t = (s.trigger or "").strip()
-            if t and s.kind == "text":
-                # Last-write-wins on collision. Snippets are inserted at
-                # index 0, so the most-recently-edited snippet for a given
-                # trigger naturally wins here (iteration order = newest first).
-                new_index.setdefault(t, s)
+            if s.kind != "text":
+                continue
+            # Each snippet can register multiple triggers via comma
+            # separation. setdefault keeps first-seen-wins; snippets
+            # are stored newest-first, so the most-recently-edited
+            # snippet wins on collision (intentional).
+            for trig in s.trigger_list():
+                new_index.setdefault(trig, s)
     with _trigger_index_lock:
         _trigger_index.clear()
         _trigger_index.update(new_index)
@@ -1092,18 +1102,19 @@ def _full_user_name() -> str:
 
 def render_placeholders(
     text: str,
-    ask_callback: Callable[[List[str]], Optional[dict]],
+    ask_callback: Callable[[List[Tuple[str, Optional[List[str]]]]], Optional[dict]],
 ) -> Tuple[str, int, bool]:
     """Expand placeholder tokens in a snippet body.
 
     Supported: {date} {time} {datetime} {weekday} {date:...} {name}
-    {clipboard} {cursor} {ask:Label} {shell:CMD}.
+    {clipboard} {cursor} {ask:Label} {ask:Label|Opt1|Opt2|...} {shell:CMD}.
 
-    `ask_callback` is called ONCE with the list of unique {ask:Label}
-    labels found in the snippet, and should return a {label: answer}
-    dict or None on cancel. Multiple {ask:Label} for the same Label
-    share one input field. This collapses three sequential prompts
-    into one dialog with three fields.
+    `ask_callback` is called ONCE with a list of (label, options) pairs
+    found in the snippet. `options` is None for free-text fields, or a
+    list of strings for dropdown fields ({ask:Status|Open|Closed}).
+    Callback returns {label: answer} or None on cancel. Multiple
+    {ask:Label} for the same Label share one field — three sequential
+    prompts collapse into one dialog with three fields.
 
     Returns (rendered_text, cursor_left_count, cancelled).
       - cursor_left_count is the number of Left arrows to send after paste
@@ -1119,18 +1130,27 @@ def render_placeholders(
 
     # Pre-pass: collect every unique {ask:Label} so a single dialog
     # gathers all answers. Order = first appearance for predictability.
-    ask_labels: list[str] = []
+    # Each field is (label, options-or-None) where options=None means
+    # free-text and a list of strings means dropdown.
+    ask_fields: List[Tuple[str, Optional[List[str]]]] = []
     seen_labels: set[str] = set()
     for m in _PLACEHOLDER_RE.finditer(text):
         tok = m.group(1)
         if tok.startswith("ask:"):
-            label = tok[4:].strip() or "Value"
+            spec = tok[4:]
+            if "|" in spec:
+                parts = spec.split("|")
+                label = parts[0].strip() or "Value"
+                options = [p.strip() for p in parts[1:] if p.strip()] or None
+            else:
+                label = spec.strip() or "Value"
+                options = None
             if label not in seen_labels:
                 seen_labels.add(label)
-                ask_labels.append(label)
+                ask_fields.append((label, options))
     ask_answers: Optional[dict] = None
-    if ask_labels:
-        ask_answers = ask_callback(ask_labels)
+    if ask_fields:
+        ask_answers = ask_callback(ask_fields)
         if ask_answers is None:
             return text, 0, True
 
@@ -1172,8 +1192,10 @@ def render_placeholders(
         if token == "cursor":
             return _CURSOR_SENTINEL
         if token.startswith("ask:"):
-            label = token[4:].strip() or "Value"
-            # Pre-pass already collected the answer; just look it up.
+            spec = token[4:]
+            # Strip off |options to get just the label key used in the
+            # answers dict.
+            label = spec.split("|", 1)[0].strip() or "Value"
             if ask_answers is not None and label in ask_answers:
                 return ask_answers[label]
             return ""
@@ -1440,9 +1462,10 @@ class _PickerDialog:
         title = Gtk.Label(xalign=0)
         title_markup = f"<b>{GLib.markup_escape_text(entry.preview())}</b>"
         if is_snippet and entry.trigger:
+            triggers_display = ", ".join(entry.trigger_list())
             title_markup += (
                 f"  <small><span foreground='#5B7DF5'>"
-                f"⇥ {GLib.markup_escape_text(entry.trigger)}</span></small>"
+                f"⇥ {GLib.markup_escape_text(triggers_display)}</span></small>"
             )
         title.set_markup(title_markup)
         title.set_ellipsize(3)  # PANGO_ELLIPSIZE_END
@@ -1544,16 +1567,18 @@ class _PickerDialog:
         _paste_to_window(entry, target, cursor_left=cursor_left)
 
     def _ask_placeholder_values(
-        self, labels: List[str],
+        self, fields: List[Tuple[str, Optional[List[str]]]],
     ) -> Optional[dict]:
         """Bridge for render_placeholders → blocking Gtk form dialog
-        with one Entry per unique {ask:Label}. Returns {label: value}
-        on OK, None on Cancel."""
-        if not labels:
+        with one widget per unique {ask:Label}. `fields` is a list of
+        (label, options) pairs: options=None means free-text Entry,
+        a list of strings becomes a ComboBoxText dropdown. Returns
+        {label: value} on OK, None on Cancel."""
+        if not fields:
             return {}
         self._modal_child_open = True
         try:
-            title = "Snippet" if len(labels) > 1 else labels[0]
+            title = "Snippet" if len(fields) > 1 else fields[0][0]
             dlg = Gtk.Dialog(title=title, transient_for=self.dialog, flags=0)
             dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
                             "OK", Gtk.ResponseType.OK)
@@ -1564,22 +1589,34 @@ class _PickerDialog:
             content.set_margin_bottom(8)
             content.set_margin_start(12)
             content.set_margin_end(12)
-            entries: dict = {}
-            for i, label in enumerate(labels):
+            widgets: dict = {}
+            for i, (label, options) in enumerate(fields):
                 lbl = Gtk.Label(xalign=0)
                 lbl.set_markup(f"<b>{GLib.markup_escape_text(label)}</b>")
                 content.add(lbl)
-                entry = Gtk.Entry()
-                entry.set_activates_default(True)
-                entry.set_width_chars(40)
-                content.add(entry)
-                entries[label] = entry
-                if i == 0:
-                    # First field gets focus on open.
-                    entry.set_property("has-focus", True)
+                if options:
+                    combo = Gtk.ComboBoxText()
+                    for opt in options:
+                        combo.append_text(opt)
+                    combo.set_active(0)
+                    content.add(combo)
+                    widgets[label] = combo
+                else:
+                    entry = Gtk.Entry()
+                    entry.set_activates_default(True)
+                    entry.set_width_chars(40)
+                    content.add(entry)
+                    widgets[label] = entry
+                    if i == 0:
+                        entry.set_property("has-focus", True)
             dlg.show_all()
             response = dlg.run()
-            answers = {label: e.get_text() for label, e in entries.items()}
+            answers = {}
+            for label, w in widgets.items():
+                if isinstance(w, Gtk.ComboBoxText):
+                    answers[label] = w.get_active_text() or ""
+                else:
+                    answers[label] = w.get_text()
             dlg.destroy()
             if response != Gtk.ResponseType.OK:
                 return None
@@ -1653,7 +1690,9 @@ class _PickerDialog:
             content.add(name_entry)
 
             trig_lbl = Gtk.Label(xalign=0, margin_top=6)
-            trig_lbl.set_markup("<b>Trigger</b>  <small>(optional)</small>")
+            trig_lbl.set_markup(
+                "<b>Trigger(s)</b>  <small>(optional, comma-separated)</small>"
+            )
             content.add(trig_lbl)
             trig_entry = Gtk.Entry()
             trig_entry.set_text(default_trigger)
@@ -1661,7 +1700,7 @@ class _PickerDialog:
             triggers_on = bool(_cfg("snippet_triggers_enabled", False))
             if triggers_on:
                 trig_entry.set_placeholder_text(
-                    "Typed + space/tab/enter auto-expands"
+                    "e.g. rraak, rb — any of them auto-expands"
                 )
             else:
                 trig_entry.set_placeholder_text(
@@ -1721,12 +1760,14 @@ class _PickerDialog:
 
             triggers_on = bool(_cfg("snippet_triggers_enabled", False))
             trigger_label = Gtk.Label(xalign=0, margin_top=6)
-            trigger_label.set_markup("<b>Trigger</b>  <small>(optional)</small>")
+            trigger_label.set_markup(
+                "<b>Trigger(s)</b>  <small>(optional, comma-separated)</small>"
+            )
             content.add(trigger_label)
             trigger_entry = Gtk.Entry()
             if triggers_on:
                 trigger_entry.set_placeholder_text(
-                    "e.g. ;email — typed followed by space/tab auto-expands"
+                    "e.g. rraak, rb — any of them + space/tab auto-expands"
                 )
             else:
                 trigger_entry.set_placeholder_text(
@@ -1788,6 +1829,7 @@ class _PickerDialog:
                 ("{clipboard}",   "{clipboard}",   "Current clipboard contents", 0, 0),
                 ("{cursor}",      "{cursor}",      "Where the caret lands after paste", 0, 0),
                 ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Multiple {ask:} fields show in one dialog. Rename 'Label' to what you want the prompt to say.", 5, 5),
+                ("{ask:Label|Opt}", "{ask:Status|Open|Closed|WIP}", "Dropdown variant: pipe-separated options after the label give a chooser instead of free text. Edit the label and options to match your case.", 5, 6),
                 ("{shell:CMD}",   "{shell:date -u}", "Run a shell command and paste its output. Requires 'Shell expansion' enabled in Settings — disabled by default for safety.", 7, 8),
             ]
             for label, token, tip, sel_off, sel_len in chip_specs:
