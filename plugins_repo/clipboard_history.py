@@ -489,20 +489,29 @@ class _TriggerWatcher:
             if is_boundary:
                 # Check whether buffer ends with a known trigger. Try the
                 # longest matches first so "abcd" wins over "cd" if both
-                # are registered.
+                # are registered. Case-insensitive; the actual typed
+                # form is captured separately so case-propagation can
+                # apply later.
                 buf = "".join(self._buffer)
+                buf_lc = buf.lower()
                 with _trigger_index_lock:
                     triggers = sorted(_trigger_index.keys(), key=len,
                                        reverse=True)
                     matched = None
                     for trig in triggers:
-                        if buf.endswith(trig):
-                            matched = (trig, _trigger_index[trig])
-                            break
+                        trig_lc = trig.lower()
+                        if not buf_lc.endswith(trig_lc):
+                            continue
+                        if not _trigger_word_boundary_ok(buf, trig_lc):
+                            continue
+                        typed = buf[-len(trig_lc):]
+                        matched = (trig, typed, _trigger_index[trig])
+                        break
                 self._buffer.clear()
                 if matched is not None:
-                    trig, snippet = matched
-                    GLib.idle_add(_fire_trigger_expansion, trig, ch, snippet)
+                    trig, typed, snippet = matched
+                    GLib.idle_add(_fire_trigger_expansion,
+                                  trig, typed, ch, snippet)
                     return
                 # Boundary char that isn't part of a trigger: start fresh.
                 return
@@ -511,6 +520,64 @@ class _TriggerWatcher:
                 # Trim oldest. Keep the tail; trigger matches are
                 # always at the end.
                 del self._buffer[:len(self._buffer) - _TRIGGER_BUFFER_MAX]
+
+
+def _trigger_word_boundary_ok(buf: str, trig_lc: str) -> bool:
+    """The trigger has already been confirmed to be a suffix of buf
+    (case-insensitive). Reject the match unless the trigger occupies a
+    word boundary on its leading side:
+      - it's at the very start of the buffer, OR
+      - the char immediately before it is NOT a word char (letters /
+        digits / underscore), OR
+      - the trigger itself starts with a non-word char (e.g. ';mvh') —
+        the punctuation is its own boundary.
+    Trailing boundary is implicit because we're called from a boundary
+    handler (space/tab/enter just triggered the check).
+    """
+    if len(buf) == len(trig_lc):
+        return True
+    before = buf[-(len(trig_lc) + 1)]
+    if not (before.isalnum() or before == "_"):
+        return True
+    if not (trig_lc[0].isalnum() or trig_lc[0] == "_"):
+        return True
+    return False
+
+
+def _detect_case_style(typed: str) -> str:
+    """Classify the case pattern of what the user actually typed.
+    Returns one of: 'lower' / 'title' / 'upper' / 'mixed'. Triggers
+    with only digits/symbols return 'lower' (no transformation)."""
+    letters = [c for c in typed if c.isalpha()]
+    if not letters:
+        return "lower"
+    if all(c.islower() for c in letters):
+        return "lower"
+    if all(c.isupper() for c in letters):
+        # Need at least 2 letters to call it intentional UPPER — a
+        # single capital letter is ambiguous with title-case.
+        return "upper" if len(letters) >= 2 else "title"
+    # First letter capital, rest lower → title
+    if letters[0].isupper() and all(c.islower() for c in letters[1:]):
+        return "title"
+    return "mixed"
+
+
+def _propagate_case(typed: str, output: str) -> str:
+    """Apply the case pattern from `typed` (what the user actually
+    typed) to `output` (the rendered snippet text). Mixed/lower leaves
+    output alone; title capitalises the first alpha char; upper
+    uppercases everything."""
+    style = _detect_case_style(typed)
+    if style in ("lower", "mixed"):
+        return output
+    if style == "upper":
+        return output.upper()
+    if style == "title":
+        for i, c in enumerate(output):
+            if c.isalpha():
+                return output[:i] + c.upper() + output[i+1:]
+    return output
 
 
 def _active_window_haystacks() -> list[str]:
@@ -565,10 +632,14 @@ def _trigger_blocked() -> bool:
     return False
 
 
-def _fire_trigger_expansion(trigger: str, boundary_char: str, snippet: Entry) -> bool:
+def _fire_trigger_expansion(
+    trigger: str, typed: str, boundary_char: str, snippet: Entry,
+) -> bool:
     """GLib-main-thread callback. Backspace over the typed shortcode +
-    boundary, then paste the rendered snippet. Returns False so idle_add
-    fires only once."""
+    boundary, then paste the rendered snippet. `typed` is what the user
+    actually typed (used for case-propagation; may differ in case from
+    the canonical `trigger`). Returns False so idle_add fires only
+    once."""
     if snippet.kind != "text":
         return False
     # Snippets with {ask:} can't run inline from a trigger — a blocking
@@ -585,6 +656,9 @@ def _fire_trigger_expansion(trigger: str, boundary_char: str, snippet: Entry) ->
     rendered, cursor_left, _ = render_placeholders(
         snippet.text, lambda _label: None,
     )
+    # Case-propagation: typed 'Rraak' → Title-case output;
+    # typed 'RRAAK' → UPPER output.
+    rendered = _propagate_case(typed, rendered)
 
     def worker():
         if not shutil.which("xdotool"):
@@ -940,13 +1014,66 @@ _PLACEHOLDER_RE = re.compile(
     r"\{("
     r"date(?::[^}]+)?|time|datetime|weekday|clipboard|cursor|name"
     r"|ask:[^}]+"
+    r"|shell:[^}]+"
     r")\}"
 )
+
+
+def _render_shell_token(cmd: str) -> str:
+    """Run `cmd` through bash, return stdout (trailing newline stripped).
+    Gated behind snippet_shell_enabled — when off, returns the literal
+    {shell:...} token so the user sees that it didn't run. Timeout 5 s
+    so a runaway snippet can't freeze the paste.
+    """
+    if not bool(_cfg("snippet_shell_enabled", False)):
+        return f"{{shell:{cmd}}}"
+    cmd = cmd.strip()
+    if not cmd:
+        return ""
+    try:
+        out = subprocess.run(
+            ["bash", "-c", cmd],
+            capture_output=True, text=True, timeout=5.0,
+        )
+        return out.stdout.rstrip("\n")
+    except subprocess.TimeoutExpired:
+        return f"[shell timeout: {cmd}]"
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"[shell error: {exc}]"
 
 # Sentinel for the cursor position. U+E000 is in the BMP private-use area
 # and will never appear in real clipboard text; safer than NUL which some
 # pipelines drop.
 _CURSOR_SENTINEL = "CURSOR"
+
+
+_DATE_MATH_RE = re.compile(r"^([+-]\d+)([dwmy])(?::(.+))?$")
+
+
+def _render_date_token(spec: str, now_struct) -> str:
+    """Implements {date:...} variants.
+
+    `spec` is what comes after 'date:' in the token. `now_struct` is
+    a time.struct_time so callers (and tests) can pin the clock.
+
+    - Pure strftime: `%A`, `%Y-%m-%d %H:%M`, ...
+    - Math: `+7d`, `-1w`, `+3m`, `-2y`. m=30 days, y=365 days (good
+      enough for everyday writing — calendar-correct month math is a
+      surprise gift no one asked for).
+    - Math + format: `+7d:%A`.
+    """
+    m = _DATE_MATH_RE.match(spec)
+    if m is None:
+        # No leading +/- → treat as strftime against now.
+        return time.strftime(spec, now_struct)
+    offset_num = int(m.group(1))
+    unit = m.group(2)
+    fmt = m.group(3) or "%Y-%m-%d"
+    import datetime as _dt
+    base = _dt.datetime.fromtimestamp(time.mktime(now_struct))
+    days = {"d": 1, "w": 7, "m": 30, "y": 365}[unit]
+    shifted = base + _dt.timedelta(days=offset_num * days)
+    return shifted.strftime(fmt)
 
 
 def _full_user_name() -> str:
@@ -965,14 +1092,23 @@ def _full_user_name() -> str:
 
 def render_placeholders(
     text: str,
-    ask_callback: Callable[[str], Optional[str]],
+    ask_callback: Callable[[List[str]], Optional[dict]],
 ) -> Tuple[str, int, bool]:
-    """Expand {date}/{time}/{datetime}/{clipboard}/{cursor}/{ask:Label}.
+    """Expand placeholder tokens in a snippet body.
+
+    Supported: {date} {time} {datetime} {weekday} {date:...} {name}
+    {clipboard} {cursor} {ask:Label} {shell:CMD}.
+
+    `ask_callback` is called ONCE with the list of unique {ask:Label}
+    labels found in the snippet, and should return a {label: answer}
+    dict or None on cancel. Multiple {ask:Label} for the same Label
+    share one input field. This collapses three sequential prompts
+    into one dialog with three fields.
 
     Returns (rendered_text, cursor_left_count, cancelled).
       - cursor_left_count is the number of Left arrows to send after paste
         so the caret lands where the first {cursor} token was.
-      - cancelled=True if the user dismissed an {ask:} prompt — caller
+      - cancelled=True if the user dismissed the {ask:} dialog — caller
         should abort the paste.
 
     {clipboard} is captured BEFORE we mutate the clipboard ourselves.
@@ -980,6 +1116,23 @@ def render_placeholders(
     """
     if "{" not in text:
         return text, 0, False
+
+    # Pre-pass: collect every unique {ask:Label} so a single dialog
+    # gathers all answers. Order = first appearance for predictability.
+    ask_labels: list[str] = []
+    seen_labels: set[str] = set()
+    for m in _PLACEHOLDER_RE.finditer(text):
+        tok = m.group(1)
+        if tok.startswith("ask:"):
+            label = tok[4:].strip() or "Value"
+            if label not in seen_labels:
+                seen_labels.add(label)
+                ask_labels.append(label)
+    ask_answers: Optional[dict] = None
+    if ask_labels:
+        ask_answers = ask_callback(ask_labels)
+        if ask_answers is None:
+            return text, 0, True
 
     clipboard_value: Optional[str] = None
     cancelled = False
@@ -993,13 +1146,14 @@ def render_placeholders(
         if token == "date":
             return time.strftime("%Y-%m-%d", now)
         if token.startswith("date:"):
-            # {date:FORMAT} — pass FORMAT straight to strftime. The
-            # try/except keeps a typo'd format from blowing up the
-            # whole paste; on failure we leave the token literal so
-            # the user notices.
-            fmt = token[5:]
+            # Three shapes:
+            #   {date:%A}        — strftime now
+            #   {date:+7d}       — now + 7d, default %Y-%m-%d
+            #   {date:+7d:%A}    — now + 7d, formatted
+            # Math units: d (day), w (week), m (≈30 days), y (≈365 days).
+            spec = token[5:]
             try:
-                return time.strftime(fmt, now)
+                return _render_date_token(spec, now)
             except (ValueError, TypeError):
                 return m.group(0)
         if token == "time":
@@ -1019,11 +1173,12 @@ def render_placeholders(
             return _CURSOR_SENTINEL
         if token.startswith("ask:"):
             label = token[4:].strip() or "Value"
-            answer = ask_callback(label)
-            if answer is None:
-                cancelled = True
-                return ""
-            return answer
+            # Pre-pass already collected the answer; just look it up.
+            if ask_answers is not None and label in ask_answers:
+                return ask_answers[label]
+            return ""
+        if token.startswith("shell:"):
+            return _render_shell_token(token[6:])
         return m.group(0)
 
     rendered = _PLACEHOLDER_RE.sub(repl, text)
@@ -1374,7 +1529,7 @@ class _PickerDialog:
         # else should stay literal.
         if is_snippet and entry.kind == "text" and "{" in entry.text:
             rendered, cursor_left, cancelled = render_placeholders(
-                entry.text, self._ask_placeholder_value,
+                entry.text, self._ask_placeholder_values,
             )
             if cancelled:
                 # Keep the picker open so the user can try again.
@@ -1388,31 +1543,47 @@ class _PickerDialog:
             self.dialog.destroy()
         _paste_to_window(entry, target, cursor_left=cursor_left)
 
-    def _ask_placeholder_value(self, label: str) -> Optional[str]:
-        """Bridge for render_placeholders → blocking Gtk input dialog.
-        Sets _modal_child_open so the picker doesn't self-destruct from
-        focus-out while the prompt is up."""
+    def _ask_placeholder_values(
+        self, labels: List[str],
+    ) -> Optional[dict]:
+        """Bridge for render_placeholders → blocking Gtk form dialog
+        with one Entry per unique {ask:Label}. Returns {label: value}
+        on OK, None on Cancel."""
+        if not labels:
+            return {}
         self._modal_child_open = True
         try:
-            dlg = Gtk.Dialog(title=label, transient_for=self.dialog, flags=0)
+            title = "Snippet" if len(labels) > 1 else labels[0]
+            dlg = Gtk.Dialog(title=title, transient_for=self.dialog, flags=0)
             dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
                             "OK", Gtk.ResponseType.OK)
             dlg.set_default_response(Gtk.ResponseType.OK)
-            entry = Gtk.Entry()
-            entry.set_activates_default(True)
-            entry.set_margin_top(8)
-            entry.set_margin_bottom(8)
-            entry.set_margin_start(12)
-            entry.set_margin_end(12)
-            entry.set_width_chars(40)
-            dlg.get_content_area().add(entry)
+            content = dlg.get_content_area()
+            content.set_spacing(6)
+            content.set_margin_top(8)
+            content.set_margin_bottom(8)
+            content.set_margin_start(12)
+            content.set_margin_end(12)
+            entries: dict = {}
+            for i, label in enumerate(labels):
+                lbl = Gtk.Label(xalign=0)
+                lbl.set_markup(f"<b>{GLib.markup_escape_text(label)}</b>")
+                content.add(lbl)
+                entry = Gtk.Entry()
+                entry.set_activates_default(True)
+                entry.set_width_chars(40)
+                content.add(entry)
+                entries[label] = entry
+                if i == 0:
+                    # First field gets focus on open.
+                    entry.set_property("has-focus", True)
             dlg.show_all()
             response = dlg.run()
-            value = entry.get_text()
+            answers = {label: e.get_text() for label, e in entries.items()}
             dlg.destroy()
             if response != Gtk.ResponseType.OK:
                 return None
-            return value
+            return answers
         finally:
             self._modal_child_open = False
 
@@ -1612,10 +1783,12 @@ class _PickerDialog:
                 ("{datetime}",    "{datetime}",    "Date + time together",      0, 0),
                 ("{weekday}",     "{weekday}",     "Name of the day (Tirsdag / Tuesday — follows your system language)", 0, 0),
                 ("{date:FORMAT}", "{date:%A %d %B}", "Custom date format. Codes: %A=weekday, %d=day, %B=month name, %V=week number, %Y=year. Edit the highlighted part to change.", 6, 8),
+                ("{date:+7d}",    "{date:+7d}",    "Date math: shift by days (d) / weeks (w) / months (m≈30d) / y. Edit the number to change. Combine with format like {date:+7d:%A}.", 6, 3),
                 ("{name}",        "{name}",        "Your full name (from your user account)", 0, 0),
                 ("{clipboard}",   "{clipboard}",   "Current clipboard contents", 0, 0),
                 ("{cursor}",      "{cursor}",      "Where the caret lands after paste", 0, 0),
-                ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Rename 'Label' to what you want the prompt to say.", 5, 5),
+                ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Multiple {ask:} fields show in one dialog. Rename 'Label' to what you want the prompt to say.", 5, 5),
+                ("{shell:CMD}",   "{shell:date -u}", "Run a shell command and paste its output. Requires 'Shell expansion' enabled in Settings — disabled by default for safety.", 7, 8),
             ]
             for label, token, tip, sel_off, sel_len in chip_specs:
                 btn = Gtk.Button(label=label)

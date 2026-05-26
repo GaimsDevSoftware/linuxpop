@@ -436,6 +436,31 @@ class SettingsDialog:
         tblock_scroll.add(tblock_view)
         group.add(tblock_scroll)
 
+        # Shell extension {shell:CMD} in snippets. Off by default — same
+        # threat model as enabling macros: a hostile imported snippet
+        # with a {shell:rm -rf ~} runs immediately when expanded.
+        shell_row = Handy.ActionRow()
+        shell_row.set_title("Shell expansion in snippets")
+        shell_row.set_subtitle(
+            "When ON, snippets containing {shell:CMD} run that command "
+            "in bash and paste the output. Useful for {shell:git branch} "
+            "or {shell:date -u}. Off by default — an imported snippet "
+            "with a hostile command would execute immediately.")
+        shell_switch = Gtk.Switch()
+        shell_switch.set_valign(Gtk.Align.CENTER)
+        shell_switch.set_active(
+            bool(self._settings.get("snippet_shell_enabled", False)))
+        shell_switch.connect(
+            "notify::active", self._on_switch, "snippet_shell_enabled")
+        shell_row.add(shell_switch)
+        shell_row.set_activatable_widget(shell_switch)
+        shell_row.set_sensitive(
+            bool(self._settings.get("clipboard_history_enabled", True)))
+        clip_master_switch.connect(
+            "notify::active",
+            lambda s, _p: shell_row.set_sensitive(s.get_active()))
+        group.add(shell_row)
+
         # 'Hotkey reads from' (PRIMARY vs CLIPBOARD) was removed from the
         # UI here when the no-selection popup landed — with the paste
         # menu always available, the only reason to ever flip the source
