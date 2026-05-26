@@ -1662,6 +1662,226 @@ class _PickerDialog:
         _set_snippet_trigger(entry.id, new_trigger)
         self._populate_snippets()
 
+    def _show_snippet_help_dialog(self, parent: Gtk.Window) -> None:
+        """A friendly walkthrough of what snippets are, how triggers work,
+        and what every placeholder does. Intentionally written for the
+        person who is NOT a programmer — heavy on examples, light on jargon."""
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.Dialog(
+                title="Snippet guide", transient_for=parent, flags=0,
+            )
+            dlg.set_default_size(620, 580)
+            dlg.add_button("Close", Gtk.ResponseType.CLOSE)
+
+            scroll = Gtk.ScrolledWindow()
+            scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            scroll.set_hexpand(True)
+            scroll.set_vexpand(True)
+
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14,
+                             margin_top=16, margin_bottom=16,
+                             margin_start=22, margin_end=22)
+
+            # Hero
+            hero = Gtk.Label(xalign=0)
+            hero.set_markup(
+                "<span size='xx-large' weight='bold'>Snippets, in plain words</span>")
+            outer.pack_start(hero, False, False, 0)
+
+            intro = Gtk.Label(xalign=0)
+            intro.set_line_wrap(True)
+            intro.set_markup(
+                "<span foreground='#b8c0d4'>A <b>snippet</b> is a "
+                "piece of text you save once and reuse forever. Your "
+                "email signature, a phone number, a reply to a "
+                "frequently asked question, a bug-report template — "
+                "anything you find yourself typing more than twice.</span>")
+            outer.pack_start(intro, False, False, 0)
+
+            sep1 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            outer.pack_start(sep1, False, False, 4)
+
+            # Three ways
+            ways_head = Gtk.Label(xalign=0)
+            ways_head.set_markup(
+                "<span size='large' weight='bold'>Three ways to use one</span>")
+            outer.pack_start(ways_head, False, False, 0)
+
+            for n, head, body in [
+                ("1.", "Pick it from the list",
+                 "Open the clipboard picker (your shortcut, usually "
+                 "<tt>Ctrl+Super+V</tt>), go to the <b>Snippets</b> tab, "
+                 "click the one you want. It pastes wherever your cursor is."),
+                ("2.", "Type a trigger",
+                 "If you give a snippet a shortcut like <tt>;email</tt>, "
+                 "you can type <tt>;email</tt> followed by a space "
+                 "anywhere on your computer and LinuxPop replaces it "
+                 "with the full text. One snippet can have many "
+                 "triggers — write them comma-separated: "
+                 "<tt>rraak, rb, email</tt>. Triggers must be turned "
+                 "on in Settings → Hotkeys."),
+                ("3.", "Let it fill in the blanks",
+                 "A snippet can contain little tags like <tt>{date}</tt> "
+                 "or <tt>{ask:Name}</tt>. They're called <b>placeholders</b> "
+                 "and they get filled in for you when you paste — "
+                 "today's date, your clipboard, an answer to a question, etc."),
+            ]:
+                row = Gtk.Box(
+                    orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+                num = Gtk.Label(xalign=0, yalign=0)
+                num.set_markup(
+                    f"<span foreground='#5B7DF5' weight='bold' "
+                    f"size='large'>{n}</span>")
+                row.pack_start(num, False, False, 0)
+                text = Gtk.Label(xalign=0, yalign=0)
+                text.set_markup(
+                    f"<b>{head}</b>\n<span foreground='#b8c0d4'>"
+                    f"{body}</span>")
+                text.set_line_wrap(True)
+                text.set_hexpand(True)
+                row.pack_start(text, True, True, 0)
+                outer.pack_start(row, False, False, 0)
+
+            sep2 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            outer.pack_start(sep2, False, False, 4)
+
+            # Placeholders table
+            ph_head = Gtk.Label(xalign=0)
+            ph_head.set_markup(
+                "<span size='large' weight='bold'>Placeholders you can use</span>")
+            outer.pack_start(ph_head, False, False, 0)
+
+            grid = Gtk.Grid(column_spacing=14, row_spacing=8)
+            grid.set_margin_top(4)
+            ph_rows = [
+                ("{date}",
+                 "Today's date — e.g. 2026-05-27."),
+                ("{time}",
+                 "Current time — e.g. 14:30."),
+                ("{datetime}",
+                 "Both at once — 2026-05-27 14:30."),
+                ("{weekday}",
+                 "Name of the day, in your system language — Wednesday / onsdag."),
+                ("{date:FORMAT}",
+                 "Custom date format. <tt>%A</tt>=weekday, <tt>%d</tt>=day, "
+                 "<tt>%B</tt>=month name, <tt>%Y</tt>=year, <tt>%V</tt>=week number. "
+                 "Example: <tt>{date:%A %d %B}</tt> → Wednesday 27 May."),
+                ("{date:+7d}",
+                 "Date math: shift by days (d), weeks (w), months "
+                 "(m≈30 days), years (y). <tt>+7d</tt> = a week from now. "
+                 "Combine with format: <tt>{date:+7d:%A}</tt>."),
+                ("{name}",
+                 "Your full name, taken from your user account."),
+                ("{clipboard}",
+                 "Whatever's currently on your clipboard at paste time."),
+                ("{cursor}",
+                 "Marks where the typing cursor should land after paste. "
+                 "Useful for templates like <tt>[ ] {cursor}</tt>."),
+                ("{ask:Label}",
+                 "Pops up a small dialog and asks for a value when you "
+                 "paste. Rename <tt>Label</tt> to whatever the prompt "
+                 "should say. Use the same Label twice and it'll only "
+                 "ask once."),
+                ("{ask:Label|A|B|C}",
+                 "Same idea but with a dropdown of choices. "
+                 "<tt>{ask:Status|Open|Closed|WIP}</tt> gives you a picker."),
+                ("{shell:CMD}",
+                 "Runs a shell command and pastes its output. Off by "
+                 "default for safety — turn on in Settings if you want it. "
+                 "Example: <tt>{shell:date -u}</tt> for UTC time."),
+            ]
+            for i, (tag, desc) in enumerate(ph_rows):
+                tag_lbl = Gtk.Label(xalign=0, yalign=0)
+                tag_lbl.set_markup(
+                    f"<tt><span foreground='#7C3AED'>"
+                    f"{GLib.markup_escape_text(tag)}</span></tt>")
+                tag_lbl.set_selectable(True)
+                grid.attach(tag_lbl, 0, i, 1, 1)
+                desc_lbl = Gtk.Label(xalign=0, yalign=0)
+                desc_lbl.set_markup(
+                    f"<span foreground='#d8dce8'>{desc}</span>")
+                desc_lbl.set_line_wrap(True)
+                desc_lbl.set_hexpand(True)
+                grid.attach(desc_lbl, 1, i, 1, 1)
+            outer.pack_start(grid, False, False, 0)
+
+            sep3 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            outer.pack_start(sep3, False, False, 4)
+
+            # Recipes
+            rec_head = Gtk.Label(xalign=0)
+            rec_head.set_markup(
+                "<span size='large' weight='bold'>A few real-world recipes</span>")
+            outer.pack_start(rec_head, False, False, 0)
+
+            for title, body_text, note in [
+                ("Email signature with today's date",
+                 "Mvh\nRobert\n{date}",
+                 "Trigger: <tt>;sig</tt>"),
+                ("Support reply that asks for the details",
+                 "Hei {ask:Mottaker},\n\n"
+                 "Takk for at du tok kontakt om {ask:Sak}.\n"
+                 "Status er nå: {ask:Status|Ny|Pågår|Ferdig}.\n\n"
+                 "Mvh\nRobert",
+                 "One dialog asks for all three at once."),
+                ("Meeting one week out",
+                 "Møte om {date:+7d:%A %d. %B}",
+                 "Renders e.g. <i>Møte om onsdag 03. juni</i>."),
+                ("Empty checkbox where the cursor lands after",
+                 "[ ] {cursor}",
+                 "Paste, then start typing the to-do — the cursor is already in place."),
+            ]:
+                head = Gtk.Label(xalign=0)
+                head.set_markup(f"<b>{GLib.markup_escape_text(title)}</b>")
+                outer.pack_start(head, False, False, 0)
+                box = Gtk.Box(
+                    orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                box.set_margin_start(8)
+                code = Gtk.Label(xalign=0, selectable=True)
+                code.set_markup(
+                    f"<tt><span foreground='#5B7DF5' background='#181d2a'> "
+                    f"{GLib.markup_escape_text(body_text)} </span></tt>")
+                code.set_line_wrap(True)
+                box.pack_start(code, False, False, 0)
+                note_lbl = Gtk.Label(xalign=0)
+                note_lbl.set_markup(
+                    f"<small><span foreground='#b8c0d4'>{note}</span></small>")
+                note_lbl.set_line_wrap(True)
+                box.pack_start(note_lbl, False, False, 0)
+                outer.pack_start(box, False, False, 0)
+
+            sep4 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            outer.pack_start(sep4, False, False, 4)
+
+            # Case-tip
+            case_head = Gtk.Label(xalign=0)
+            case_head.set_markup(
+                "<span size='large' weight='bold'>One small case-trick</span>")
+            outer.pack_start(case_head, False, False, 0)
+            case_body = Gtk.Label(xalign=0)
+            case_body.set_line_wrap(True)
+            case_body.set_markup(
+                "<span foreground='#d8dce8'>"
+                "Triggers don't care about capital letters when they "
+                "match, but they DO copy your capitalisation to the "
+                "output. If your trigger is <tt>rraak</tt> and the "
+                "snippet is <tt>raakanin@gmail.com</tt>:"
+                "</span>\n\n"
+                "  <tt>rraak </tt> → raakanin@gmail.com\n"
+                "  <tt>Rraak </tt> → Raakanin@gmail.com\n"
+                "  <tt>RRAAK </tt> → RAAKANIN@GMAIL.COM"
+            )
+            outer.pack_start(case_body, False, False, 0)
+
+            scroll.add(outer)
+            dlg.get_content_area().pack_start(scroll, True, True, 0)
+            dlg.show_all()
+            dlg.run()
+            dlg.destroy()
+        finally:
+            self._modal_child_open = False
+
     def _ask_edit_snippet_meta(
         self, default_name: str = "", default_trigger: str = "",
     ) -> Optional[Tuple[str, str]]:
@@ -1707,6 +1927,18 @@ class _PickerDialog:
                     "Enable 'Snippet triggers' in Settings to use"
                 )
             content.add(trig_entry)
+
+            # Small "Snippet guide" button so help is reachable from the
+            # rename/edit dialog too, not just New snippet.
+            guide_row = Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL, margin_top=10)
+            spacer = Gtk.Label()
+            guide_row.pack_start(spacer, True, True, 0)
+            guide_btn = Gtk.Button(label="📖 Snippet guide")
+            guide_btn.connect(
+                "clicked", lambda _b: self._show_snippet_help_dialog(parent=dlg))
+            guide_row.pack_start(guide_btn, False, False, 0)
+            content.add(guide_row)
 
             dlg.show_all()
             name_entry.grab_focus()
@@ -1776,23 +2008,38 @@ class _PickerDialog:
             content.add(trigger_entry)
 
             body_label = Gtk.Label(xalign=0, margin_top=6)
-            body_label.set_markup("<b>Text</b>")
+            body_label.set_markup(
+                "<b>Text</b>  <small>(this is the snippet body — "
+                "type or paste what you want to expand to)</small>"
+            )
             content.add(body_label)
             body_scroll = Gtk.ScrolledWindow()
             body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
                                    Gtk.PolicyType.AUTOMATIC)
             body_scroll.set_min_content_height(180)
+            body_scroll.get_style_context().add_class("lp-snippet-body-wrap")
             body_view = Gtk.TextView()
             body_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
             body_view.set_accepts_tab(False)
+            body_view.get_style_context().add_class("lp-snippet-body")
             body_scroll.add(body_view)
             content.pack_start(body_scroll, True, True, 0)
 
-            help_intro = Gtk.Label(xalign=0, margin_top=6)
+            help_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                                spacing=8, margin_top=6)
+            help_intro = Gtk.Label(xalign=0)
             help_intro.set_markup(
-                "<small>Click to insert a placeholder (rendered at paste time):</small>"
+                "<small>Click to insert a placeholder (filled in at paste time):</small>"
             )
-            content.add(help_intro)
+            help_row.pack_start(help_intro, True, True, 0)
+            help_btn = Gtk.Button(label="📖 Snippet guide")
+            help_btn.set_tooltip_text(
+                "Open a friendly walkthrough of snippets, triggers, and placeholders."
+            )
+            help_btn.connect(
+                "clicked", lambda _b: self._show_snippet_help_dialog(parent=dlg))
+            help_row.pack_start(help_btn, False, False, 0)
+            content.add(help_row)
 
             chips = Gtk.FlowBox()
             chips.set_selection_mode(Gtk.SelectionMode.NONE)

@@ -502,6 +502,32 @@ textview.lp-cmd-edit text {
     padding: 6px 10px;
 }
 
+/* Snippet body editor: a multi-line TextView in the New/Edit-snippet
+   dialog that was easy to miss against the dialog's dark background.
+   Same lift as an Entry -- visible fill + border + focus glow -- so the
+   user can tell at a glance that it's a text field they can type into. */
+textview.lp-snippet-body,
+textview.lp-snippet-body text {
+    background-color: #181d2a;
+    background-image: none;
+    color: #f0f3fa;
+    caret-color: #5B7DF5;
+    padding: 8px 10px;
+}
+
+scrolledwindow.lp-snippet-body-wrap {
+    background-color: #181d2a;
+    border: 1px solid #3a4258;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) inset;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+scrolledwindow.lp-snippet-body-wrap:focus-within {
+    border-color: #5B7DF5;
+    box-shadow: 0 0 0 2px rgba(91, 125, 245, 0.25);
+}
+
 /* ----- LinuxPop-specific helper classes -----
    Any widget that adds these style classes via add_css_class()
    gets premium accents on top of the generic widget styling. */
