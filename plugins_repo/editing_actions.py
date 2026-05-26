@@ -1,4 +1,4 @@
-"""Editing actions — Cut, Paste, Backspace, Select All.
+"""Editing actions - Cut, Paste, Backspace, Select All.
 
 PopClip's bread-and-butter buttons. They all operate on the currently
 focused editable text input by simulating the standard keyboard
@@ -10,7 +10,7 @@ shortcut via xdotool:
   Select All  → Ctrl+A        (expand selection to the whole field)
 
 LinuxPop's popup has set_accept_focus(False), so the source app keeps
-keyboard focus the whole time the popup is up — xdotool's key event
+keyboard focus the whole time the popup is up - xdotool's key event
 lands there, not on the popup window. Will only have a visible effect
 in an editable field; clicking 'Cut' on a read-only web page does
 nothing, same as PopClip on macOS.
@@ -29,7 +29,7 @@ def _send_keys(combo: str) -> None:
             ["notify-send", "--hint=byte:transient:1", "-t", "3000",
              "-u", "critical", "-i", "dialog-error",
              "LinuxPop",
-             "xdotool is not installed — required for the editing actions. "
+             "xdotool is not installed - required for the editing actions. "
              "Install with: sudo apt install xdotool"],
             check=False,
         )
@@ -40,7 +40,7 @@ def _send_keys(combo: str) -> None:
             check=False, timeout=2.0,
         )
     except subprocess.TimeoutExpired:
-        # xdotool stuck — extremely rare but a hung worker is worse
+        # xdotool stuck - extremely rare but a hung worker is worse
         # than a missed action; just bail silently.
         pass
 
@@ -69,7 +69,7 @@ def register(register_plugin) -> None:
         icon="edit-cut-symbolic",
         tooltip="Cut",
         handler=_cut,
-        content_types=(),  # universal — show for every selection
+        content_types=(),  # universal - show for every selection
         priority=11,
         requires_editable=True,
     ))
@@ -91,7 +91,7 @@ def register(register_plugin) -> None:
         priority=13,
         requires_editable=True,
     ))
-    # Select All is left as 'always show' — Ctrl+A works on read-only
+    # Select All is left as 'always show' - Ctrl+A works on read-only
     # widgets too (browsers, PDF viewers expand the selection to the
     # whole document), so it stays useful even without an editable focus.
     register_plugin(Plugin(

@@ -5,17 +5,17 @@ when the user has selected text in a read-only context. Showing them
 there would just be a tease.
 
 Two-layer detection:
-  1. AT-SPI — per-widget probe. Needed for apps where the same window
+  1. AT-SPI - per-widget probe. Needed for apps where the same window
      has both editable and read-only areas (Claude desktop, Slack,
      Discord, web browsers). Time-bounded so it can't freeze the
      popup path. Returns three states: True / False / None (no answer).
-  2. WM_CLASS blocklist — coarse but predictable. Catches pure-viewer
+  2. WM_CLASS blocklist - coarse but predictable. Catches pure-viewer
      apps that don't respond to AT-SPI (Evince, image viewers, file
      managers, media players). Reads via xprop because xdotool's
      getwindowclassname is missing on several distro builds.
 
 Strategy: trust AT-SPI when it answers. Otherwise consult the blocklist.
-Default to True (editable) when neither produces a signal — better to
+Default to True (editable) when neither produces a signal - better to
 show a button that does nothing than to hide one the user wanted.
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ _log = logging.getLogger("linuxpop")
 # Cache of the latest focus event from the AT-SPI listener. Updated
 # asynchronously every time any accessible reports gaining STATE_FOCUSED.
 # This is the ONLY way to get useful per-widget signal out of Chromium /
-# Electron apps — their accessibility tree exposes the top-level frame
+# Electron apps - their accessibility tree exposes the top-level frame
 # without STATE_FOCUSED propagation, so synchronous tree-walks return
 # 'no focused descendant' and we have to fall back to WM_CLASS. The
 # event bridge does fire when the user clicks an editable element vs
@@ -46,7 +46,7 @@ _focus_listener_started = False
 _focus_listener_ref = None  # keep listener alive (GC would otherwise drop it)
 
 # AT-SPI is optional. If gi bindings aren't installed we skip to the
-# WM_CLASS fallback only — no hard dependency.
+# WM_CLASS fallback only - no hard dependency.
 _HAS_ATSPI = False
 try:
     import gi
@@ -54,7 +54,7 @@ try:
     from gi.repository import Atspi  # type: ignore[attr-defined]
     _HAS_ATSPI = True
 except (ImportError, ValueError):
-    _log.info("[editable] Atspi gi bindings unavailable — "
+    _log.info("[editable] Atspi gi bindings unavailable - "
               "will use WM_CLASS heuristic only")
 
 
@@ -79,7 +79,7 @@ def _on_focus_event(event) -> None:
     losing STATE_FOCUSED. We only care about gains (detail1 == 1) and
     we cache the editable status of the newly-focused widget.
 
-    Runs in the AT-SPI worker thread — _focus_cache_lock protects the
+    Runs in the AT-SPI worker thread - _focus_cache_lock protects the
     cross-thread read in is_focus_editable().
     """
     try:
@@ -105,19 +105,19 @@ def _on_focus_event(event) -> None:
 
 
 def _start_focus_listener() -> None:
-    """Register the AT-SPI focus-change listener. Idempotent — first
+    """Register the AT-SPI focus-change listener. Idempotent - first
     caller wins, the listener runs for the daemon's lifetime.
 
     Gated on the 'editable_atspi_listener_enabled' setting, which
     defaults off. Registration was correlated with a Cinnamon panel
-    segfault on 2026-05-25 — see knowledge/linuxpop.md. Falling back
+    segfault on 2026-05-25 - see knowledge/linuxpop.md. Falling back
     to the synchronous tree-walk + WM_CLASS path is safe; users who
     want the Electron-specific smartness can opt in.
     """
     global _focus_listener_started, _focus_listener_ref
     if _focus_listener_started or not _HAS_ATSPI:
         return
-    # Local import — avoids settings module circulars at module load.
+    # Local import - avoids settings module circulars at module load.
     try:
         from settings import get_settings
         if not bool(get_settings().get("editable_atspi_listener_enabled")):
@@ -125,7 +125,7 @@ def _start_focus_listener() -> None:
                       "(editable_atspi_listener_enabled=false)")
             return
     except Exception as exc:
-        _log.info("[editable] could not read AT-SPI listener setting (%s) — "
+        _log.info("[editable] could not read AT-SPI listener setting (%s) - "
                   "leaving listener off", exc)
         return
     _focus_listener_started = True
@@ -144,9 +144,9 @@ def _start_focus_listener() -> None:
             # from under the C-side registration.
             global _focus_listener_ref
             _focus_listener_ref = listener
-            _log.info("[editable] AT-SPI focus listener registered — "
+            _log.info("[editable] AT-SPI focus listener registered - "
                       "starting event loop")
-            # Blocking call — runs the AT-SPI event dispatch loop.
+            # Blocking call - runs the AT-SPI event dispatch loop.
             Atspi.event_main()
         except Exception as exc:
             _log.info("[editable] AT-SPI listener init failed: %s", exc)
@@ -159,7 +159,7 @@ def _cached_focus_editable(max_age_s: float = 30.0) -> bool | None:
     """Return the cached editable state if a focus event has fired
     recently enough. None means 'no usable cache value'.
 
-    max_age_s caps how long we trust the cache — if the user hasn't
+    max_age_s caps how long we trust the cache - if the user hasn't
     interacted in a while, their last focus event might no longer
     reflect reality (they could have switched apps without us seeing).
     Recent focus events stay authoritative.
@@ -203,7 +203,7 @@ def _atspi_focus_editable(timeout: float = 0.15) -> bool | None:
 
     Strategy (matters!): walk every app on the desktop, but only look
     inside its windows that have STATE_ACTIVE set. STATE_ACTIVE marks
-    the WM-foreground window — exactly one across the whole desktop.
+    the WM-foreground window - exactly one across the whole desktop.
     Inside it, find the descendant with STATE_FOCUSED; that's the
     widget the user is typing/selecting in.
 
@@ -216,7 +216,7 @@ def _atspi_focus_editable(timeout: float = 0.15) -> bool | None:
 
     Returns True / False on an authoritative AT-SPI answer, None when
     we couldn't reach one (no AT-SPI, timeout, no active window, etc.)
-    — caller falls back to the WM_CLASS heuristic on None.
+    - caller falls back to the WM_CLASS heuristic on None.
     """
     if not _HAS_ATSPI:
         return None
@@ -311,7 +311,7 @@ def _atspi_focus_editable(timeout: float = 0.15) -> bool | None:
 def _wm_class_lower() -> str:
     """Return the focused window's WM_CLASS in lower-case, or '' on failure.
 
-    Reads via xprop, NOT `xdotool getwindowclassname` — the latter doesn't
+    Reads via xprop, NOT `xdotool getwindowclassname` - the latter doesn't
     exist on all xdotool builds (older Debian/Mint ship a version that
     refuses the command, returning empty silently and breaking every
     'is the focused widget editable?' check). xprop is part of x11-utils
@@ -332,7 +332,7 @@ def _wm_class_lower() -> str:
         ).stdout.strip()
         # xprop format: WM_CLASS(STRING) = "instance", "Class"
         # Lower-case everything and let the blocklist substring-match
-        # either field — apps with different instance vs class names
+        # either field - apps with different instance vs class names
         # (Firefox: "Navigator", "firefox") fail with class-only checks.
         return out.lower()
     except (OSError, subprocess.SubprocessError):
@@ -343,12 +343,12 @@ def is_focus_editable(extra_readonly_classes: tuple[str, ...] = ()) -> bool:
     """True if the focused widget accepts edits.
 
     Resolution order, most-precise first:
-      1. AT-SPI focus-event cache (async listener) — works for Electron
+      1. AT-SPI focus-event cache (async listener) - works for Electron
          apps where the tree-walk fails. Recent events authoritative.
-      2. AT-SPI tree walk (synchronous probe) — works for GTK/Qt/Firefox.
-      3. WM_CLASS blocklist — coarse but predictable, catches pure-viewer
+      2. AT-SPI tree walk (synchronous probe) - works for GTK/Qt/Firefox.
+      3. WM_CLASS blocklist - coarse but predictable, catches pure-viewer
          apps that don't expose accessibility at all.
-      4. Permissive default (True) — better to show a button that does
+      4. Permissive default (True) - better to show a button that does
          nothing than to hide one the user wanted.
 
     Logs every decision so a tail of linuxpop.log shows which path fired.
@@ -371,13 +371,13 @@ def is_focus_editable(extra_readonly_classes: tuple[str, ...] = ()) -> bool:
         c.lower() for c in extra_readonly_classes
     )
     if not wm:
-        _log.info("[editable] no WM_CLASS + no AT-SPI signal — defaulting to True")
+        _log.info("[editable] no WM_CLASS + no AT-SPI signal - defaulting to True")
         return True
     for needle in blocklist:
         if needle in wm:
             _log.info("[editable] WM_CLASS=%r matched read-only entry %r "
-                      "(AT-SPI silent) — hiding edit-only plugins", wm, needle)
+                      "(AT-SPI silent) - hiding edit-only plugins", wm, needle)
             return False
     _log.info("[editable] WM_CLASS=%r (AT-SPI silent, no cached event) "
-              "— treating as editable=True", wm)
+              "- treating as editable=True", wm)
     return True

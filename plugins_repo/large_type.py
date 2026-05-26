@@ -1,6 +1,6 @@
 """Display the selection in giant text on screen.
 
-Lifted straight from PopClip — useful for reading something to a
+Lifted straight from PopClip - useful for reading something to a
 colleague across the room, showing a confirmation number from your
 screen to a friend on the phone, or just enlarging a tiny menu item
 your eyes don't like. Click anywhere or press Esc / Space to dismiss.
@@ -46,13 +46,13 @@ def _install_css() -> None:
 
 
 def _show_large(text: str) -> None:
-    # GTK calls must hop to the main loop — popup plugin handlers run
+    # GTK calls must hop to the main loop - popup plugin handlers run
     # in worker threads, but Gtk.Window construction needs the main
     # thread to avoid threading errors.
     def _build() -> bool:
         _install_css()
         win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
-        win.set_title("LinuxPop — Large Type")
+        win.set_title("LinuxPop - Large Type")
         win.set_decorated(False)
         win.fullscreen()
         win.set_app_paintable(True)

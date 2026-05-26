@@ -41,7 +41,7 @@ def _notify(title: str, body: str) -> None:
 def _to_clipboard(text: str) -> None:
     """Replace the user's selection with the encoded/decoded text. The
     original 'just copy' behaviour left the user having to manually paste;
-    transformation plugins should swap text in-place — clipboard fallback
+    transformation plugins should swap text in-place - clipboard fallback
     still works when the focus is read-only."""
     import actions
     actions.replace_selection(text)
@@ -64,7 +64,7 @@ def _decode(text: str) -> None:
 
 
 def _worth_encoding(text: str) -> bool:
-    """Base64-encoding casual prose is rarely useful — bias the button
+    """Base64-encoding casual prose is rarely useful - bias the button
     toward selections that look like data or keys: 16+ chars, single-line,
     no natural-language whitespace. Filters out 'Hello world' shaped
     selections while keeping the action available for things like

@@ -11,7 +11,7 @@ from classifier import ContentType
 from plugin_base import Plugin
 
 # An expression must contain at least one digit AND at least one operator
-# (or one of the allowed function/constant names) — anything else is just
+# (or one of the allowed function/constant names) - anything else is just
 # prose and would never evaluate.
 _HAS_DIGIT = re.compile(r"\d")
 _HAS_OP_OR_CALL = re.compile(
@@ -84,7 +84,7 @@ def _eval(node):
         # both operand magnitude and exponent at sane values.
         if isinstance(node.op, ast.Pow):
             if abs(right) > 1000 or abs(left) > 1e6:
-                raise ValueError("exponent too large — refusing to evaluate")
+                raise ValueError("exponent too large - refusing to evaluate")
         return _BIN_OPS[type(node.op)](left, right)
     if isinstance(node, ast.UnaryOp) and type(node.op) in _UN_OPS:
         return _UN_OPS[type(node.op)](_eval(node.operand))

@@ -18,7 +18,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 # XInitThreads is intentionally NOT called here. We tried it (since
-# multiple threads touch X — watcher, hotkey, popup tick, clipboard
+# multiple threads touch X - watcher, hotkey, popup tick, clipboard
 # watcher) but it interacts badly with the python-xlib + PyGObject mix
 # in this process: the hotkey threads silently fail to grab keys when
 # XInitThreads runs at import time. Python-xlib uses its own per-Display
@@ -51,7 +51,7 @@ _lock_fd: int | None = None
 
 
 def _acquire_single_instance_lock() -> None:
-    """Refuse to start a second copy. Uses fcntl.flock — robust against
+    """Refuse to start a second copy. Uses fcntl.flock - robust against
     crashes (kernel releases the lock automatically when the process dies,
     no stale-lockfile cleanup needed)."""
     global _lock_fd
@@ -127,7 +127,7 @@ def _check_x11_or_exit() -> None:
 
     if not has_x11 and has_wayland:
         msg = (
-            "LinuxPop requires an X11 session — you appear to be running Wayland.\n"
+            "LinuxPop requires an X11 session - you appear to be running Wayland.\n"
             "Log in to an 'Xorg' session from your display manager."
         )
         print(msg, file=sys.stderr)
@@ -141,7 +141,7 @@ def _check_x11_or_exit() -> None:
             pass
         sys.exit(2)
     if not has_x11:
-        print("DISPLAY is not set — LinuxPop needs an X11 display.", file=sys.stderr)
+        print("DISPLAY is not set - LinuxPop needs an X11 display.", file=sys.stderr)
         sys.exit(2)
     if has_wayland and has_x11:
         # XWayland session. Native Wayland apps (most modern GTK/Qt) won't
@@ -178,7 +178,7 @@ def _read_selection(source: str) -> str:
 
 
 # Reused Xlib connection for pointer queries. Opening a fresh Display() per
-# call adds ~5-15 ms of XOpenDisplay roundtrip — which the hotkey path hits
+# call adds ~5-15 ms of XOpenDisplay roundtrip - which the hotkey path hits
 # on every press. Cached at module scope; we never close it (it lives for
 # the process lifetime, like the main GTK connection).
 _pointer_dpy = None
@@ -193,7 +193,7 @@ def _pointer_position() -> tuple[int, int]:
         data = _pointer_dpy.screen().root.query_pointer()
         return data.root_x, data.root_y
     except Exception:
-        # Connection may have been broken by an X server restart — drop it
+        # Connection may have been broken by an X server restart - drop it
         # so the next call opens a fresh one instead of permanently failing.
         try:
             _pointer_dpy.close()
@@ -206,7 +206,7 @@ def _pointer_position() -> tuple[int, int]:
 def _active_window_blocked(patterns: list[str]) -> bool:
     """Return True if the currently-focused window's title or WM_CLASS
     matches any of the user's block patterns. Case-insensitive substring
-    match. Empty / unset pattern list short-circuits — no X calls when
+    match. Empty / unset pattern list short-circuits - no X calls when
     nothing is blocked.
 
     Window title via `xdotool getwindowname`; WM_CLASS via xprop because
@@ -235,7 +235,7 @@ def _active_window_blocked(patterns: list[str]) -> bool:
         except (OSError, subprocess.SubprocessError):
             pass
         # WM_CLASS via xprop (xdotool's getwindowclassname is missing on
-        # some distros — silently returns nothing and breaks the gate).
+        # some distros - silently returns nothing and breaks the gate).
         try:
             out = subprocess.run(
                 ["xprop", "-id", wid, "WM_CLASS"],
@@ -270,7 +270,7 @@ class App:
         self.watcher: SelectionWatcher | None = None
         self.hotkey = None
         self.clipboard_hotkey = None
-        # Debounce id for plugin reloads triggered by settings saves —
+        # Debounce id for plugin reloads triggered by settings saves -
         # prevents a load_all storm when many keys change in quick
         # succession (textarea editing, bulk toggles).
         self._reload_pending_id: int | None = None
@@ -281,7 +281,7 @@ class App:
         # mirrors are the source of truth for the live-rebind diff.
         self._bound_hotkey: str = ""
         self._bound_clipboard_hotkey: str = ""
-        # Same mirror for the polling toggle — flipping it has to
+        # Same mirror for the polling toggle - flipping it has to
         # rebuild both hotkey threads (poll vs grab is decided at
         # thread start, not per-event).
         self._bound_use_polling: bool = False
@@ -303,7 +303,7 @@ class App:
     # ---- popup invocation ----------------------------------------------------
 
     def _show_for_text(self, text: str, x: int, y: int) -> None:
-        # No min-length check here on purpose — that filter belongs to
+        # No min-length check here on purpose - that filter belongs to
         # the watcher (auto-popup on selection), not to this routine.
         # show_popup_now() routes empty text into the no-selection
         # paste menu, but non-empty text of *any* length should still
@@ -326,7 +326,7 @@ class App:
         ctype = classify(text)
         preview = text[:60].replace("\n", "↵")
         log.info("[%s] %r", ctype.value, preview)
-        # AT-SPI / WM_CLASS probe — drives which plugins are eligible.
+        # AT-SPI / WM_CLASS probe - drives which plugins are eligible.
         # Done here (not in popup.show_for) so the popup module stays
         # accessibility-agnostic and we can pipe extra user blocklist
         # classes in from settings without circular imports.
@@ -356,7 +356,7 @@ class App:
             # transforms-and-actions for the selected text. The popup is
             # the single portal; the dedicated clipboard hotkey stays
             # available as a power-user shortcut.
-            log.info("[hotkey-fire] no selection — showing paste menu")
+            log.info("[hotkey-fire] no selection - showing paste menu")
             self._show_no_selection_popup(x, y)
             return
         log.info("[hotkey-fire] showing popup at (%d, %d) for %d-char selection",
@@ -366,8 +366,8 @@ class App:
     def _show_no_selection_popup(self, x: int, y: int) -> None:
         """Build a small paste-menu popup for the no-selection case.
 
-        Right now this surfaces a single entry point — the clipboard /
-        snippets picker — which is the natural answer to 'I want to
+        Right now this surfaces a single entry point - the clipboard /
+        snippets picker - which is the natural answer to 'I want to
         paste something'. Future entries (Paste latest, Paste plain,
         Paste snippet by name) slot in here as the snippet engine and
         modifier support land.
@@ -383,7 +383,7 @@ class App:
                 self._on_clipboard_hotkey,
             ))
         if not items:
-            # Nothing to offer — fall back to the old toast so the user
+            # Nothing to offer - fall back to the old toast so the user
             # at least gets feedback that the hotkey was received.
             subprocess.run(
                 ["notify-send", "--hint=byte:transient:1", "-t", "3000",
@@ -404,7 +404,7 @@ class App:
             # Watcher-only filter, opt-in via settings:
             # 'min_selection_length_enabled' gates whether we trim
             # very short selections at all. Default off (PopClip
-            # convention — show the popup for any selection).
+            # convention - show the popup for any selection).
             # The hotkey path bypasses this entirely; see
             # _show_for_text's docstring.
             if not text:
@@ -460,7 +460,7 @@ class App:
 
     def _start_clipboard_hotkey(self) -> None:
         if not bool(self.settings.get("clipboard_history_enabled", True)):
-            log.info("clipboard plugin disabled — not binding clipboard hotkey")
+            log.info("clipboard plugin disabled - not binding clipboard hotkey")
             self._bound_clipboard_hotkey = ""
             return
         hotkey_str = (self.settings.get("clipboard_hotkey") or "").strip()
@@ -535,7 +535,7 @@ class App:
 
             def on_changed():
                 # Compare against what's currently *grabbed*, NOT the settings
-                # singleton — settings_gui already mutated the singleton
+                # singleton - settings_gui already mutated the singleton
                 # before reaching us, so a singleton-vs-singleton diff
                 # always reports "no change".
                 self.settings = get_settings()
@@ -557,11 +557,11 @@ class App:
                 new_polling = bool(self.settings.get("hotkey_use_polling", False))
                 polling_changed = new_polling != self._bound_use_polling
                 if polling_changed:
-                    log.info("hotkey polling mode changed: %s → %s — "
+                    log.info("hotkey polling mode changed: %s → %s - "
                              "rebuilding both hotkey threads",
                              self._bound_use_polling, new_polling)
                 if new_hotkey != self._bound_hotkey or polling_changed:
-                    log.info("hotkey: %r → %r (polling=%s) — rebinding",
+                    log.info("hotkey: %r → %r (polling=%s) - rebinding",
                              self._bound_hotkey, new_hotkey, new_polling)
                     if self.hotkey is not None:
                         self.hotkey.stop()
@@ -570,7 +570,7 @@ class App:
                     if new_hotkey:
                         self._start_hotkey()
                 if new_clip != self._bound_clipboard_hotkey or polling_changed:
-                    log.info("clipboard hotkey: %r → %r (polling=%s) — rebinding",
+                    log.info("clipboard hotkey: %r → %r (polling=%s) - rebinding",
                              self._bound_clipboard_hotkey, new_clip, new_polling)
                     if self.clipboard_hotkey is not None:
                         self.clipboard_hotkey.stop()
@@ -713,7 +713,7 @@ def main(argv: list[str] | None = None) -> int:
 
     _setup_logging(args.debug)
     _check_x11_or_exit()
-    # Single-instance guard — refuses to start a second copy. Run BEFORE
+    # Single-instance guard - refuses to start a second copy. Run BEFORE
     # any GTK init or hotkey grabs so the second copy exits before
     # interfering with the existing instance.
     _acquire_single_instance_lock()
@@ -735,10 +735,10 @@ def main(argv: list[str] | None = None) -> int:
              "on" if app.tray else "off",
              app.settings.get("hotkey") or "disabled",
              "on" if app.watcher else "off")
-    print("[linuxpop] running — Ctrl+C to quit. Logs at " + str(LOG_FILE))
+    print("[linuxpop] running - Ctrl+C to quit. Logs at " + str(LOG_FILE))
 
     # Freeze the startup object graph so the GC never re-scans it. Cheap one-line
-    # win for a long-running daemon — recommended by Python gc docs.
+    # win for a long-running daemon - recommended by Python gc docs.
     def _freeze_gc_after_startup():
         import gc
         gc.collect()

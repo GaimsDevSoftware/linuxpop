@@ -18,12 +18,12 @@ parallel **Snap Store** and distro-native (`.deb`, AUR) packaging.
 
 What's done in this repo:
 
-- [x] AppStream metainfo XML — `packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml`
-- [x] Flatpak-style `.desktop` entry — `packaging/io.github.GaimsDevSoftware.LinuxPop.desktop`
-- [x] Flatpak manifest with **real SHA256 hashes** — `packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml`
-- [x] Wrapper script — `packaging/flatpak/linuxpop.wrapper`
+- [x] AppStream metainfo XML - `packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml`
+- [x] Flatpak-style `.desktop` entry - `packaging/io.github.GaimsDevSoftware.LinuxPop.desktop`
+- [x] Flatpak manifest with **real SHA256 hashes** - `packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml`
+- [x] Wrapper script - `packaging/flatpak/linuxpop.wrapper`
 - [x] Stable reverse-DNS app ID: `io.github.GaimsDevSoftware.LinuxPop`
-- [x] `appstreamcli validate --no-net` passes (1 pedantic about online screenshots — expected)
+- [x] `appstreamcli validate --no-net` passes (1 pedantic about online screenshots - expected)
 - [x] `desktop-file-validate` passes
 - [x] `install.sh` installs the AppStream metainfo + reverse-DNS `.desktop` so local
       tarball-installs are visible in Mint Software Manager / GNOME Software
@@ -32,7 +32,7 @@ What still needs human action before the first Flathub PR:
 
 - [ ] Take 4 screenshots into `docs/screenshots/` (popup, settings, wizard,
       clipboard). Save as `popup.png`, `settings.png`, `wizard.png`,
-      `clipboard.png` — those are the filenames the metainfo references.
+      `clipboard.png` - those are the filenames the metainfo references.
       Use PrintScreen / scrot / gnome-screenshot, then commit + push.
 - [ ] Install `flatpak-builder`: `sudo apt install flatpak-builder`
       (only `flatpak` is currently installed on this machine).
@@ -62,7 +62,7 @@ flatpak-builder --user --install --force-clean build-dir \
     packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml
 ```
 
-The first run will fail on the `PLACEHOLDER` hashes — `flatpak-builder`
+The first run will fail on the `PLACEHOLDER` hashes - `flatpak-builder`
 prints the correct ones. Copy them into the manifest and run again.
 
 ### 3. Run the sandboxed build
@@ -84,7 +84,7 @@ Smoke-test:
 1. Fork [flathub/flathub](https://github.com/flathub/flathub) on a new branch named after the app ID.
 2. Add the manifest at the repo root.
 3. Open a PR; Flathub's bot runs `flathub-linter` and the CI build.
-4. Address review comments — most apps go through 1–3 review rounds.
+4. Address review comments - most apps go through 1-3 review rounds.
 5. Once merged, Flathub starts shipping it to every Linux software centre worldwide.
 
 Flathub reviewer guidelines: <https://docs.flathub.org/docs/for-app-authors/requirements>.
@@ -103,7 +103,7 @@ recent Ubuntu releases). If you want a presence there too:
 4. Register the name (`snapcraft register linuxpop`) and push the snap.
 
 The Snap container model is similar to Flatpak's but more restrictive
-on X11 grabs — expect some integration work to get global hotkeys
+on X11 grabs - expect some integration work to get global hotkeys
 working from inside a confined snap.
 
 ---
@@ -112,7 +112,7 @@ working from inside a confined snap.
 
 ### Arch User Repository (AUR)
 
-LinuxPop is a Python script with a small set of runtime deps — the AUR
+LinuxPop is a Python script with a small set of runtime deps - the AUR
 PKGBUILD is one of the cheapest packages you can write:
 
 ```sh
@@ -158,7 +158,7 @@ above install to the same paths under `$pkgdir`. Build with
 - **Wayland.** LinuxPop relies on X11 global hotkey grabs, raw root
   pointer queries, and `xdotool`/`xclip`. The README documents this,
   and `main.py` refuses to start under pure Wayland. Adding Wayland
-  support would require a portal-based redesign — out of scope for v0.x.
+  support would require a portal-based redesign - out of scope for v0.x.
 
 - **Auto-updating.** Each store handles updates itself. Don't ship an
   in-app updater.
@@ -174,10 +174,10 @@ We use `io.github.GaimsDevSoftware.LinuxPop`. This:
 - Matches the GitHub URL `github.com/GaimsDevSoftware/linuxpop`.
 - Is accepted by Flathub (it follows their `io.github.<owner>.<app>` convention).
 - Is identical between Flathub, the `.desktop` file, the AppStream metainfo,
-  the Flatpak manifest, and the icon path — Linux software centres
+  the Flatpak manifest, and the icon path - Linux software centres
   cross-reference these by ID, so they must match exactly.
 
 If you ever own a domain like `linuxpop.app`, you can switch the ID to
-`app.linuxpop.LinuxPop` — but that's a one-time migration with
+`app.linuxpop.LinuxPop` - but that's a one-time migration with
 implications for existing installs, so do it before the first Flathub
 release if at all.

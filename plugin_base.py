@@ -23,13 +23,13 @@ class Plugin:
     # Optional fine-grained gate: if set, the button is only shown when the
     # predicate returns True for the actual selection text. Used to hide e.g.
     # 'URL decode' on text that contains no %-escapes. Exceptions in the
-    # predicate are treated as False (skip the plugin) — predicates run on
+    # predicate are treated as False (skip the plugin) - predicates run on
     # every popup show, so they must be cheap.
     predicate: Optional[Callable[[str], bool]] = None
     # If True, the button is hidden when the currently-focused widget is
     # not editable (read-only PDF viewer, web page body, image viewer).
     # The check uses AT-SPI with a WM_CLASS blocklist as fallback. Set on
-    # Cut / Paste / Backspace / Bold / Italic / Underline — actions that
+    # Cut / Paste / Backspace / Bold / Italic / Underline - actions that
     # have no effect on read-only text and would just confuse the user.
     requires_editable: bool = False
 
@@ -40,7 +40,7 @@ class Plugin:
 
     def matches(self, text: str) -> bool:
         """Return True if the plugin should appear for this specific text.
-        Called after handles() — content-type filtering is the coarse gate,
+        Called after handles() - content-type filtering is the coarse gate,
         the predicate is the fine-grained one. No predicate means 'always
         matches'."""
         if self.predicate is None:

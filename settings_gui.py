@@ -1,7 +1,7 @@
 """GTK + libhandy preferences window for LinuxPop.
 
 Uses Hdy.PreferencesWindow with grouped action rows instead of the legacy
-Gtk.Dialog + grid layout — gives a modern GNOME-Settings-style boxed-list UI
+Gtk.Dialog + grid layout - gives a modern GNOME-Settings-style boxed-list UI
 without migrating to GTK4.
 
 Apply-on-change semantics: edits save immediately, no Save/Cancel buttons.
@@ -17,7 +17,7 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("Handy", "1")
 from gi.repository import Gdk, GLib, Gtk, Handy, Pango  # noqa: E402
 
-# Some PyGObject builds don't expose Gdk.X11 as a top-level submodule —
+# Some PyGObject builds don't expose Gdk.X11 as a top-level submodule -
 # attempt to require it so Gdk.X11.get_server_time is available.
 try:
     gi.require_version("GdkX11", "3.0")
@@ -35,7 +35,7 @@ def _unwrap_subtitle_labels(root: Gtk.Widget) -> None:
     subtitle wrap onto multiple lines instead of ellipsising.
 
     libhandy renders the subtitle as a Gtk.Label with style class ``subtitle``
-    and ``ellipsize=END``, ``lines=1`` baked in — there's no public API to
+    and ``ellipsize=END``, ``lines=1`` baked in - there's no public API to
     flip that off per row. The only way to keep the descriptions readable
     in a narrow dialog is to walk the realised widget tree after show_all()
     and patch each subtitle label directly.
@@ -228,7 +228,7 @@ class SettingsDialog:
         page.add(self._build_ai_group())
         page.add(self._build_advanced_group())
         # Donation entry-points live in the tray menu, the About dialog
-        # and the first-run welcome — see welcome.open_support_picker.
+        # and the first-run welcome - see welcome.open_support_picker.
         # Settings stays focused on configuration.
 
         win.add(page)
@@ -262,7 +262,7 @@ class SettingsDialog:
         sel_row.set_activatable_widget(sel_switch)
         group.add(sel_row)
 
-        # Autostart at login (switch row) — driven by ~/.config/autostart
+        # Autostart at login (switch row) - driven by ~/.config/autostart
         # rather than a settings.json key, since the .desktop file is what
         # the DE actually reads. We just toggle the file from here.
         auto_row = Handy.ActionRow()
@@ -338,7 +338,7 @@ class SettingsDialog:
         clip_row.set_title("Optional clipboard shortcut")
         clip_row.set_subtitle(
             "A direct shortcut that opens the clipboard picker at the "
-            "cursor. You don't have to set one — the popup hotkey above "
+            "cursor. You don't have to set one - the popup hotkey above "
             "already gets you there when nothing is highlighted.")
         clip_recorder = HotkeyRecorder(
             self._settings.get("clipboard_hotkey") or "",
@@ -358,7 +358,7 @@ class SettingsDialog:
             lambda s, _p: clip_row.set_sensitive(s.get_active()))
         group.add(clip_row)
 
-        # Snippet triggers (text expansion). Off by default — turning it
+        # Snippet triggers (text expansion). Off by default - turning it
         # on means LinuxPop attaches to the X11 RECORD extension and sees
         # every keystroke on the desktop. Be honest about that in the
         # subtitle so the user can decide.
@@ -367,7 +367,7 @@ class SettingsDialog:
         trigger_row.set_subtitle(
             "When ON, typing a snippet's trigger code (e.g. 'rraak') followed "
             "by space or tab auto-expands it. Requires LinuxPop to watch "
-            "global keystrokes locally — keys are matched against your "
+            "global keystrokes locally - keys are matched against your "
             "snippet triggers only, never logged or sent anywhere.")
         trigger_switch = Gtk.Switch()
         trigger_switch.set_valign(Gtk.Align.CENTER)
@@ -436,7 +436,7 @@ class SettingsDialog:
         tblock_scroll.add(tblock_view)
         group.add(tblock_scroll)
 
-        # Shell extension {shell:CMD} in snippets. Off by default — same
+        # Shell extension {shell:CMD} in snippets. Off by default - same
         # threat model as enabling macros: a hostile imported snippet
         # with a {shell:rm -rf ~} runs immediately when expanded.
         shell_row = Handy.ActionRow()
@@ -444,7 +444,7 @@ class SettingsDialog:
         shell_row.set_subtitle(
             "When ON, snippets containing {shell:CMD} run that command "
             "in bash and paste the output. Useful for {shell:git branch} "
-            "or {shell:date -u}. Off by default — an imported snippet "
+            "or {shell:date -u}. Off by default - an imported snippet "
             "with a hostile command would execute immediately.")
         shell_switch = Gtk.Switch()
         shell_switch.set_valign(Gtk.Align.CENTER)
@@ -462,7 +462,7 @@ class SettingsDialog:
         group.add(shell_row)
 
         # 'Hotkey reads from' (PRIMARY vs CLIPBOARD) was removed from the
-        # UI here when the no-selection popup landed — with the paste
+        # UI here when the no-selection popup landed - with the paste
         # menu always available, the only reason to ever flip the source
         # to CLIPBOARD was the old 'I don't have a selection but I want
         # the hotkey to do something' case, which now Just Works.
@@ -473,8 +473,8 @@ class SettingsDialog:
         poll_row.set_title("Trigger on first press")
         poll_row.set_subtitle(
             "Some desktops (especially Cinnamon) swallow the first "
-            "hotkey press, so the popup only appears after 2–3 tries. "
-            "Turn this on to fix it. Runs a tiny background check — no "
+            "hotkey press, so the popup only appears after 2-3 tries. "
+            "Turn this on to fix it. Runs a tiny background check - no "
             "noticeable impact on performance.")
         poll_switch = Gtk.Switch()
         poll_switch.set_valign(Gtk.Align.CENTER)
@@ -493,7 +493,7 @@ class SettingsDialog:
 
         debounce_row = self._seconds_spin_row(
             "Delay before popup appears",
-            "Seconds to wait after you finish selecting — keeps the "
+            "Seconds to wait after you finish selecting - keeps the "
             "popup from flashing while you're still dragging.",
             "selection_debounce_ms", 0.0, 2.0, 0.05,
         )
@@ -526,7 +526,7 @@ class SettingsDialog:
         min_toggle_row.set_title("Skip short auto-popup selections")
         min_toggle_row.set_subtitle(
             "If on, the auto-popup ignores selections shorter than the "
-            "number below — useful if you keep getting popups for "
+            "number below - useful if you keep getting popups for "
             "single-character misclicks. The hotkey is unaffected and "
             "always opens the popup, even with no text selected.")
         min_switch = Gtk.Switch()
@@ -690,7 +690,7 @@ class SettingsDialog:
         # Custom-URL row (sensitive only when "Custom URL…" is picked)
         custom_row = Handy.ActionRow()
         custom_row.set_title("Custom search URL")
-        custom_row.set_subtitle("Must contain {q} — replaced by the selection.")
+        custom_row.set_subtitle("Must contain {q} - replaced by the selection.")
         custom_entry = Gtk.Entry()
         custom_entry.set_valign(Gtk.Align.CENTER)
         custom_entry.set_width_chars(28)
@@ -729,7 +729,7 @@ class SettingsDialog:
             "Listens on the system accessibility bus so the popup can "
             "tell apart 'cursor in chat input' from 'cursor in read-only "
             "history' inside Electron apps like Claude desktop. Off by "
-            "default — it was correlated with a Cinnamon desktop-panel "
+            "default - it was correlated with a Cinnamon desktop-panel "
             "crash. The popup still works fine without it; it just "
             "falls back to a permissive default for unknown Electron "
             "widgets.")
@@ -793,7 +793,7 @@ class SettingsDialog:
         spin = Gtk.SpinButton.new_with_range(lo_s, hi_s, step_s)
         spin.set_digits(2 if step_s < 0.1 else 1)
         spin.set_valign(Gtk.Align.CENTER)
-        # Trailing 's' unit hint via tooltip — HdyActionRow already shows
+        # Trailing 's' unit hint via tooltip - HdyActionRow already shows
         # the title in bold and a subtitle, no room for an inline suffix.
         spin.set_tooltip_text("Value in seconds")
         spin.set_value(float(self._settings.get(key)) / 1000.0)
@@ -821,7 +821,7 @@ class SettingsDialog:
     def _apply_trigger_toggle(self) -> None:
         """Start or stop the snippet-trigger XRecord watcher live, so the
         setting takes effect without a daemon restart. Looks up the
-        already-loaded clipboard_history user module — that's where the
+        already-loaded clipboard_history user module - that's where the
         watcher lives."""
         try:
             import sys

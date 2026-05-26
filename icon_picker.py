@@ -127,7 +127,7 @@ class IconPicker:
 
         outer.pack_start(top, False, False, 0)
 
-        # Result count line — supports clickable links in empty-state
+        # Result count line - supports clickable links in empty-state
         self._count_label = Gtk.Label(xalign=0)
         self._count_label.set_line_wrap(True)
         self._count_label.set_track_visited_links(False)
@@ -191,7 +191,7 @@ class IconPicker:
         self._rendered = 0
 
         if not self._filtered and query:
-            # Zero matches — show suggestions + hint about Symbolic toggle + user icons
+            # Zero matches - show suggestions + hint about Symbolic toggle + user icons
             esc_query = GLib.markup_escape_text(query)
             symbolic_hint = (
                 " <b>Tip:</b> if you added a colored brand icon, "
@@ -210,7 +210,7 @@ class IconPicker:
         else:
             self._count_label.set_markup(
                 f"{len(self._filtered)} matching icons "
-                f"({len(self._all_icons)} total in your theme) — "
+                f"({len(self._all_icons)} total in your theme) - "
                 f"<a href=\"linuxpop://open-user-icons\">add your own</a>"
             )
 

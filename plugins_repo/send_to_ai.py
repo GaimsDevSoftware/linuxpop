@@ -2,20 +2,20 @@
 
 Two strategies per service:
 
-- mode="url"   — append the text as a URL parameter so the chat box is
+- mode="url"   - append the text as a URL parameter so the chat box is
                  prefilled. Most services that support this auto-submit on
                  page load (we can't suppress that). Fast and reliable.
-- mode="paste" — open the chat page, wait for the browser window to focus,
+- mode="paste" - open the chat page, wait for the browser window to focus,
                  then simulate Ctrl+V via xdotool to paste the clipboard
                  into the chat box. Slower but lets the user edit before
                  submitting. Used for services with no URL-prefill support.
 
 As of late 2025:
-  Claude     — `?q=` was disabled. paste only.
-  ChatGPT    — `?q=` works, auto-submits. URL mode.
-  Gemini     — no URL prefill exists. paste only.
-  Perplexity — `?q=` works, auto-submits. URL mode.
-  Google AI  — `?q=&udm=50` opens AI Mode in Search, auto-submits. URL mode.
+  Claude     - `?q=` was disabled. paste only.
+  ChatGPT    - `?q=` works, auto-submits. URL mode.
+  Gemini     - no URL prefill exists. paste only.
+  Perplexity - `?q=` works, auto-submits. URL mode.
+  Google AI  - `?q=&udm=50` opens AI Mode in Search, auto-submits. URL mode.
 """
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def _send_via_url(service: str, url_template: str, text: str,
             check=False,
         )
         return
-    body = ("Prefilled — press Enter in the chat to send."
+    body = ("Prefilled - press Enter in the chat to send."
             if not auto_submits
             else "Sent. (URL-mode auto-submits on this service.)")
     subprocess.run(
@@ -100,7 +100,7 @@ def _find_browser_window(name_term: str, timeout: float) -> str | None:
         return None
     deadline = time.time() + timeout
     while time.time() < deadline:
-        # Visible browsers — anchor on WM_CLASS so "Claude" inside VSCode
+        # Visible browsers - anchor on WM_CLASS so "Claude" inside VSCode
         # or a Slack channel name doesn't match.
         try:
             browsers = subprocess.run(
@@ -114,14 +114,14 @@ def _find_browser_window(name_term: str, timeout: float) -> str | None:
                 capture_output=True, text=True, timeout=1.5,
             )
         except subprocess.TimeoutExpired:
-            # xdotool hung — bail out of the wait loop so the worker
+            # xdotool hung - bail out of the wait loop so the worker
             # thread doesn't sit forever holding the saved clipboard.
             print("[send_to_ai] xdotool search timed out; giving up")
             return None
         named_ids = {x for x in named.stdout.strip().splitlines() if x}
         candidates = _intersect(browser_ids, named_ids)
         if candidates:
-            # Newest wid first — that's usually the freshly-opened tab/window
+            # Newest wid first - that's usually the freshly-opened tab/window
             return sorted(candidates, key=int)[-1]
         time.sleep(0.2)
     return None
@@ -205,7 +205,7 @@ def _restore_selections(saved: dict[str, bytes]) -> None:
 
 def _paste_keystroke(key: str = "ctrl+v") -> None:
     """Send the configured paste shortcut. Default is Ctrl+V which is the
-    most universal — modern contenteditable inputs (ProseMirror, Lexical,
+    most universal - modern contenteditable inputs (ProseMirror, Lexical,
     Slate, Draft, TipTap) all wire it. Shift+Insert is offered as a
     per-service alternative for legacy Electron textareas that swallow
     synthetic Ctrl+V."""
@@ -224,7 +224,7 @@ def _diagnose_window(window_id: str) -> str:
             ["xdotool", "getwindowname", window_id],
             capture_output=True, text=True, timeout=0.5,
         ).stdout.strip()
-        # xprop, not `xdotool getwindowclassname` — the latter is missing
+        # xprop, not `xdotool getwindowclassname` - the latter is missing
         # from xdotool on Mint/Debian and silently returns ''.
         wclass = subprocess.run(
             ["xprop", "-id", window_id, "WM_CLASS"],
@@ -241,7 +241,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
     # Snapshot the user's clipboard + primary BEFORE we clobber them,
     # so we can restore once paste lands. Without this, asking Claude
     # silently overwrites whatever was on the clipboard with the
-    # question prompt — a real annoyance for anyone juggling notes.
+    # question prompt - a real annoyance for anyone juggling notes.
     saved_selections = {
         "clipboard": _read_selection("clipboard"),
         "primary":   _read_selection("primary"),
@@ -250,7 +250,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
     try:
         subprocess.Popen(["xdg-open", url], start_new_session=True)
     except FileNotFoundError:
-        # Restore immediately on failure — we never paste, so the user's
+        # Restore immediately on failure - we never paste, so the user's
         # clipboard shouldn't stay overwritten.
         _restore_selections(saved_selections)
         subprocess.run(
@@ -269,7 +269,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
                 break
         if window_id is None or not shutil.which("xdotool"):
             print(f"[send_to_ai] {service}: no browser window matched within "
-                  f"{_WINDOW_TIMEOUT}s — terms={window_terms}")
+                  f"{_WINDOW_TIMEOUT}s - terms={window_terms}")
             subprocess.run(
                 ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-warning", service,
                  "Browser window didn't appear in time. "
@@ -296,7 +296,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
             time.sleep(total_settle)
         _paste_keystroke(paste_key)
         # Give the chat box a beat to actually receive the paste before
-        # we restore the user's clipboard — pasting and restoring in
+        # we restore the user's clipboard - pasting and restoring in
         # the same tick has a small race where the destination sees the
         # old clipboard content.
         time.sleep(0.4)
@@ -306,7 +306,7 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
 
     body = ("Pasting once the tab loads. Review and press Enter to send."
             if shutil.which("xdotool")
-            else "Text copied — paste manually with Ctrl+V or Shift+Insert")
+            else "Text copied - paste manually with Ctrl+V or Shift+Insert")
     subprocess.run(
         ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "applications-internet",
          f"Opened {service}", body],
@@ -353,7 +353,7 @@ _SERVICES = {
         service="ChatGPT",
         mode="url",
         # &autoSubmit=0 was added by OpenAI after a security disclosure
-        # (Tenable TRA-2025-22) — it prefills the chat input WITHOUT
+        # (Tenable TRA-2025-22) - it prefills the chat input WITHOUT
         # sending. The user presses Enter when ready. Best of both worlds.
         url_template="https://chatgpt.com/?q={text_url}&autoSubmit=0",
         url="https://chat.openai.com/",

@@ -1,6 +1,6 @@
 # Contributing to LinuxPop
 
-Thanks for your interest! LinuxPop is a small, hackable tool — most useful
+Thanks for your interest! LinuxPop is a small, hackable tool - most useful
 contributions will be plugins.
 
 ## Writing a plugin
@@ -58,16 +58,16 @@ text → popup shows your new button.
 
 ### Tips
 
-- **Run blocking work on a thread** — the handler is called on the GTK main
+- **Run blocking work on a thread** - the handler is called on the GTK main
   loop. Spawn a `threading.Thread` for HTTP requests, subprocess calls that
   may hang, etc. Use `notify-send` to communicate results.
 - **Copy results to the clipboard** with
   `subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode())`
   so the user can paste them.
-- **Use existing icons** — most desktops ship the [hicolor / Adwaita icon
+- **Use existing icons** - most desktops ship the [hicolor / Adwaita icon
   themes](https://developer.gnome.org/hig/reference/icons.html). Use
   `-symbolic` suffix for monochrome icons that pick up theme colors.
-- **Don't depend on a specific path layout** — `classifier`, `plugin_base`,
+- **Don't depend on a specific path layout** - `classifier`, `plugin_base`,
   `actions` and `settings` are importable because plugin_loader puts the
   LinuxPop directory on `sys.path`. Don't add `sys.path.insert` to your
   plugin.
@@ -87,7 +87,7 @@ Open a PR adding:
    ```
 
 External system dependencies (e.g. your plugin needs `imagemagick` installed)
-should fail gracefully — `shutil.which("convert")` check and a `notify-send`
+should fail gracefully - `shutil.which("convert")` check and a `notify-send`
 explaining what's missing.
 
 ## Bug reports & feature requests
@@ -99,7 +99,7 @@ Please file an issue. Include:
 
 ## Pull requests
 
-- Keep PRs focused — one concern per PR
+- Keep PRs focused - one concern per PR
 - Match the existing code style (PEP 8, type hints where possible)
 - Don't add user-facing strings in languages other than English
 - For new top-level features, update README.md

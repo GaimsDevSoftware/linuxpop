@@ -31,7 +31,7 @@ DEFAULTS: dict[str, Any] = {
     # Enter to paste at the cursor. Ignored if clipboard_history_enabled
     # is False.
     "clipboard_hotkey": "super+v",
-    # Snippet triggers — when ON, typing a snippet's shortcode followed
+    # Snippet triggers - when ON, typing a snippet's shortcode followed
     # by space/tab/enter/punctuation auto-expands it in place. Requires
     # global keystroke monitoring via the X11 RECORD extension. Off by
     # default because of the privacy implication; keystrokes are matched
@@ -42,7 +42,7 @@ DEFAULTS: dict[str, Any] = {
     # Use it to silence expansion in password managers, terminals, your
     # bank's website, etc. without disabling triggers globally.
     "trigger_blocklist_patterns": [],
-    # Shell extension in snippets — when ON, {shell:CMD} tokens execute
+    # Shell extension in snippets - when ON, {shell:CMD} tokens execute
     # bash and inject stdout. Off by default because importing a snippet
     # from elsewhere with a hostile {shell:...} would run code on your
     # machine; treat this like enabling macros in a document. 5 s timeout.
@@ -52,7 +52,7 @@ DEFAULTS: dict[str, Any] = {
     # Default ON. Poll the keyboard state every 50 ms instead of
     # registering an XGrabKey. CPU cost measured at <0.1 % per hotkey
     # in `top` (the calls complete in microseconds; theoretical worst-
-    # case is 0.4 %). Bypasses WM-level grab conflicts — Cinnamon's
+    # case is 0.4 %). Bypasses WM-level grab conflicts - Cinnamon's
     # muffin defers Super-key dispatching to detect tap-vs-hold and
     # eats the first press of Shift+Super combos on its way through
     # the compositor event filter (see linuxmint/cinnamon #549). The
@@ -61,14 +61,14 @@ DEFAULTS: dict[str, Any] = {
     "hotkey_use_polling": True,
     # Milliseconds before the popup auto-hides if the mouse never enters
     # it. 6.5 s leaves enough time to read the buttons without overstaying
-    # — 8 s felt sluggish in practice. Tunable via Settings → Timing.
+    # - 8 s felt sluggish in practice. Tunable via Settings → Timing.
     "auto_hide_initial_ms": 6500,
     # Milliseconds before hide after the mouse leaves the popup's safe
     # zone. 4 s is forgiving for re-entry; 1.5 s felt twitchy.
     "auto_hide_leave_ms": 4000,
     # Minimum text length to trigger the popup on selection. 2 chars
     # filters most accidental single-letter selections (drag-overshoot,
-    # stray double-click) without blocking real one-syllable words —
+    # stray double-click) without blocking real one-syllable words -
     # those are typically 3+ chars anyway.
     "min_selection_length": 2,
     # How long to wait (ms) after the last selection change before showing
@@ -91,7 +91,7 @@ DEFAULTS: dict[str, Any] = {
     "readonly_app_classes": [],
     # Hard cap on how many action buttons the popup will draw. Plugins
     # are ranked by priority + your custom plugin_order; anything past
-    # the cap is silently dropped (NOT moved to an overflow menu —
+    # the cap is silently dropped (NOT moved to an overflow menu -
     # raise this if you want everything visible). Stops the popup from
     # being a 25-icon bar when many plugins are installed.
     "max_popup_buttons": 10,
@@ -106,7 +106,7 @@ DEFAULTS: dict[str, Any] = {
     "plugin_order": [],
     # Which chat-AI services the send_to_ai plugin should expose as buttons.
     # Recognised: "google_ai", "claude", "chatgpt", "gemini", "perplexity".
-    # Default is Google AI Search alone — it works without login or any
+    # Default is Google AI Search alone - it works without login or any
     # subscription, opens in any browser, and auto-submits via URL. Add
     # the others in Settings if you have accounts and want one-click
     # routing to them.
@@ -118,7 +118,7 @@ DEFAULTS: dict[str, Any] = {
     #   "ai_chatgpt_mode": "paste",
     #   "ai_perplexity_mode": "paste",
     # If True, "Run in terminal" pops a confirmation dialog showing the exact
-    # command before launching. Recommended — protects against highlighting
+    # command before launching. Recommended - protects against highlighting
     # a malicious-looking string and clicking the wrong button.
     "terminal_confirm_run": True,
     # Which search engine the "Search the web" popup button uses. Recognised
@@ -132,14 +132,14 @@ DEFAULTS: dict[str, Any] = {
     "search_engine_custom_url": "",
     # Support / donation URLs surfaced in the welcome dialog, the About
     # dialog, and the tray menu. Leave empty to hide that button entirely
-    # (each is independent — show only the ones you've actually set up).
+    # (each is independent - show only the ones you've actually set up).
     # Conventional defaults are pre-filled assuming the GitHub org name
     # matches the upstream repo; update or blank out as needed.
     "support_paypal_url":   "https://paypal.me/linuxpop",
     # 'Skip short auto-popup selections' filter. Off by default to
     # match PopClip out of the box (no minimum-size knob there). When
     # on, the watcher silently drops selections shorter than
-    # min_selection_length — useful if a flaky app keeps firing
+    # min_selection_length - useful if a flaky app keeps firing
     # X selection events for accidental clicks. The hotkey always
     # ignores this filter; see main.py _start_watcher.
     "min_selection_length_enabled": False,
@@ -147,7 +147,7 @@ DEFAULTS: dict[str, Any] = {
     # 'cursor in chat input' from 'cursor in chat history' inside
     # Electron apps where the synchronous AT-SPI tree-walk dead-ends.
     # Off by default since the long-lived listener registration was
-    # correlated with a Cinnamon segfault on 2026-05-25 — xapp-sn-watcher
+    # correlated with a Cinnamon segfault on 2026-05-25 - xapp-sn-watcher
     # threw ATK_IS_STATE_SET assertions immediately after we registered,
     # then cinnamon dereferenced a freed GObject and crashed the panel.
     # See knowledge/linuxpop.md for the crash log + timeline.

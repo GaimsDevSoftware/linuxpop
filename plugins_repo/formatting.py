@@ -1,11 +1,11 @@
-"""Bold / Italic / Underline / Strikethrough — rich-text formatting.
+"""Bold / Italic / Underline / Strikethrough - rich-text formatting.
 
 Standard Ctrl-key shortcuts that work in almost every modern rich-text
 editor (Google Docs, Word, LibreOffice, Notion, Obsidian, GitHub
 Markdown editors with the formatting toolbar, most webmail composers).
 
 In Markdown editors that don't bind Ctrl+B etc., these will do nothing
-— same trade-off as PopClip on macOS. The user is expected to know
+- same trade-off as PopClip on macOS. The user is expected to know
 when they're in a rich-text vs plain-text context.
 """
 from __future__ import annotations

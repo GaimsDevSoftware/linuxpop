@@ -32,7 +32,7 @@ def _timestamp_convert(text: str) -> None:
             value = value / 1000.0
         # fromtimestamp raises OSError on some libcs for out-of-range
         # epochs (extreme negatives, > year 9999). OverflowError on others.
-        # Both mean "not a sensible timestamp" — fall through to the next
+        # Both mean "not a sensible timestamp" - fall through to the next
         # parse strategy instead of crashing the worker.
         when = dt.datetime.fromtimestamp(value).astimezone()
         _copy(when.isoformat(), f"From epoch {s}")

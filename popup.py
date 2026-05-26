@@ -67,7 +67,7 @@ def _shift_held_in_current_event() -> bool:
     """Return True if Shift was held when the GTK event currently being
     dispatched was generated. Read inside a 'clicked' callback to know
     whether the user shift-clicked the button. Falls back to False if
-    GTK didn't surface an event state (rare — happens for
+    GTK didn't surface an event state (rare - happens for
     programmatically-fired clicks).
     """
     try:
@@ -165,7 +165,7 @@ class PopupWindow:
         self._initial_grace_ms = initial_grace_ms  # before mouse enters
         self._leave_grace_ms = leave_grace_ms      # after mouse leaves popup AND text zone
         # Logical-pixel radius around the original selection cursor that counts
-        # as "still over the text" — keeps popup alive while user looks at it.
+        # as "still over the text" - keeps popup alive while user looks at it.
         self._text_zone_radius = 80
         self._origin_logical: tuple[float, float] = (0.0, 0.0)
         self._popup_rect: tuple[int, int, int, int] = (0, 0, 0, 0)  # x, y, w, h logical
@@ -222,7 +222,7 @@ class PopupWindow:
         # Strip out plugins that only make sense in editable widgets
         # (Cut/Paste/Backspace/Bold/Italic/Underline) when the focused
         # context is read-only. Callers pass editable=False after probing
-        # the focused widget — see main.py / editable_detect.py.
+        # the focused widget - see main.py / editable_detect.py.
         if not editable:
             plugins = [p for p in plugins if not p.requires_editable]
         # Hard cap so the popup doesn't grow to 25 icons across when
@@ -253,7 +253,7 @@ class PopupWindow:
                     # Read the modifier state on the GTK event that
                     # triggered this click. Shift means 'copy the
                     # result instead of pasting it back' (PopClip
-                    # convention) — relevant when the plugin uses
+                    # convention) - relevant when the plugin uses
                     # actions.replace_selection() for an in-place
                     # transform. Plugins that don't paste are
                     # unaffected by the flag.
@@ -289,7 +289,7 @@ class PopupWindow:
         no-selection popup that surfaces paste-oriented entry points
         when the hotkey fires without highlighted text.
 
-        Each callback takes no arguments — it should encapsulate whatever
+        Each callback takes no arguments - it should encapsulate whatever
         the click needs to do (open a picker, paste, etc.). Callbacks run
         on a worker thread so a slow handler can't freeze the GTK loop.
         """
@@ -425,7 +425,7 @@ class PopupWindow:
         self._initial_hide_id = None
         # Only auto-hide if the user never reached the popup. If
         # _hide_timeout_id is None and tick says we're in safe zone,
-        # we still hide here — the contract is "after N ms without
+        # we still hide here - the contract is "after N ms without
         # pointer entry, give up".
         self.hide()
         return False
@@ -505,7 +505,7 @@ class PopupWindow:
 
         in_safe = self._in_safe_zone(px, py)
         if in_safe:
-            # Reset/cancel any countdown — user is still on text or popup
+            # Reset/cancel any countdown - user is still on text or popup
             self._cancel_hide_timeout()
         else:
             # Arm leave-grace if not already counting down
@@ -523,7 +523,7 @@ class PopupWindow:
         #       diagonal approach to a corner doesn't trip the leave-grace
         #       just because the pointer is 1-2 px outside the frame).
         #   (b) a generous circle around the original selection cursor.
-        #   (c) the bounding rectangle spanning both — i.e. the corridor
+        #   (c) the bounding rectangle spanning both - i.e. the corridor
         #       between text and popup. This is what was missing: moving
         #       the cursor from selection to popup along the natural
         #       diagonal path used to leave the radius briefly, arming
@@ -555,7 +555,7 @@ class PopupWindow:
     def _on_enter(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        # User reached the popup — both timers should stop. Initial
+        # User reached the popup - both timers should stop. Initial
         # grace was "give up if they never come"; once they're here,
         # the leave-grace alone governs disappearance.
         self._cancel_initial_hide()
@@ -565,7 +565,7 @@ class PopupWindow:
     def _on_leave(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        # Don't arm here — the tracker decides based on whether we're still
+        # Don't arm here - the tracker decides based on whether we're still
         # near the original text. Leaving the popup alone isn't enough.
         return False
 

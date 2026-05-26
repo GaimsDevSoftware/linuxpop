@@ -13,7 +13,7 @@ from classifier import _normalize as _strip_invisible
 
 
 # Thread-local 'force copy only' flag. When set, replace_selection
-# writes to the clipboard but skips the Ctrl+V step — the popup uses
+# writes to the clipboard but skips the Ctrl+V step - the popup uses
 # this to honour Shift-click on a transform action: result lands on the
 # clipboard for manual paste elsewhere, never overwrites the original
 # selection. Mirrors PopClip's Shift-modifier behaviour where Shift
@@ -56,7 +56,7 @@ def copy_to_clipboard(text: str) -> None:
 
 def replace_selection(new_text: str) -> None:
     """Put new_text on the clipboard AND paste it over the current
-    selection — the in-place transform behaviour PopClip has on macOS.
+    selection - the in-place transform behaviour PopClip has on macOS.
 
     Sequence:
       1. xclip writes the new text to CLIPBOARD
@@ -66,7 +66,7 @@ def replace_selection(new_text: str) -> None:
 
     If the focused widget is read-only the Ctrl+V is silently
     discarded, but the result is still on the clipboard so the user
-    can paste it elsewhere — same fallback as a manual Copy.
+    can paste it elsewhere - same fallback as a manual Copy.
     """
     if not shutil.which("xclip"):
         print("[actions] xclip not installed, cannot replace selection")
@@ -79,18 +79,18 @@ def replace_selection(new_text: str) -> None:
             timeout=2.0,
         )
     except subprocess.TimeoutExpired:
-        print("[actions] xclip write timed out — selection not replaced")
+        print("[actions] xclip write timed out - selection not replaced")
         return
     if force_copy_active():
         # Shift-modifier on the popup button: result goes to the
         # clipboard, but we deliberately skip the Ctrl+V so the
         # original selection stays put.
-        print("[actions] force-copy mode — clipboard only, no paste")
+        print("[actions] force-copy mode - clipboard only, no paste")
         return
     if not shutil.which("xdotool"):
         # No xdotool: leave the result on the clipboard so the user can
         # paste manually with Ctrl+V.
-        print("[actions] xdotool missing — text on clipboard only")
+        print("[actions] xdotool missing - text on clipboard only")
         return
     import time as _t
     _t.sleep(0.05)
@@ -101,7 +101,7 @@ def replace_selection(new_text: str) -> None:
             timeout=2.0,
         )
     except subprocess.TimeoutExpired:
-        print("[actions] xdotool paste timed out — text on clipboard only")
+        print("[actions] xdotool paste timed out - text on clipboard only")
 
 
 def open_url(text: str) -> None:
@@ -116,11 +116,11 @@ def open_url(text: str) -> None:
         print("[actions] xdg-open not available")
 
 
-# General-purpose web search engines. The value is a URL template — '{q}'
+# General-purpose web search engines. The value is a URL template - '{q}'
 # gets replaced with the URL-encoded selection. Add to the dict to extend.
 #
 # Site-specific destinations (Wikipedia, YouTube, MDN, Stack Overflow, etc.)
-# live as their own popup buttons via the recipe system — see
+# live as their own popup buttons via the recipe system - see
 # plugins_repo/recipes/. Keep this dict scoped to "general search".
 SEARCH_ENGINES: dict[str, tuple[str, str]] = {
     # key:            (display name,     URL template)
@@ -147,7 +147,7 @@ def _search_template() -> str:
             tmpl = (s.get("search_engine_custom_url") or "").strip()
             if "{q}" in tmpl:
                 return tmpl
-            # Empty/invalid custom URL — fall through to default.
+            # Empty/invalid custom URL - fall through to default.
         if engine in SEARCH_ENGINES:
             return SEARCH_ENGINES[engine][1]
     except Exception:
@@ -314,7 +314,7 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
         # press End/Arrow to position the caret to tweak.
         text_buf.select_range(text_buf.get_start_iter(),
                               text_buf.get_end_iter())
-        # The button has done its job — disable so it visually confirms
+        # The button has done its job - disable so it visually confirms
         # "you're in edit mode now".
         edit_btn.set_sensitive(False)
         edit_btn.set_label("Editing…")

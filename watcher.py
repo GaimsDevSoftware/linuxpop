@@ -26,7 +26,7 @@ class SelectionWatcher:
         self._thread: Optional[threading.Thread] = None
         self._last_text: str = ""
         # Wait this long after the last selection-change event before firing.
-        # Avoids popup churn while the user is still dragging the selection —
+        # Avoids popup churn while the user is still dragging the selection -
         # X PRIMARY updates on every character as the drag extends.
         self._debounce_s: float = max(0.0, debounce_ms / 1000.0)
 
@@ -39,7 +39,7 @@ class SelectionWatcher:
 
     def set_debounce_ms(self, ms: int) -> None:
         """Update the debounce window live. Read by the event loop on its
-        next iteration — no restart needed."""
+        next iteration - no restart needed."""
         self._debounce_s = max(0.0, ms / 1000.0)
 
     def _read_primary(self) -> str:
@@ -119,7 +119,7 @@ class SelectionWatcher:
 
     def _event_loop(self, dpy: display.Display) -> None:
         fd = dpy.fileno()
-        # Idle wakeup cadence — keep at 5 s so a quiet daemon barely costs
+        # Idle wakeup cadence - keep at 5 s so a quiet daemon barely costs
         # anything. While a selection change is pending, we override the
         # timeout with the remaining debounce window so we fire promptly.
         IDLE_TIMEOUT = 5.0
@@ -147,7 +147,7 @@ class SelectionWatcher:
                     # Loop back to start a new debounce wait
                     continue
             # No fd activity in the timeout window. If we were debouncing,
-            # the user has stopped extending the selection — fire now.
+            # the user has stopped extending the selection - fire now.
             if pending and (time.monotonic() - last_event_at) >= self._debounce_s:
                 pending = False
                 self._handle_selection_change(dpy)

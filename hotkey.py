@@ -62,7 +62,7 @@ def _parse(hotkey: str) -> tuple[int, str]:
         if token not in _MOD_NAMES:
             raise ValueError(f"unknown modifier {token!r} in {hotkey!r}")
         mods |= _MOD_NAMES[token]
-    # Map alias; otherwise return the token itself — the resolver will try
+    # Map alias; otherwise return the token itself - the resolver will try
     # several capitalizations against XK.string_to_keysym.
     if key_token in _KEY_ALIASES:
         key_name = _KEY_ALIASES[key_token]
@@ -111,7 +111,7 @@ class Hotkey:
         self._hotkey_str = hotkey_str
         self._on_trigger = on_trigger
         # `use_polling` switches from XGrabKey (event-driven) to
-        # XQueryKeymap polling (~50 ms). Polling bypasses grab races —
+        # XQueryKeymap polling (~50 ms). Polling bypasses grab races -
         # e.g. Cinnamon briefly grabbing the keyboard on Super-down for
         # its overview gesture, which silently eats the first press of
         # any Super-based hotkey. Costs ~3-5 % CPU per hotkey and
@@ -131,7 +131,7 @@ class Hotkey:
 
     def stop(self, wait: bool = True, timeout: float = 1.5) -> None:
         """Stop the hotkey thread. When `wait` (default), block until the
-        thread exits and the X11 grab is released — required by live-rebind
+        thread exits and the X11 grab is released - required by live-rebind
         in main.py so the old thread's ungrab doesn't race the new thread's
         grab on the same key and silently steal it."""
         self._stop.set()
@@ -165,7 +165,7 @@ class Hotkey:
         self._keycode = keycode
         self._root = self._dpy.screen().root
 
-        # Polling mode bypasses XGrabKey entirely — just samples the
+        # Polling mode bypasses XGrabKey entirely - just samples the
         # keymap every 50 ms and edge-detects 0→1 transitions. Used as
         # the escape hatch for hotkeys that fight with WM-level grabs
         # (Cinnamon Super-overview is the canonical example).
@@ -204,10 +204,10 @@ class Hotkey:
                 print(f"[hotkey] grab failed for mask 0x{mask:x}: {exc}")
                 grab_failed += 1
 
-        # If EVERY variant failed, the user's hotkey is unusable — notify them
+        # If EVERY variant failed, the user's hotkey is unusable - notify them
         # instead of silently doing nothing.
         if not self._grabbed_combos:
-            print(f"[hotkey] '{self._hotkey_str}' could not be grabbed — already in use")
+            print(f"[hotkey] '{self._hotkey_str}' could not be grabbed - already in use")
             try:
                 import subprocess
                 subprocess.run(
@@ -228,7 +228,7 @@ class Hotkey:
         # Event loop. We poll select() with a 1 s timeout so the daemon
         # can stop within 1 s of self._stop being set, while staying mostly
         # asleep when no hotkey traffic arrives. (Previously: 0.2 s, which
-        # woke this thread 5 times/sec per registered hotkey — multiply by
+        # woke this thread 5 times/sec per registered hotkey - multiply by
         # the popup + clipboard hotkeys and the daemon was getting 10
         # context switches/sec for no reason.)
         while not self._stop.is_set():
@@ -243,7 +243,7 @@ class Hotkey:
             # MappingNotify (type 34): the X server is telling us the
             # keyboard mapping changed. Our grab is on a specific keycode,
             # but the user's keysym (e.g. 'greater') may have moved to a
-            # different keycode — in which case our grab silently stops
+            # different keycode - in which case our grab silently stops
             # catching their presses until we re-grab on the new keycode.
             # On Norwegian setups with IBus / kbdd that swap layouts per
             # app, these arrive in floods and were the root cause of
@@ -308,13 +308,13 @@ class Hotkey:
 
     def _poll_loop(self) -> None:
         """Sample the keyboard 20×/sec and fire on rising-edge of the
-        hotkey combo. Bypasses XGrabKey entirely — used when another
+        hotkey combo. Bypasses XGrabKey entirely - used when another
         client (Cinnamon's Super-overview detector etc.) keeps eating
         the first press of our combo.
 
         Mod-state read from query_pointer().mask (X's only way to get
         current modifier state at runtime). Key state read from
-        query_keymap() — a 32-byte bitmap with one bit per keycode.
+        query_keymap() - a 32-byte bitmap with one bit per keycode.
         """
         import time as _time
         keycode = self._keycode
@@ -337,7 +337,7 @@ class Hotkey:
                 keymap = self._dpy.query_keymap()
                 pressed = bool(keymap[byte_idx] & bit_val)
                 if pressed and not prev_pressed:
-                    # Rising edge — verify modifier state right now.
+                    # Rising edge - verify modifier state right now.
                     data = self._root.query_pointer()
                     effective = data.mask & mod_mask
                     if effective == mods:

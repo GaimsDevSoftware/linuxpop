@@ -23,7 +23,7 @@ Handy.init()
 
 
 def _unwrap_subtitle_labels(root: Gtk.Widget) -> None:
-    """Same treatment as settings_gui — let HdyActionRow subtitles wrap
+    """Same treatment as settings_gui - let HdyActionRow subtitles wrap
     to multiple lines so plugin descriptions stay fully visible instead
     of being cropped to a single ellipsis-tailed line."""
     def visit(widget: Gtk.Widget) -> None:
@@ -103,7 +103,7 @@ def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
             children = []
             try:
                 # forall() exposes internal-template children that the
-                # public get_children() hides — that's where the tab
+                # public get_children() hides - that's where the tab
                 # labels live.
                 widget.forall(lambda c, _: children.append(c), None)
             except Exception:
@@ -207,7 +207,7 @@ class PluginManagerDialog:
             return
 
         win = Handy.PreferencesWindow()
-        win.set_title("LinuxPop — Plugins")
+        win.set_title("LinuxPop - Plugins")
         win.set_search_enabled(False)
         win.set_default_size(780, 620)
         win.set_position(Gtk.WindowPosition.CENTER)
@@ -284,7 +284,7 @@ class PluginManagerDialog:
     # manifest but missing here are appended in first-seen order.
     _CATEGORY_ORDER = ["Productivity", "Web shortcuts", "AI", "Developer"]
     _CATEGORY_DESCRIPTIONS = {
-        "Productivity":  "Everyday actions — clipboard, math, counts, speech.",
+        "Productivity":  "Everyday actions - clipboard, math, counts, speech.",
         "Web shortcuts": "Open the selection in a search engine or web service.",
         "AI":            "Send the selection to a chat AI or run one locally.",
         "Developer":     "Encoders, hashes and converters for technical text.",
@@ -429,7 +429,7 @@ class PluginManagerDialog:
         if self._installed_group is None:
             return
         for child in list(self._installed_group.get_children()):
-            # remove() only drops the parent ref — without destroy() the
+            # remove() only drops the parent ref - without destroy() the
             # row's GObject (and its signal-handler closures over Path
             # objects) stays alive until Python GC notices the orphan,
             # which on long-running daemons leaks across many refreshes.

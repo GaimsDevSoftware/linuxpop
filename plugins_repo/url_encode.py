@@ -38,7 +38,7 @@ def _has_chars_needing_url_encode(text: str) -> bool:
     which the plugin matches via content_types. For PLAIN_TEXT we apply
     a stricter heuristic: at least one URL-signal char (?&=#%) OR
     non-ASCII (where encoding matters for cross-system safety). 'Hello
-    world' has only a space — encoding it gives 'Hello%20world', which
+    world' has only a space - encoding it gives 'Hello%20world', which
     is technically correct but rarely the user's intent for prose.
     """
     if any(c in _URL_SIGNAL_CHARS for c in text):
