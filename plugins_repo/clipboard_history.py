@@ -2017,11 +2017,18 @@ class _PickerDialog:
             body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
                                    Gtk.PolicyType.AUTOMATIC)
             body_scroll.set_min_content_height(180)
-            body_scroll.get_style_context().add_class("lp-snippet-body-wrap")
+            # IN shadow draws the actual visible border around the scroll
+            # area. Without this, no amount of CSS background on the inner
+            # TextView reads as a "real" input field because the field
+            # has no frame around it.
+            body_scroll.set_shadow_type(Gtk.ShadowType.IN)
             body_view = Gtk.TextView()
             body_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
             body_view.set_accepts_tab(False)
-            body_view.get_style_context().add_class("lp-snippet-body")
+            # Reuse the same class the terminal-confirm dialog's editable
+            # state uses - it gives the standard Entry-field look
+            # (lighter background, padding, blue caret).
+            body_view.get_style_context().add_class("lp-cmd-edit")
             body_scroll.add(body_view)
             content.pack_start(body_scroll, True, True, 0)
 
