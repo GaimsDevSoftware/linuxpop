@@ -219,6 +219,7 @@ class SettingsDialog:
         page.set_title("General")
         page.set_icon_name("preferences-system-symbolic")
 
+        page.add(self._build_appearance_group())
         page.add(self._build_activation_group())
         page.add(self._build_hotkeys_group())
         page.add(self._build_timing_group())
@@ -243,6 +244,42 @@ class SettingsDialog:
         self._window = None
 
     # ---- groups --------------------------------------------------------------
+
+    def _build_appearance_group(self) -> Handy.PreferencesGroup:
+        group = Handy.PreferencesGroup()
+        group.set_title("Appearance")
+
+        theme_row = Handy.ActionRow()
+        theme_row.set_title("Theme")
+        theme_row.set_subtitle(
+            "Dark uses the cobalt + violet palette. Light gives you the "
+            "same layout on a clean off-white. 'Follow system' picks one "
+            "based on your desktop theme.")
+        theme_combo = Gtk.ComboBoxText()
+        theme_combo.set_valign(Gtk.Align.CENTER)
+        theme_options = [
+            ("dark",   "Dark"),
+            ("light",  "Light"),
+            ("system", "Follow system"),
+        ]
+        for key, label in theme_options:
+            theme_combo.append(key, label)
+        current = self._settings.get("theme", "dark") or "dark"
+        theme_combo.set_active_id(current)
+
+        def _on_theme_changed(_combo):
+            mode = theme_combo.get_active_id() or "dark"
+            self._save_key("theme", mode)
+            try:
+                import theme as _theme
+                _theme.install_premium_theme(mode)
+            except Exception as exc:
+                print(f"[settings] theme reload failed: {exc}")
+        theme_combo.connect("changed", _on_theme_changed)
+        theme_row.add(theme_combo)
+        theme_row.set_activatable_widget(theme_combo)
+        group.add(theme_row)
+        return group
 
     def _build_activation_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()

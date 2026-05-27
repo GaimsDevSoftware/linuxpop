@@ -726,7 +726,8 @@ def main(argv: list[str] | None = None) -> int:
     # clipboard picker is opened. Accepting some zombie PIDs over uptime
     # is the lesser evil; a proper periodic reaper can come later.
 
-    theme.install_premium_theme()
+    theme.install_premium_theme(
+        get_settings().get("theme", "dark") or "dark")
 
     app = App(enable_tray=not args.no_tray)
     signal.signal(signal.SIGINT, lambda *_: app.quit())
