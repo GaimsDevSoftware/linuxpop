@@ -37,6 +37,105 @@ class force_copy_mode:
         _local.force_copy = False
 
 
+def pin_as_snippet(text: str) -> None:
+    """One-click "save this selection as a snippet" - opens a small
+    create-snippet dialog with the highlighted text pre-filled as the
+    body. Delegates the actual save to the clipboard_history plugin
+    (looked up via sys.modules so we don't import a user-plugin
+    directly). Falls back to a notification if the plugin isn't
+    loaded."""
+    import sys
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import GLib, Gtk
+
+    ch = (sys.modules.get("linuxpop_user_clipboard_history")
+          or sys.modules.get("clipboard_history"))
+    if ch is None or not hasattr(ch, "_create_snippet"):
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+             "-i", "dialog-warning", "LinuxPop",
+             "Snippets need the Clipboard history plugin enabled."],
+            check=False,
+        )
+        return
+
+    def _open():
+        dlg = Gtk.Dialog(title="Pin as snippet", flags=0)
+        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
+                        "Save", Gtk.ResponseType.OK)
+        dlg.set_default_response(Gtk.ResponseType.OK)
+        dlg.set_default_size(440, 0)
+        dlg.set_icon_name("linuxpop")
+
+        content = dlg.get_content_area()
+        content.set_spacing(6)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        content.set_margin_start(14)
+        content.set_margin_end(14)
+
+        # Preview of the selection so the user knows what they're saving.
+        preview = text[:160].replace("\n", "  ")
+        if len(text) > 160:
+            preview += "..."
+        prev_lbl = Gtk.Label(xalign=0)
+        prev_lbl.set_markup(
+            f"<small>Saving: <i>{GLib.markup_escape_text(preview)}</i></small>")
+        prev_lbl.set_line_wrap(True)
+        prev_lbl.get_style_context().add_class("dim-label")
+        content.add(prev_lbl)
+
+        name_lbl = Gtk.Label(xalign=0, margin_top=4)
+        name_lbl.set_markup("<b>Name</b>")
+        content.add(name_lbl)
+        name_entry = Gtk.Entry()
+        name_entry.set_placeholder_text("Short label so you'll recognise it")
+        name_entry.set_activates_default(True)
+        content.add(name_entry)
+
+        trig_lbl = Gtk.Label(xalign=0, margin_top=4)
+        trig_lbl.set_markup(
+            "<b>Trigger</b>  <small>(optional)</small>")
+        content.add(trig_lbl)
+        trig_entry = Gtk.Entry()
+        trig_entry.set_placeholder_text("e.g. ;mysnippet")
+        trig_entry.set_activates_default(True)
+        content.add(trig_entry)
+
+        cat_lbl = Gtk.Label(xalign=0, margin_top=4)
+        cat_lbl.set_markup(
+            "<b>Category</b>  <small>(optional)</small>")
+        content.add(cat_lbl)
+        cat_entry = Gtk.Entry()
+        cat_entry.set_placeholder_text("e.g. Email, Code, Personal")
+        cat_entry.set_activates_default(True)
+        content.add(cat_entry)
+
+        dlg.show_all()
+        name_entry.grab_focus()
+        response = dlg.run()
+        name = name_entry.get_text().strip()
+        trig = trig_entry.get_text().strip()
+        category = cat_entry.get_text().strip()
+        dlg.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        try:
+            ch._create_snippet(
+                name=name, text=text, trigger=trig, category=category)
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "2000",
+                 "-i", "linuxpop", "LinuxPop",
+                 f"Saved snippet: {name or text[:40]}"],
+                check=False,
+            )
+        except Exception as exc:
+            print(f"[actions] pin_as_snippet save failed: {exc}")
+
+    GLib.idle_add(_open)
+
+
 def copy_to_clipboard(text: str) -> None:
     """Copy text to the X11 clipboard via xclip."""
     if not shutil.which("xclip"):
