@@ -58,6 +58,12 @@ DEFAULTS: dict[str, Any] = {
     # from elsewhere with a hostile {shell:...} would run code on your
     # machine; treat this like enabling macros in a document. 5 s timeout.
     "snippet_shell_enabled": False,
+    # After paste-mode AI services (Claude, Gemini, ChatGPT with paste
+    # fallback) drop the prompt in, also send Return so the chat sends
+    # immediately. Off by default - lets you tweak the prompt before
+    # hitting Enter. Has no effect on URL-mode services that already
+    # auto-submit (Google AI, Perplexity, ChatGPT URL mode).
+    "ai_paste_auto_submit": False,
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",
     # Default ON. Poll the keyboard state every 50 ms instead of
