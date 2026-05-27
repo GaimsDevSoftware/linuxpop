@@ -368,6 +368,15 @@ def _rename_snippet(snippet_id: str, new_name: str) -> None:
     _rebuild_trigger_index()
 
 
+def _set_snippet_text(snippet_id: str, new_text: str) -> None:
+    with _snippets_lock:
+        for s in _snippets:
+            if s.id == snippet_id:
+                s.text = new_text
+                break
+    _save_snippets()
+
+
 # ----- trigger watcher (XRecord) -----------------------------------------
 
 # Characters that, when typed, cause us to check whether the buffer ends
@@ -1790,10 +1799,11 @@ class _PickerDialog:
         result = self._ask_edit_snippet_meta(
             default_name=entry.preview(40), default_trigger="",
             default_category="",
+            default_text=entry.text if entry.kind == "text" else "",
         )
         if result is None:
             return  # cancelled
-        name, trigger, category = result
+        name, trigger, category, _new_text = result
         _pin_entry(entry, name)
         # _pin_entry inserts at index 0 - find that newest snippet and
         # write the trigger/category through. Avoids reaching into internals.
@@ -1817,10 +1827,11 @@ class _PickerDialog:
             default_name=entry.name or entry.preview(40),
             default_trigger=entry.trigger,
             default_category=entry.category,
+            default_text=entry.text if entry.kind == "text" else "",
         )
         if result is None:
             return
-        new_name, new_trigger, new_category = result
+        new_name, new_trigger, new_category, new_text = result
         new_triggers = [t.strip() for t in new_trigger.split(",") if t.strip()]
         conflicts = _find_trigger_conflicts(new_triggers, own_id=entry.id)
         if conflicts and not self._confirm_trigger_conflicts(conflicts):
@@ -1828,6 +1839,8 @@ class _PickerDialog:
         _rename_snippet(entry.id, new_name)
         _set_snippet_trigger(entry.id, new_trigger)
         _set_snippet_category(entry.id, new_category)
+        if entry.kind == "text":
+            _set_snippet_text(entry.id, new_text)
         self._populate_snippets()
 
     def _show_snippet_help_dialog(self, parent: Gtk.Window) -> None:
@@ -2105,9 +2118,10 @@ class _PickerDialog:
 
     def _ask_edit_snippet_meta(
         self, default_name: str = "", default_trigger: str = "",
-        default_category: str = "",
-    ) -> Optional[Tuple[str, str, str]]:
-        """Edit name + trigger + category for an existing snippet."""
+        default_category: str = "", default_text: str = "",
+    ) -> Optional[Tuple[str, str, str, str]]:
+        """Edit name + trigger + category + body for an existing snippet.
+        Returns (name, trigger, category, text) on OK, None on Cancel."""
         self._modal_child_open = True
         try:
             dlg = Gtk.Dialog(title="Edit snippet",
@@ -2115,6 +2129,7 @@ class _PickerDialog:
             dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
                             "Save", Gtk.ResponseType.OK)
             dlg.set_default_response(Gtk.ResponseType.OK)
+            dlg.set_default_size(520, 460)
             content = dlg.get_content_area()
             content.set_spacing(4)
             content.set_margin_top(8)
@@ -2179,6 +2194,25 @@ class _PickerDialog:
                 pass
             content.add(cat_entry)
 
+            body_lbl = Gtk.Label(xalign=0, margin_top=6)
+            body_lbl.set_markup(
+                "<b>Text</b>  <small>(the snippet body - what gets "
+                "pasted when this snippet fires)</small>"
+            )
+            content.add(body_lbl)
+            body_scroll = Gtk.ScrolledWindow()
+            body_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
+                                    Gtk.PolicyType.AUTOMATIC)
+            body_scroll.set_min_content_height(140)
+            body_scroll.set_shadow_type(Gtk.ShadowType.IN)
+            body_view = Gtk.TextView()
+            body_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            body_view.set_accepts_tab(False)
+            body_view.get_style_context().add_class("lp-cmd-edit")
+            body_view.get_buffer().set_text(default_text)
+            body_scroll.add(body_view)
+            content.pack_start(body_scroll, True, True, 0)
+
             # Small "Snippet guide" button so help is reachable from the
             # rename/edit dialog too, not just New snippet.
             guide_row = Gtk.Box(
@@ -2197,10 +2231,13 @@ class _PickerDialog:
             name = name_entry.get_text().strip()
             trig = trig_entry.get_text().strip()
             category = cat_entry.get_text().strip()
+            buf = body_view.get_buffer()
+            text = buf.get_text(buf.get_start_iter(),
+                                 buf.get_end_iter(), True)
             dlg.destroy()
             if response != Gtk.ResponseType.OK:
                 return None
-            return (name, trig, category)
+            return (name, trig, category, text)
         finally:
             self._modal_child_open = False
 
