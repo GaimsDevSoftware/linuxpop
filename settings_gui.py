@@ -497,6 +497,80 @@ class SettingsDialog:
         tblock_scroll.add(tblock_view)
         group.add(tblock_scroll)
 
+        # Shared snippet variables: a key=value editor that backs the
+        # {var:NAME} placeholder. Lets the user define their email,
+        # signature, phone etc. once and refer to them from many
+        # snippets.
+        vars_row = Handy.ActionRow()
+        vars_row.set_title("Snippet variables")
+        vars_row.set_subtitle(
+            "One per line as 'name = value'. Use {var:name} in any snippet "
+            "to pull the value in. Change a value here and every snippet "
+            "that references it picks up the new text next paste. Examples: "
+            "email = you@example.com, signature = Best, Alex.")
+        group.add(vars_row)
+
+        vars_scroll = Gtk.ScrolledWindow()
+        vars_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
+                                Gtk.PolicyType.AUTOMATIC)
+        vars_scroll.set_min_content_height(100)
+        vars_scroll.set_shadow_type(Gtk.ShadowType.IN)
+        vars_scroll.set_margin_top(2)
+        vars_scroll.set_margin_bottom(8)
+        vars_scroll.set_margin_start(14)
+        vars_scroll.set_margin_end(14)
+        vars_view = Gtk.TextView()
+        vars_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        try:
+            vars_view.set_monospace(True)
+        except AttributeError:
+            pass
+        vars_view.get_style_context().add_class("lp-cmd-edit")
+        vars_buf = vars_view.get_buffer()
+        # Serialise the dict as "name = value" lines for human editing.
+        existing = self._settings.get("snippet_variables") or {}
+        if isinstance(existing, dict):
+            vars_text = "\n".join(
+                f"{k} = {v}" for k, v in sorted(existing.items())
+            )
+        else:
+            vars_text = ""
+        vars_buf.set_text(vars_text)
+
+        self._vars_save_pending_id: int | None = None
+
+        def _parse_vars_text(raw: str) -> dict:
+            out: dict[str, str] = {}
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                name = name.strip()
+                if not name:
+                    continue
+                out[name] = value.strip()
+            return out
+
+        def _flush_vars(buf: Gtk.TextBuffer) -> bool:
+            self._vars_save_pending_id = None
+            start, end = buf.get_start_iter(), buf.get_end_iter()
+            raw = buf.get_text(start, end, True)
+            self._save_key("snippet_variables", _parse_vars_text(raw))
+            return False
+
+        def _on_vars_changed(buf: Gtk.TextBuffer) -> None:
+            if self._vars_save_pending_id is not None:
+                GLib.source_remove(self._vars_save_pending_id)
+            self._vars_save_pending_id = GLib.timeout_add(
+                350, _flush_vars, buf,
+            )
+        vars_buf.connect("changed", _on_vars_changed)
+        vars_scroll.add(vars_view)
+        group.add(vars_scroll)
+
         # Shell extension {shell:CMD} in snippets. Off by default - same
         # threat model as enabling macros: a hostile imported snippet
         # with a {shell:rm -rf ~} runs immediately when expanded.

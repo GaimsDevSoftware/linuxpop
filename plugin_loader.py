@@ -216,6 +216,26 @@ def _register_builtins() -> None:
         priority=10,
     ))
 
+    # Universal: pin the current selection as a snippet. Sits next to
+    # Copy in the popup so the path from "I keep retyping this" to
+    # "now it's a snippet" is one click long. Only registers when the
+    # clipboard_history plugin is actually loaded - otherwise there's
+    # nothing to save into.
+    def _snippets_loaded() -> bool:
+        import sys
+        ch = (sys.modules.get("linuxpop_user_clipboard_history")
+              or sys.modules.get("clipboard_history"))
+        return ch is not None and hasattr(ch, "_create_snippet")
+    register(Plugin(
+        name="pin-as-snippet",
+        icon="non-starred-symbolic",
+        tooltip="Pin as snippet",
+        handler=actions.pin_as_snippet,
+        content_types=(),  # empty = all
+        priority=11,
+        predicate=lambda _t: _snippets_loaded(),
+    ))
+
     # COMMAND - also shown for PATH-classified selections that look like
     # an executable script ('./build.sh', '~/bin/deploy'), via the
     # predicate. Lets users run a script with one click instead of having

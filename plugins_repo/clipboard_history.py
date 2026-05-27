@@ -135,6 +135,10 @@ class Entry:
     # trigger expansion, or programmatic paste. Persisted in snippets.json
     # so it survives daemon restarts. Defaults to 0 on older files.
     usage_count: int = 0
+    # Free-text category for grouping in the picker (e.g. "Email",
+    # "Code", "Personal"). Empty = "General" bucket. Keeps the picker
+    # navigable once you have 20+ snippets.
+    category: str = ""
 
     def trigger_list(self) -> List[str]:
         """Parse `trigger` into a list of clean shortcodes."""
@@ -257,7 +261,8 @@ def _unpin_snippet(snippet_id: str) -> None:
     _rebuild_trigger_index()
 
 
-def _create_snippet(name: str, text: str, trigger: str = "") -> None:
+def _create_snippet(name: str, text: str, trigger: str = "",
+                    category: str = "") -> None:
     """Make a brand-new snippet from scratch (not derived from history)."""
     snippet = Entry(
         id=uuid.uuid4().hex[:12],
@@ -266,11 +271,21 @@ def _create_snippet(name: str, text: str, trigger: str = "") -> None:
         text=text,
         name=name,
         trigger=trigger.strip(),
+        category=category.strip(),
     )
     with _snippets_lock:
         _snippets.insert(0, snippet)
     _save_snippets()
     _rebuild_trigger_index()
+
+
+def _set_snippet_category(snippet_id: str, category: str) -> None:
+    with _snippets_lock:
+        for s in _snippets:
+            if s.id == snippet_id:
+                s.category = category.strip()
+                break
+    _save_snippets()
 
 
 def _bump_usage(snippet_id: str) -> None:
@@ -304,6 +319,26 @@ def _set_snippet_trigger(snippet_id: str, trigger: str) -> None:
 # on the GLib thread via _rebuild_trigger_index().
 _trigger_index: dict[str, Entry] = {}
 _trigger_index_lock = threading.Lock()
+
+
+def _find_trigger_conflicts(triggers: List[str], own_id: str = "") -> List[tuple]:
+    """Return [(trigger, snippet_name), ...] for any of `triggers` that
+    are already claimed by a different snippet. own_id is excluded so a
+    snippet being edited doesn't clash with itself."""
+    if not triggers:
+        return []
+    conflicts: list[tuple] = []
+    seen: set[str] = set()
+    with _snippets_lock:
+        for trig in triggers:
+            for s in _snippets:
+                if s.id == own_id:
+                    continue
+                if trig in s.trigger_list() and trig not in seen:
+                    conflicts.append((trig, s.name or s.preview(40)))
+                    seen.add(trig)
+                    break
+    return conflicts
 
 
 def _rebuild_trigger_index() -> None:
@@ -1044,8 +1079,21 @@ _PLACEHOLDER_RE = re.compile(
     r"date(?::[^}]+)?|time|datetime|weekday|clipboard|selection|cursor|name"
     r"|ask:[^}]+"
     r"|shell:[^}]+"
+    r"|var:[A-Za-z0-9_-]+"
     r")\}"
 )
+
+
+def _resolve_var(name: str) -> str:
+    """Look up a user-defined variable from snippet_variables setting.
+    Returns empty string for unknown keys - users will see the empty
+    space and know to define the variable in Settings."""
+    if _settings is None:
+        return ""
+    vars_dict = _settings.get("snippet_variables") or {}
+    if not isinstance(vars_dict, dict):
+        return ""
+    return str(vars_dict.get(name, ""))
 
 
 def _read_primary_selection() -> str:
@@ -1239,6 +1287,8 @@ def render_placeholders(
             return ""
         if token.startswith("shell:"):
             return _render_shell_token(token[6:])
+        if token.startswith("var:"):
+            return _resolve_var(token[4:])
         return m.group(0)
 
     rendered = _PLACEHOLDER_RE.sub(repl, text)
@@ -1476,9 +1526,41 @@ class _PickerDialog:
                 "Pin (★) an entry from Recent to save it here permanently."
             ))
         else:
-            for entry in entries:
+            # Sort by (category, name) so the category-header function
+            # can paint group dividers between buckets. Empty category
+            # sorts last under a "General" header.
+            def _sort_key(e):
+                cat = (e.category or "").strip()
+                return (cat.lower() or "￿",
+                        (e.name or "").lower())
+            for entry in sorted(entries, key=_sort_key):
                 self.snippets_listbox.add(self._make_row(entry, is_snippet=True))
+            self.snippets_listbox.set_header_func(self._snippet_header_func)
         self.snippets_listbox.show_all()
+
+    @staticmethod
+    def _snippet_header_func(row, before) -> None:
+        """Insert a small category header above the first row in each
+        category group. Listbox calls this for every row; `before` is
+        the previous row or None for the first one."""
+        entry = getattr(row, "entry", None)
+        if entry is None:
+            row.set_header(None)
+            return
+        cat = (entry.category or "").strip() or "General"
+        prev_entry = getattr(before, "entry", None) if before else None
+        prev_cat = ((prev_entry.category or "").strip()
+                    if prev_entry else None)
+        prev_cat = prev_cat or "General" if prev_entry else None
+        if prev_cat == cat:
+            row.set_header(None)
+            return
+        header = Gtk.Label(xalign=0, margin_top=6, margin_bottom=2,
+                           margin_start=10, margin_end=10)
+        header.set_markup(
+            f"<small><b>{GLib.markup_escape_text(cat.upper())}</b></small>")
+        header.get_style_context().add_class("dim-label")
+        row.set_header(header)
 
     def _empty_row(self, title: str, subtitle: str) -> Gtk.ListBoxRow:
         row = Gtk.ListBoxRow()
@@ -1703,21 +1785,21 @@ class _PickerDialog:
     def _on_pin_clicked(self, _btn, entry: Entry) -> None:
         result = self._ask_edit_snippet_meta(
             default_name=entry.preview(40), default_trigger="",
+            default_category="",
         )
         if result is None:
             return  # cancelled
-        name, trigger = result
+        name, trigger, category = result
         _pin_entry(entry, name)
         # _pin_entry inserts at index 0 - find that newest snippet and
-        # write the trigger through. Avoids reaching into internals.
-        if trigger:
-            with _snippets_lock:
-                if _snippets:
-                    new_id = _snippets[0].id
-                else:
-                    new_id = None
-            if new_id is not None:
+        # write the trigger/category through. Avoids reaching into internals.
+        with _snippets_lock:
+            new_id = _snippets[0].id if _snippets else None
+        if new_id is not None:
+            if trigger:
                 _set_snippet_trigger(new_id, trigger)
+            if category:
+                _set_snippet_category(new_id, category)
         self._populate_snippets()
         if self.notebook is not None:
             self.notebook.set_current_page(1)
@@ -1730,12 +1812,18 @@ class _PickerDialog:
         result = self._ask_edit_snippet_meta(
             default_name=entry.name or entry.preview(40),
             default_trigger=entry.trigger,
+            default_category=entry.category,
         )
         if result is None:
             return
-        new_name, new_trigger = result
+        new_name, new_trigger, new_category = result
+        new_triggers = [t.strip() for t in new_trigger.split(",") if t.strip()]
+        conflicts = _find_trigger_conflicts(new_triggers, own_id=entry.id)
+        if conflicts and not self._confirm_trigger_conflicts(conflicts):
+            return
         _rename_snippet(entry.id, new_name)
         _set_snippet_trigger(entry.id, new_trigger)
+        _set_snippet_category(entry.id, new_category)
         self._populate_snippets()
 
     def _show_snippet_help_dialog(self, parent: Gtk.Window) -> None:
@@ -2013,8 +2101,9 @@ class _PickerDialog:
 
     def _ask_edit_snippet_meta(
         self, default_name: str = "", default_trigger: str = "",
-    ) -> Optional[Tuple[str, str]]:
-        """Edit name + trigger for an existing snippet."""
+        default_category: str = "",
+    ) -> Optional[Tuple[str, str, str]]:
+        """Edit name + trigger + category for an existing snippet."""
         self._modal_child_open = True
         try:
             dlg = Gtk.Dialog(title="Edit snippet",
@@ -2057,6 +2146,35 @@ class _PickerDialog:
                 )
             content.add(trig_entry)
 
+            cat_lbl = Gtk.Label(xalign=0, margin_top=6)
+            cat_lbl.set_markup(
+                "<b>Category</b>  <small>(optional)</small>"
+            )
+            content.add(cat_lbl)
+            cat_entry = Gtk.Entry()
+            cat_entry.set_text(default_category)
+            cat_entry.set_activates_default(True)
+            cat_entry.set_placeholder_text(
+                "e.g. Email, Code, Personal")
+            try:
+                with _snippets_lock:
+                    cats = sorted({
+                        (s.category or "").strip()
+                        for s in _snippets if s.category
+                    })
+                if cats:
+                    store = Gtk.ListStore(str)
+                    for c in cats:
+                        store.append([c])
+                    completion = Gtk.EntryCompletion()
+                    completion.set_model(store)
+                    completion.set_text_column(0)
+                    completion.set_inline_completion(True)
+                    cat_entry.set_completion(completion)
+            except Exception:
+                pass
+            content.add(cat_entry)
+
             # Small "Snippet guide" button so help is reachable from the
             # rename/edit dialog too, not just New snippet.
             guide_row = Gtk.Box(
@@ -2074,10 +2192,11 @@ class _PickerDialog:
             response = dlg.run()
             name = name_entry.get_text().strip()
             trig = trig_entry.get_text().strip()
+            category = cat_entry.get_text().strip()
             dlg.destroy()
             if response != Gtk.ResponseType.OK:
                 return None
-            return (name, trig)
+            return (name, trig, category)
         finally:
             self._modal_child_open = False
 
@@ -2085,17 +2204,59 @@ class _PickerDialog:
         result = self._ask_new_snippet()
         if result is None:
             return
-        name, body, trigger = result
+        name, body, trigger, category = result
         if not body.strip():
             return
-        _create_snippet(name=name, text=body, trigger=trigger)
+        conflicts = _find_trigger_conflicts(
+            [t.strip() for t in trigger.split(",") if t.strip()])
+        if conflicts and not self._confirm_trigger_conflicts(conflicts):
+            return
+        _create_snippet(name=name, text=body, trigger=trigger,
+                        category=category)
         self._populate_snippets()
         if self.notebook is not None:
             self.notebook.set_current_page(1)
 
-    def _ask_new_snippet(self) -> Optional[Tuple[str, str, str]]:
-        """Modal dialog: name (Entry) + body (TextView) + trigger (Entry).
-        Returns (name, body, trigger) on OK, None on Cancel."""
+    def _confirm_trigger_conflicts(
+        self, conflicts: List[tuple],
+    ) -> bool:
+        """Show a small dialog listing which triggers are already in use
+        by which other snippet, and ask whether to save anyway. Returns
+        True for 'save anyway' (the new snippet wins the index slot),
+        False for 'cancel'."""
+        lines = [
+            f"  '{trig}'  is already used by  '{owner}'"
+            for trig, owner in conflicts
+        ]
+        body = (
+            "These triggers are already in use:\n\n"
+            + "\n".join(lines)
+            + "\n\nIf you save, the new snippet will take over those "
+              "triggers. The other snippet keeps its other triggers, if any."
+        )
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.MessageDialog(
+                transient_for=self.dialog,
+                modal=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.NONE,
+                text="Trigger already in use",
+                secondary_text=body,
+            )
+            dlg.add_buttons(
+                "Cancel", Gtk.ResponseType.CANCEL,
+                "Save anyway", Gtk.ResponseType.OK,
+            )
+            response = dlg.run()
+            dlg.destroy()
+            return response == Gtk.ResponseType.OK
+        finally:
+            self._modal_child_open = False
+
+    def _ask_new_snippet(self) -> Optional[Tuple[str, str, str, str]]:
+        """Modal dialog: name + body + trigger + category.
+        Returns (name, body, trigger, category) on OK, None on Cancel."""
         self._modal_child_open = True
         try:
             dlg = Gtk.Dialog(title="New snippet",
@@ -2135,6 +2296,36 @@ class _PickerDialog:
                     "Set, then enable 'Snippet triggers' in Settings to auto-expand"
                 )
             content.add(trigger_entry)
+
+            cat_label = Gtk.Label(xalign=0, margin_top=6)
+            cat_label.set_markup(
+                "<b>Category</b>  <small>(optional - keeps the picker tidy)</small>"
+            )
+            content.add(cat_label)
+            cat_entry = Gtk.Entry()
+            cat_entry.set_placeholder_text(
+                "e.g. Email, Code, Personal. Leave blank for General.")
+            # Auto-complete from categories that already exist so the
+            # user doesn't end up with "Email" and "email" as separate
+            # buckets just from capitalisation.
+            try:
+                with _snippets_lock:
+                    cats = sorted({
+                        (s.category or "").strip()
+                        for s in _snippets if s.category
+                    })
+                if cats:
+                    store = Gtk.ListStore(str)
+                    for c in cats:
+                        store.append([c])
+                    completion = Gtk.EntryCompletion()
+                    completion.set_model(store)
+                    completion.set_text_column(0)
+                    completion.set_inline_completion(True)
+                    cat_entry.set_completion(completion)
+            except Exception:
+                pass
+            content.add(cat_entry)
 
             body_label = Gtk.Label(xalign=0, margin_top=6)
             body_label.set_markup(
@@ -2214,6 +2405,7 @@ class _PickerDialog:
                 ("{cursor}",      "{cursor}",      "Where the caret lands after paste", 0, 0),
                 ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Multiple {ask:} fields show in one dialog. Rename 'Label' to what you want the prompt to say.", 5, 5),
                 ("{ask:Label|Opt}", "{ask:Status|Open|Closed|WIP}", "Dropdown variant: pipe-separated options after the label give a chooser instead of free text. Edit the label and options to match your case.", 5, 6),
+                ("{var:NAME}",    "{var:email}",   "Pull in a shared variable you defined once in Settings > Snippet variables. Use the same {var:email} or {var:signature} across many snippets - change it once, all snippets pick up the new value.", 5, 5),
                 ("{shell:CMD}",   "{shell:date -u}", "Run a shell command and paste its output. Requires 'Shell expansion' enabled in Settings - disabled by default for safety.", 7, 8),
             ]
             for label, token, tip, sel_off, sel_len in chip_specs:
@@ -2238,12 +2430,13 @@ class _PickerDialog:
             response = dlg.run()
             name = name_entry.get_text().strip()
             trigger = trigger_entry.get_text().strip()
+            category = cat_entry.get_text().strip()
             buf = body_view.get_buffer()
             body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), True)
             dlg.destroy()
             if response != Gtk.ResponseType.OK:
                 return None
-            return (name, body, trigger)
+            return (name, body, trigger, category)
         finally:
             self._modal_child_open = False
 

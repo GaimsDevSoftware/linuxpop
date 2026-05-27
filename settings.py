@@ -64,6 +64,12 @@ DEFAULTS: dict[str, Any] = {
     # hitting Enter. Has no effect on URL-mode services that already
     # auto-submit (Google AI, Perplexity, ChatGPT URL mode).
     "ai_paste_auto_submit": False,
+    # Shared snippet variables. Reusable values that snippets can pull
+    # in via {var:NAME}. Define once (your email, signature, phone,
+    # company name) and reference everywhere - change it here, every
+    # snippet picks up the new value next paste. Stored as a dict of
+    # {name: value} string pairs.
+    "snippet_variables": {},
     # Which selection the hotkey reads: "primary" (highlight) or "clipboard"
     "hotkey_source": "primary",
     # Default ON. Poll the keyboard state every 50 ms instead of
