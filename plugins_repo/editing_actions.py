@@ -89,7 +89,10 @@ def register(register_plugin) -> None:
     # the character before the cursor - same key, different effect.
     register_plugin(Plugin(
         name="backspace",
-        icon="edit-delete-symbolic",
+        # edit-clear-rtl-symbolic is Adwaita's arrow-with-X glyph -
+        # the standard Backspace key icon. Matches the no-selection
+        # edit menu so the two popups read as the same action.
+        icon="edit-clear-rtl-symbolic",
         tooltip="Backspace (delete the selected text)",
         handler=_backspace,
         content_types=(),
