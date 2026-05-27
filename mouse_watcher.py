@@ -21,11 +21,26 @@ Edge cases:
 """
 from __future__ import annotations
 
+import subprocess
 import threading
 import time
 from typing import Callable, Optional
 
 from gi.repository import GLib
+
+
+def _read_primary_snapshot() -> bytes:
+    """Capture the current X11 PRIMARY selection as raw bytes. Returned
+    as bytes (not text) so binary or whitespace-only selections compare
+    correctly against later snapshots. Returns empty on any xclip error."""
+    try:
+        out = subprocess.run(
+            ["xclip", "-selection", "primary", "-o"],
+            capture_output=True, timeout=0.3,
+        )
+        return out.stdout or b""
+    except (OSError, subprocess.SubprocessError):
+        return b""
 
 
 _DOUBLE_CLICK_MS = 300
@@ -47,6 +62,11 @@ class DoubleClickWatcher:
         # following one as a double-click.
         self._last_ms = 0
         self._last_xy = (0, 0)
+        # PRIMARY-selection snapshot from the first click of a potential
+        # double-click. If the second click ends up selecting a word
+        # under the cursor, PRIMARY will differ from this snapshot and
+        # we'll stay out of the way (the selection watcher handles it).
+        self._primary_at_first: bytes = b""
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -136,15 +156,28 @@ class DoubleClickWatcher:
                 and dx < _POSITION_TOLERANCE_PX
                 and dy < _POSITION_TOLERANCE_PX):
             # Reset so a third click doesn't fire again.
+            primary_before = self._primary_at_first
             self._last_ms = 0
             self._last_xy = (0, 0)
+            self._primary_at_first = b""
             GLib.timeout_add(_POST_CLICK_DELAY_MS,
-                              self._fire_callback, x, y)
+                              self._fire_callback, x, y, primary_before)
             return
         self._last_ms = now_ms
         self._last_xy = (x, y)
+        # Snapshot PRIMARY now so we can tell the difference, in
+        # _fire_callback 50 ms from now, between "the second click
+        # selected a word" (PRIMARY changed) and "double-clicked in
+        # an empty field" (PRIMARY identical, ours to handle).
+        self._primary_at_first = _read_primary_snapshot()
 
-    def _fire_callback(self, x: int, y: int) -> bool:
+    def _fire_callback(self, x: int, y: int, primary_before: bytes) -> bool:
+        primary_now = _read_primary_snapshot()
+        if primary_now != primary_before:
+            # The second click selected a word - the selection watcher
+            # will surface the regular popup for that selection. We stay
+            # out of the way.
+            return False
         try:
             self._cb(x, y)
         except Exception as exc:

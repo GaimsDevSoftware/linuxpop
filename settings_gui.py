@@ -77,6 +77,68 @@ def _unwrap_subtitle_labels(root: Gtk.Widget) -> None:
     GLib.timeout_add(150, _again)
 
 
+def _open_text_editor_modal(
+    parent: Gtk.Window | None,
+    title: str,
+    subtitle: str,
+    initial_text: str,
+    placeholder_text: str,
+) -> str | None:
+    """Pop a modal editor with a big multi-line TextView, Save / Cancel.
+    Returns the new text on Save, None on Cancel. Used for blocklists,
+    snippet variables - things that need a whole textarea but shouldn't
+    occupy permanent space in the Settings page when empty."""
+    dlg = Gtk.Dialog(title=title, transient_for=parent, flags=0)
+    dlg.set_default_size(580, 420)
+    dlg.set_icon_name("linuxpop")
+    dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL,
+                    "Save", Gtk.ResponseType.OK)
+    dlg.set_default_response(Gtk.ResponseType.OK)
+
+    content = dlg.get_content_area()
+    content.set_spacing(8)
+    content.set_margin_top(12)
+    content.set_margin_bottom(12)
+    content.set_margin_start(14)
+    content.set_margin_end(14)
+
+    sub_lbl = Gtk.Label(xalign=0)
+    sub_lbl.set_line_wrap(True)
+    sub_lbl.set_markup(f"<small>{GLib.markup_escape_text(subtitle)}</small>")
+    sub_lbl.get_style_context().add_class("dim-label")
+    content.add(sub_lbl)
+
+    scroll = Gtk.ScrolledWindow()
+    scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+    scroll.set_shadow_type(Gtk.ShadowType.IN)
+    scroll.set_hexpand(True)
+    scroll.set_vexpand(True)
+    view = Gtk.TextView()
+    view.set_wrap_mode(Gtk.WrapMode.NONE)
+    try:
+        view.set_monospace(True)
+    except AttributeError:
+        pass
+    view.get_style_context().add_class("lp-cmd-edit")
+    if initial_text:
+        view.get_buffer().set_text(initial_text)
+    _attach_textarea_placeholder(view, placeholder_text)
+    scroll.add(view)
+    content.pack_start(scroll, True, True, 0)
+
+    dlg.show_all()
+    view.grab_focus()
+    response = dlg.run()
+    buf = view.get_buffer()
+    s, e = buf.get_bounds()
+    raw = buf.get_text(s, e, True)
+    is_placeholder = getattr(view, "_placeholder_active", False)
+    dlg.destroy()
+    if response != Gtk.ResponseType.OK:
+        return None
+    return "" if is_placeholder else raw
+
+
 def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> None:
     """Give a Gtk.TextView the placeholder-text behaviour that Gtk.Entry
     has built-in. When the buffer is empty the placeholder shows in
@@ -481,120 +543,64 @@ class SettingsDialog:
             lambda s, _p: trigger_row.set_sensitive(s.get_active()))
         group.add(trigger_row)
 
-        # Per-app/site blocklist for trigger expansion.
+        # Per-app/site blocklist for trigger expansion - opens a modal
+        # editor instead of taking permanent room in the page.
         tblock_row = Handy.ActionRow()
-        tblock_row.set_title("Don't expand triggers in these apps or sites")
-        tblock_row.set_subtitle(
-            "One match per line. Matched against the focused window's title "
-            "and class (e.g. 'KeePassXC', 'gnome-terminal', 'bank.no'). "
-            "Useful for password fields, terminals, and security-sensitive sites.")
+        tblock_row.set_activatable(True)
+
+        def _refresh_tblock_row() -> None:
+            patterns = list(self._settings.get("trigger_blocklist_patterns") or [])
+            tblock_row.set_title("Don't expand triggers in these apps or sites")
+            count = len(patterns)
+            if count == 0:
+                tblock_row.set_subtitle(
+                    "Useful for password fields, terminals, and "
+                    "security-sensitive sites. Click to add patterns.")
+            else:
+                examples = ", ".join(patterns[:3])
+                if count > 3:
+                    examples += f", +{count - 3} more"
+                tblock_row.set_subtitle(
+                    f"{count} pattern{'s' if count != 1 else ''} blocked: "
+                    f"{examples}. Click to edit.")
+        _refresh_tblock_row()
+
+        def _on_tblock_edit(_row, _gesture=None) -> None:
+            patterns = list(self._settings.get("trigger_blocklist_patterns") or [])
+            initial = "\n".join(patterns)
+            new_text = _open_text_editor_modal(
+                parent=self._window,
+                title="Edit trigger blocklist",
+                subtitle=(
+                    "One pattern per line. Case-insensitive substring "
+                    "match against the focused window's title and class."),
+                initial_text=initial,
+                placeholder_text=(
+                    "Type one pattern per line.\n\n"
+                    "Examples:\n"
+                    "  KeePassXC\n"
+                    "  gnome-terminal\n"
+                    "  bank.no"),
+            )
+            if new_text is None:
+                return
+            new_patterns = [
+                line.strip() for line in new_text.splitlines() if line.strip()
+            ]
+            self._save_key("trigger_blocklist_patterns", new_patterns)
+            _refresh_tblock_row()
+
+        tblock_row.connect("activated", _on_tblock_edit)
+        edit_arrow = Gtk.Image.new_from_icon_name(
+            "document-edit-symbolic", Gtk.IconSize.BUTTON)
+        edit_arrow.set_valign(Gtk.Align.CENTER)
+        tblock_row.add(edit_arrow)
         group.add(tblock_row)
 
-        tblock_scroll = Gtk.ScrolledWindow()
-        tblock_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
-                                  Gtk.PolicyType.AUTOMATIC)
-        tblock_scroll.set_min_content_height(90)
-        tblock_scroll.set_shadow_type(Gtk.ShadowType.IN)
-        tblock_scroll.set_margin_top(2)
-        tblock_scroll.set_margin_bottom(8)
-        tblock_scroll.set_margin_start(14)
-        tblock_scroll.set_margin_end(14)
-        tblock_view = Gtk.TextView()
-        tblock_view.set_wrap_mode(Gtk.WrapMode.NONE)
-        try:
-            tblock_view.set_monospace(True)
-        except AttributeError:
-            pass
-        # Pick up the input-field look (visible fill + caret colour) so
-        # the textarea reads as an editable input instead of a label.
-        tblock_view.get_style_context().add_class("lp-cmd-edit")
-        tblock_buf = tblock_view.get_buffer()
-        existing_patterns = self._settings.get("trigger_blocklist_patterns") or []
-        if existing_patterns:
-            tblock_buf.set_text("\n".join(existing_patterns))
-        _attach_textarea_placeholder(
-            tblock_view,
-            "Type one pattern per line. Each one is matched against the "
-            "focused window's title and class (case-insensitive).\n\n"
-            "Examples:\n"
-            "  KeePassXC\n"
-            "  gnome-terminal\n"
-            "  bank.no")
-
-        self._tblock_save_pending_id: int | None = None
-
-        def _flush_tblock(buf: Gtk.TextBuffer) -> bool:
-            self._tblock_save_pending_id = None
-            if getattr(tblock_view, "_placeholder_active", False):
-                self._save_key("trigger_blocklist_patterns", [])
-                return False
-            start, end = buf.get_start_iter(), buf.get_end_iter()
-            raw = buf.get_text(start, end, True)
-            patterns = [
-                line.strip() for line in raw.splitlines() if line.strip()
-            ]
-            self._save_key("trigger_blocklist_patterns", patterns)
-            return False
-
-        def _on_tblock_changed(buf: Gtk.TextBuffer) -> None:
-            if getattr(tblock_view, "_setting_placeholder", False):
-                return
-            if self._tblock_save_pending_id is not None:
-                GLib.source_remove(self._tblock_save_pending_id)
-            self._tblock_save_pending_id = GLib.timeout_add(
-                350, _flush_tblock, buf,
-            )
-        tblock_buf.connect("changed", _on_tblock_changed)
-        tblock_scroll.add(tblock_view)
-        group.add(tblock_scroll)
-
         # Shared snippet variables: a key=value editor that backs the
-        # {var:NAME} placeholder. Lets the user define their email,
-        # signature, phone etc. once and refer to them from many
-        # snippets.
+        # {var:NAME} placeholder.
         vars_row = Handy.ActionRow()
-        vars_row.set_title("Snippet variables")
-        vars_row.set_subtitle(
-            "One per line as 'name = value'. Use {var:name} in any snippet "
-            "to pull the value in. Change a value here and every snippet "
-            "that references it picks up the new text next paste. Examples: "
-            "email = you@example.com, signature = Best, Alex.")
-        group.add(vars_row)
-
-        vars_scroll = Gtk.ScrolledWindow()
-        vars_scroll.set_policy(Gtk.PolicyType.AUTOMATIC,
-                                Gtk.PolicyType.AUTOMATIC)
-        vars_scroll.set_min_content_height(100)
-        vars_scroll.set_shadow_type(Gtk.ShadowType.IN)
-        vars_scroll.set_margin_top(2)
-        vars_scroll.set_margin_bottom(8)
-        vars_scroll.set_margin_start(14)
-        vars_scroll.set_margin_end(14)
-        vars_view = Gtk.TextView()
-        vars_view.set_wrap_mode(Gtk.WrapMode.NONE)
-        try:
-            vars_view.set_monospace(True)
-        except AttributeError:
-            pass
-        vars_view.get_style_context().add_class("lp-cmd-edit")
-        vars_buf = vars_view.get_buffer()
-        # Serialise the dict as "name = value" lines for human editing.
-        existing = self._settings.get("snippet_variables") or {}
-        if isinstance(existing, dict) and existing:
-            vars_text = "\n".join(
-                f"{k} = {v}" for k, v in sorted(existing.items())
-            )
-            vars_buf.set_text(vars_text)
-        _attach_textarea_placeholder(
-            vars_view,
-            "Type one variable per line as  name = value.\n"
-            "Use {var:name} in any snippet to pull the value in.\n\n"
-            "Examples:\n"
-            "  email = you@example.com\n"
-            "  signature = Best, Alex\n"
-            "  phone = +47 555 1234")
-
-        self._vars_save_pending_id: int | None = None
+        vars_row.set_activatable(True)
 
         def _parse_vars_text(raw: str) -> dict:
             out: dict[str, str] = {}
@@ -611,27 +617,60 @@ class SettingsDialog:
                 out[name] = value.strip()
             return out
 
-        def _flush_vars(buf: Gtk.TextBuffer) -> bool:
-            self._vars_save_pending_id = None
-            if getattr(vars_view, "_placeholder_active", False):
-                self._save_key("snippet_variables", {})
-                return False
-            start, end = buf.get_start_iter(), buf.get_end_iter()
-            raw = buf.get_text(start, end, True)
-            self._save_key("snippet_variables", _parse_vars_text(raw))
-            return False
+        def _refresh_vars_row() -> None:
+            existing = self._settings.get("snippet_variables") or {}
+            if not isinstance(existing, dict):
+                existing = {}
+            vars_row.set_title("Snippet variables")
+            count = len(existing)
+            if count == 0:
+                vars_row.set_subtitle(
+                    "Define your email, signature, phone, etc. once and "
+                    "use {var:name} across snippets. Click to add.")
+            else:
+                names = sorted(existing.keys())
+                preview = ", ".join(f"{{var:{n}}}" for n in names[:3])
+                if count > 3:
+                    preview += f", +{count - 3} more"
+                vars_row.set_subtitle(
+                    f"{count} variable{'s' if count != 1 else ''} defined: "
+                    f"{preview}. Click to edit.")
+        _refresh_vars_row()
 
-        def _on_vars_changed(buf: Gtk.TextBuffer) -> None:
-            if getattr(vars_view, "_setting_placeholder", False):
-                return
-            if self._vars_save_pending_id is not None:
-                GLib.source_remove(self._vars_save_pending_id)
-            self._vars_save_pending_id = GLib.timeout_add(
-                350, _flush_vars, buf,
+        def _on_vars_edit(_row, _gesture=None) -> None:
+            existing = self._settings.get("snippet_variables") or {}
+            if isinstance(existing, dict):
+                initial = "\n".join(
+                    f"{k} = {v}" for k, v in sorted(existing.items())
+                )
+            else:
+                initial = ""
+            new_text = _open_text_editor_modal(
+                parent=self._window,
+                title="Edit snippet variables",
+                subtitle=(
+                    "One per line as  name = value. Use {var:name} in any "
+                    "snippet to pull the value in. Change a value here and "
+                    "every snippet referencing it updates next paste."),
+                initial_text=initial,
+                placeholder_text=(
+                    "Type one variable per line as  name = value.\n\n"
+                    "Examples:\n"
+                    "  email = you@example.com\n"
+                    "  signature = Best, Alex\n"
+                    "  phone = +47 555 1234"),
             )
-        vars_buf.connect("changed", _on_vars_changed)
-        vars_scroll.add(vars_view)
-        group.add(vars_scroll)
+            if new_text is None:
+                return
+            self._save_key("snippet_variables", _parse_vars_text(new_text))
+            _refresh_vars_row()
+
+        vars_row.connect("activated", _on_vars_edit)
+        vars_arrow = Gtk.Image.new_from_icon_name(
+            "document-edit-symbolic", Gtk.IconSize.BUTTON)
+        vars_arrow.set_valign(Gtk.Align.CENTER)
+        vars_row.add(vars_arrow)
+        group.add(vars_row)
 
         # Shell extension {shell:CMD} in snippets. Off by default - same
         # threat model as enabling macros: a hostile imported snippet
@@ -778,73 +817,56 @@ class SettingsDialog:
         # plain multi-line text area because per-row HdyActionRows would
         # be overkill for a free-form list.
         block_row = Handy.ActionRow()
-        block_row.set_title("Don't show in these apps or pages")
-        block_row.set_subtitle(
-            "One pattern per line. Case-insensitive substring match against "
-            "the active window's title and class. Examples: KeePassXC, "
-            "1Password, Mozilla Firefox - DNB.")
-        group.add(block_row)
+        block_row.set_activatable(True)
 
-        block_scroll = Gtk.ScrolledWindow()
-        block_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        block_scroll.set_min_content_height(110)
-        block_scroll.set_shadow_type(Gtk.ShadowType.IN)
-        block_scroll.set_margin_top(2)
-        block_scroll.set_margin_bottom(8)
-        block_scroll.set_margin_start(14)
-        block_scroll.set_margin_end(14)
-        block_view = Gtk.TextView()
-        block_view.set_wrap_mode(Gtk.WrapMode.NONE)
-        try:
-            block_view.set_monospace(True)
-        except AttributeError:
-            pass
-        # Pick up the input-field look (visible fill + caret colour) so
-        # the textarea reads as an editable input instead of a label.
-        block_view.get_style_context().add_class("lp-cmd-edit")
-        block_buf = block_view.get_buffer()
-        existing_block = self._settings.get("blocklist_patterns") or []
-        if existing_block:
-            block_buf.set_text("\n".join(existing_block))
-        _attach_textarea_placeholder(
-            block_view,
-            "Type one pattern per line. Each one is matched against the "
-            "focused window's title and class (case-insensitive).\n\n"
-            "Examples:\n"
-            "  KeePassXC\n"
-            "  1Password\n"
-            "  Mozilla Firefox - DNB")
+        def _refresh_block_row() -> None:
+            patterns = list(self._settings.get("blocklist_patterns") or [])
+            block_row.set_title("Don't show in these apps or pages")
+            count = len(patterns)
+            if count == 0:
+                block_row.set_subtitle(
+                    "Hide the popup in password managers, banking sites, "
+                    "and anywhere else you'd rather not see it. Click to add.")
+            else:
+                examples = ", ".join(patterns[:3])
+                if count > 3:
+                    examples += f", +{count - 3} more"
+                block_row.set_subtitle(
+                    f"{count} pattern{'s' if count != 1 else ''} blocked: "
+                    f"{examples}. Click to edit.")
+        _refresh_block_row()
 
-        # Debounce blocklist saves: typing 20 chars used to fire 20 settings
-        # writes + 20 plugin_loader.load_all() calls. Hold the latest text,
-        # flush it 350 ms after the last keystroke.
-        self._block_save_pending_id: int | None = None
-
-        def _flush_block(buf: Gtk.TextBuffer) -> bool:
-            self._block_save_pending_id = None
-            if getattr(block_view, "_placeholder_active", False):
-                self._save_key("blocklist_patterns", [])
-                return False
-            start, end = buf.get_start_iter(), buf.get_end_iter()
-            raw = buf.get_text(start, end, True)
-            patterns = [
-                line.strip() for line in raw.splitlines()
-                if line.strip()
-            ]
-            self._save_key("blocklist_patterns", patterns)
-            return False  # one-shot timer
-
-        def _on_block_changed(buf: Gtk.TextBuffer) -> None:
-            if getattr(block_view, "_setting_placeholder", False):
-                return
-            if self._block_save_pending_id is not None:
-                GLib.source_remove(self._block_save_pending_id)
-            self._block_save_pending_id = GLib.timeout_add(
-                350, _flush_block, buf,
+        def _on_block_edit(_row, _gesture=None) -> None:
+            patterns = list(self._settings.get("blocklist_patterns") or [])
+            initial = "\n".join(patterns)
+            new_text = _open_text_editor_modal(
+                parent=self._window,
+                title="Edit popup blocklist",
+                subtitle=(
+                    "One pattern per line. Case-insensitive substring "
+                    "match against the active window's title and class."),
+                initial_text=initial,
+                placeholder_text=(
+                    "Type one pattern per line.\n\n"
+                    "Examples:\n"
+                    "  KeePassXC\n"
+                    "  1Password\n"
+                    "  Mozilla Firefox - DNB"),
             )
-        block_buf.connect("changed", _on_block_changed)
-        block_scroll.add(block_view)
-        group.add(block_scroll)
+            if new_text is None:
+                return
+            new_patterns = [
+                line.strip() for line in new_text.splitlines() if line.strip()
+            ]
+            self._save_key("blocklist_patterns", new_patterns)
+            _refresh_block_row()
+
+        block_row.connect("activated", _on_block_edit)
+        block_arrow = Gtk.Image.new_from_icon_name(
+            "document-edit-symbolic", Gtk.IconSize.BUTTON)
+        block_arrow.set_valign(Gtk.Align.CENTER)
+        block_row.add(block_arrow)
+        group.add(block_row)
         return group
 
     def _build_ai_group(self) -> Handy.PreferencesGroup:
