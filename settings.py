@@ -16,6 +16,10 @@ CONFIG_PATH = CONFIG_DIR / "settings.json"
 
 DEFAULTS: dict[str, Any] = {
     # Show popup automatically when the X11 PRIMARY selection changes
+    # UI theme: "dark", "light", or "system" (auto-detect from the
+    # GTK theme name + prefer-dark-theme flag). Dark by default - the
+    # premium palette was designed against the cobalt + violet scheme.
+    "theme": "dark",
     "show_on_selection": True,
     # Hotkey to summon the popup with the current PRIMARY selection at the cursor.
     # Format: "<modifiers>+<key>", e.g. "super+shift+y", "ctrl+alt+y", "super+space".

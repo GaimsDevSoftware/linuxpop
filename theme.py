@@ -1,14 +1,23 @@
-"""Premium dark theme for LinuxPop -- one CSS provider for every window.
+"""Premium theme for LinuxPop -- one CSS provider for every window.
 
-Loaded once at app startup. Targets libhandy widget classes (.boxed-list,
-HdyActionRow, HdyPreferencesWindow) plus standard GTK widgets so all
-dialogs (Settings, Plugin Manager, Clipboard Picker, Recipe Wizard, Icon
-Picker, About) inherit a single, coherent look.
+The base CSS is the dark palette tuned to the LinuxPop app icon (deep
+cobalt base + blue->violet->magenta accent gradient). A light variant
+is generated at runtime by remapping the surface / text hex values
+while keeping the accent gradient intact (it reads well on both).
 
-Palette is tuned to match the LinuxPop app icon: a deep cobalt base with
-a blue->violet->magenta accent gradient.
+Mode resolution:
+  - "dark"   -> always dark
+  - "light"  -> always light
+  - "system" -> ask Gtk.Settings whether the user's system theme is dark
+                (gtk-application-prefer-dark-theme, or the theme-name
+                containing "dark"). Falls back to dark if uncertain.
+
+The installer is idempotent and hot-reloadable: calling it again with a
+different mode swaps the active provider without restarting.
 """
 from __future__ import annotations
+
+from typing import Optional
 
 import gi
 
@@ -535,31 +544,125 @@ textview.lp-cmd-edit text {
 """
 
 
-_loaded = False
+# Dark -> light hex remap. Keeps the accent gradient (cobalt blue ->
+# royal violet -> magenta pink) and the destructive reds untouched -
+# those read well on either background. Only swaps the surfaces, text,
+# borders, and the muted button/sidebar tints.
+_LIGHT_REMAP = {
+    # core palette
+    "#0e1118": "#f6f7fb",  # window bg
+    "#1c2231": "#ffffff",  # surface (cards / list rows)
+    "#262d3f": "#eef0f6",  # elevated (hover / selected)
+    "#3a4258": "#d4d8e2",  # border
+    "#f0f3fa": "#1c2231",  # primary text
+    "#b8c0d4": "#5a6378",  # muted / dim labels
+    # secondary tints (buttons, sidebar, inputs)
+    "#181d2a": "#ffffff",  # entry / textview body
+    "#1a1f2c": "#e8ecf3",  # button gradient bottom
+    "#1f2433": "#f4f6fa",  # button gradient top
+    "#262c3e": "#dde1ea",  # button hover top
+    "#232a3c": "#eef0f6",  # header gradient top
+    "#1a1f2e": "#f4f6fa",  # header gradient bottom
+    "#2c3346": "#e0e4ee",  # subtle border / row bottom
+    "#161a24": "#f0f2f7",  # sidebar bg
+    "#141823": "#e0e4ee",  # notebook header
+    "#14171f": "#ebeef4",  # check/radio bg
+    "#2a3145": "#d4d8e2",  # switch bg
+    "#353c52": "#c0c5d2",  # switch border
+    "#4a5266": "#a8b0c0",  # disabled text
+    "#5a6378": "#7a8090",  # placeholder text
+}
 
 
-def install_premium_theme() -> None:
-    """Install the premium CSS provider on the default screen. Idempotent --
-    safe to call more than once (the second call is a no-op)."""
-    global _loaded
-    if _loaded:
-        return
+def _apply_remap(css: bytes, remap: dict[str, str]) -> bytes:
+    """Substitute one hex palette into the CSS in a single pass.
+    Sequential .replace() would let later replacements re-hit earlier
+    outputs (e.g. swapping #1c2231 to #ffffff, then #5a6378 to #7a8090
+    would corrupt the first output if it shared a substring). Build a
+    regex and replace by full match instead."""
+    import re
+    if not remap:
+        return css
+    text = css.decode("ascii")
+    # Order keys longest-first so #abcdef wins over #abcde when both
+    # appear in the map. Wrap each hex in word-boundary so partial
+    # hexes inside another hex never match.
+    keys = sorted(remap.keys(), key=len, reverse=True)
+    pattern = re.compile("|".join(re.escape(k) for k in keys))
+    out = pattern.sub(lambda m: remap[m.group(0)], text)
+    return out.encode("ascii")
+
+
+def _system_prefers_dark() -> bool:
+    """Best-effort: does the user's system theme look dark? Checks the
+    Gtk-prefer-dark flag first, falls back to substring-match on the
+    GTK theme name (Mint-Y-Dark, Adwaita-dark, etc.). Defaults to True
+    when we have nothing to go on - keeps the existing premium look."""
+    try:
+        s = Gtk.Settings.get_default()
+        if s is None:
+            return True
+        if s.get_property("gtk-application-prefer-dark-theme"):
+            return True
+        name = s.get_property("gtk-theme-name") or ""
+        if "dark" in name.lower():
+            return True
+        return False
+    except Exception:
+        return True
+
+
+def _resolve_mode(mode: str) -> str:
+    if mode == "system":
+        return "dark" if _system_prefers_dark() else "light"
+    if mode in ("dark", "light"):
+        return mode
+    return "dark"
+
+
+_active_provider: Optional[Gtk.CssProvider] = None
+_active_mode: Optional[str] = None
+
+
+def install_premium_theme(mode: str = "dark") -> None:
+    """Install (or swap) the CSS provider on the default screen.
+
+    `mode` is "dark", "light", or "system". Calling again with the same
+    effective mode is a no-op; calling with a different one removes the
+    old provider and installs the new one - so settings-side toggle can
+    just call this without restarting the daemon.
+    """
+    global _active_provider, _active_mode
 
     screen = Gdk.Screen.get_default()
     if screen is None:
         return
 
-    provider = Gtk.CssProvider()
-    try:
-        provider.load_from_data(_PREMIUM_CSS)
-    except Exception:
-        import logging
-        logging.getLogger("linuxpop").exception("premium theme failed to load")
+    effective = _resolve_mode(mode)
+    if _active_mode == effective and _active_provider is not None:
         return
 
+    css = _PREMIUM_CSS if effective == "dark" else _apply_remap(
+        _PREMIUM_CSS, _LIGHT_REMAP)
+
+    provider = Gtk.CssProvider()
+    try:
+        provider.load_from_data(css)
+    except Exception:
+        import logging
+        logging.getLogger("linuxpop").exception(
+            "premium theme (%s) failed to load", effective)
+        return
+
+    if _active_provider is not None:
+        try:
+            Gtk.StyleContext.remove_provider_for_screen(
+                screen, _active_provider)
+        except Exception:
+            pass
+
     Gtk.StyleContext.add_provider_for_screen(
-        screen,
-        provider,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
     )
-    _loaded = True
+    _active_provider = provider
+    _active_mode = effective
