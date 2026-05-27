@@ -39,10 +39,10 @@ button.linuxpop-action {
     background: transparent;
     border: none;
     border-radius: 6px;
-    padding: 3px 5px;
+    padding: __PAD_V__px __PAD_H__px;
     margin: 0;
-    min-width: 22px;
-    min-height: 22px;
+    min-width: __BTN_SIZE__px;
+    min-height: __BTN_SIZE__px;
     color: #f0f3fa;
     transition: background-color 100ms ease, color 100ms ease;
 }
@@ -79,14 +79,66 @@ def _shift_held_in_current_event() -> bool:
     return bool(state & Gdk.ModifierType.SHIFT_MASK)
 
 
+_BUTTON_SIZE_MIN = 14
+_BUTTON_SIZE_MAX = 48
+_BUTTON_SIZE_DEFAULT = 22
+
+_popup_css_provider: Gtk.CssProvider | None = None
+
+
+def _resolve_button_size() -> int:
+    """Clamp the popup_button_size setting into the supported range.
+    Falls back to the default if the key isn't set or has been hand-
+    edited to nonsense in settings.json."""
+    try:
+        from settings import get_settings
+        raw = get_settings().get("popup_button_size", _BUTTON_SIZE_DEFAULT)
+        size = int(raw or _BUTTON_SIZE_DEFAULT)
+    except Exception:
+        size = _BUTTON_SIZE_DEFAULT
+    return max(_BUTTON_SIZE_MIN, min(_BUTTON_SIZE_MAX, size))
+
+
+def _build_css(size: int) -> bytes:
+    """Substitute the per-size measurements into the static CSS template.
+    Padding scales linearly with button size so the icon's halo grows
+    in proportion."""
+    pad_v = max(2, size // 8)
+    pad_h = max(3, size // 6)
+    css = (_CSS
+           .replace(b"__BTN_SIZE__", str(size).encode())
+           .replace(b"__PAD_V__", str(pad_v).encode())
+           .replace(b"__PAD_H__", str(pad_h).encode()))
+    return css
+
+
 def _install_css() -> None:
-    provider = Gtk.CssProvider()
-    provider.load_from_data(_CSS)
+    """Install (or reinstall) the popup CSS provider with the current
+    button-size setting. Safe to call repeatedly; the old provider is
+    removed before the new one is added."""
+    global _popup_css_provider
     screen = Gdk.Screen.get_default()
-    if screen is not None:
-        Gtk.StyleContext.add_provider_for_screen(
-            screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+    if screen is None:
+        return
+    if _popup_css_provider is not None:
+        try:
+            Gtk.StyleContext.remove_provider_for_screen(
+                screen, _popup_css_provider)
+        except Exception:
+            pass
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_build_css(_resolve_button_size()))
+    Gtk.StyleContext.add_provider_for_screen(
+        screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+    )
+    _popup_css_provider = provider
+
+
+def reinstall_popup_css() -> None:
+    """Public hook for the settings dialog to call when the user
+    changes popup_button_size - rebuilds the CSS so the next popup
+    renders at the new size without a daemon restart."""
+    _install_css()
 
 
 class PopupWindow:
@@ -202,9 +254,13 @@ class PopupWindow:
         self._bar.pack_start(btn, False, False, 0)
 
     def _make_icon_image(self, icon_name: str) -> Gtk.Image:
-        """Render an icon at a fixed small size. GTK handles HiDPI natively."""
+        """Render an icon scaled to ~72% of the configured button size,
+        so it has a comfortable halo of padding inside the button. GTK
+        handles HiDPI natively."""
+        size = _resolve_button_size()
+        icon_px = max(12, int(size * 0.72))
         image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
-        image.set_pixel_size(16)
+        image.set_pixel_size(icon_px)
         return image
 
     def show_for(

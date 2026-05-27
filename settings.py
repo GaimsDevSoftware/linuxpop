@@ -20,6 +20,10 @@ DEFAULTS: dict[str, Any] = {
     # GTK theme name + prefer-dark-theme flag). Dark by default - the
     # premium palette was designed against the cobalt + violet scheme.
     "theme": "dark",
+    # Popup button (action chip) size in pixels - the min-width / min-
+    # height of each button in the floating selection popup. Icon
+    # scales proportionally. Clamped to [14, 48] by popup.py.
+    "popup_button_size": 22,
     "show_on_selection": True,
     # PopClip-style: double-click inside an empty editable field pops
     # the edit menu (Paste / Select all / Backspace) at the cursor.
