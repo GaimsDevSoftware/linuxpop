@@ -1762,7 +1762,7 @@ class _PickerDialog:
                 ("{datetime}",
                  "Both at once - 2026-05-27 14:30."),
                 ("{weekday}",
-                 "Name of the day, in your system language - Wednesday / onsdag."),
+                 "Name of the day, in your system language - e.g. Wednesday."),
                 ("{date:FORMAT}",
                  "Custom date format. <tt>%A</tt>=weekday, <tt>%d</tt>=day, "
                  "<tt>%B</tt>=month name, <tt>%Y</tt>=year, <tt>%V</tt>=week number. "
@@ -1817,17 +1817,17 @@ class _PickerDialog:
 
             for title, body_text, note in [
                 ("Email signature with today's date",
-                 "Mvh\nRobert\n{date}",
+                 "Best,\n{name}\n{date}",
                  "Trigger: <tt>;sig</tt>"),
                 ("Support reply that asks for the details",
-                 "Hei {ask:Mottaker},\n\n"
-                 "Takk for at du tok kontakt om {ask:Sak}.\n"
-                 "Status er nå: {ask:Status|Ny|Pågår|Ferdig}.\n\n"
-                 "Mvh\nRobert",
+                 "Hi {ask:Customer},\n\n"
+                 "Thanks for reaching out about {ask:Topic}.\n"
+                 "Current status: {ask:Status|New|In progress|Resolved}.\n\n"
+                 "Best,\n{name}",
                  "One dialog asks for all three at once."),
                 ("Meeting one week out",
-                 "Møte om {date:+7d:%A %d. %B}",
-                 "Renders e.g. <i>Møte om onsdag 03. juni</i>."),
+                 "Meeting on {date:+7d:%A %d %B}",
+                 "Renders e.g. <i>Meeting on Wednesday 03 June</i>."),
                 ("Empty checkbox where the cursor lands after",
                  "[ ] {cursor}",
                  "Paste, then start typing the to-do - the cursor is already in place."),
@@ -2076,7 +2076,7 @@ class _PickerDialog:
                 ("{date}",        "{date}",        "Current date (YYYY-MM-DD)", 0, 0),
                 ("{time}",        "{time}",        "Current time (HH:MM)",      0, 0),
                 ("{datetime}",    "{datetime}",    "Date + time together",      0, 0),
-                ("{weekday}",     "{weekday}",     "Name of the day (Tirsdag / Tuesday - follows your system language)", 0, 0),
+                ("{weekday}",     "{weekday}",     "Name of the day - follows your system language", 0, 0),
                 ("{date:FORMAT}", "{date:%A %d %B}", "Custom date format. Codes: %A=weekday, %d=day, %B=month name, %V=week number, %Y=year. Edit the highlighted part to change.", 6, 8),
                 ("{date:+7d}",    "{date:+7d}",    "Date math: shift by days (d) / weeks (w) / months (m≈30d) / y. Edit the number to change. Combine with format like {date:+7d:%A}.", 6, 3),
                 ("{name}",        "{name}",        "Your full name (from your user account)", 0, 0),
