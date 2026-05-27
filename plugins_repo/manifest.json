@@ -22,10 +22,10 @@
   },
   {
     "file": "clipboard_history.py",
-    "title": "Clipboard history",
-    "description": "Keeps the last 25 clipboard entries (text + images). Pick one to copy back.",
-    "category": "Productivity",
-    "tags": ["clipboard", "utility"]
+    "title": "Clipboard history & snippets",
+    "description": "Recent clipboard entries (text + images) plus saved snippets with triggers, placeholders, and variables. The picker is the home of both.",
+    "category": "Snippets & Clipboard",
+    "tags": ["clipboard", "snippets", "essentials"]
   },
   {
     "file": "wordcount.py",

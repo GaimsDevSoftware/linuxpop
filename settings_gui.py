@@ -219,6 +219,9 @@ class SettingsDialog:
         page.set_title("General")
         page.set_icon_name("preferences-system-symbolic")
 
+        # Snippets & Clipboard first - that's the core of what people use
+        # LinuxPop for. Everything else is supporting infrastructure.
+        page.add(self._build_snippets_clipboard_group())
         page.add(self._build_appearance_group())
         page.add(self._build_activation_group())
         page.add(self._build_hotkeys_group())
@@ -346,30 +349,12 @@ class SettingsDialog:
 
         return group
 
-    def _build_hotkeys_group(self) -> Handy.PreferencesGroup:
+    def _build_snippets_clipboard_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()
-        group.set_title("Hotkeys")
+        group.set_title("Snippets & Clipboard")
         group.set_description(
-            "Keyboard shortcuts for opening the popup and the clipboard picker.")
-
-        # Selection-popup hotkey row
-        hk_row = Handy.ActionRow()
-        hk_row.set_title("Popup hotkey")
-        hk_row.set_subtitle(
-            "Press this anywhere to open the popup. If you have text "
-            "highlighted, it shows actions for that text. If not, it "
-            "shows a paste menu instead.")
-        recorder = HotkeyRecorder(
-            self._settings.get("hotkey") or "",
-            on_changed=lambda v: self._save_key("hotkey", v),
-        )
-        hk_row.add(recorder)
-        clear = Gtk.Button.new_from_icon_name("edit-clear-symbolic", Gtk.IconSize.BUTTON)
-        clear.set_valign(Gtk.Align.CENTER)
-        clear.set_tooltip_text("Disable hotkey")
-        clear.connect("clicked", lambda *_: recorder.set_value(""))
-        hk_row.add(clear)
-        group.add(hk_row)
+            "The picker that remembers what you've copied and the snippets "
+            "you save for reuse. Most of LinuxPop lives here.")
 
         # Clipboard plugin master toggle. When off, the background
         # selection-watcher thread is not started, the picker hotkey
@@ -596,13 +581,37 @@ class SettingsDialog:
             lambda s, _p: shell_row.set_sensitive(s.get_active()))
         group.add(shell_row)
 
+        return group
+
+    def _build_hotkeys_group(self) -> Handy.PreferencesGroup:
+        group = Handy.PreferencesGroup()
+        group.set_title("Hotkeys")
+        group.set_description(
+            "Keyboard shortcuts for opening the popup.")
+
+        # Selection-popup hotkey row
+        hk_row = Handy.ActionRow()
+        hk_row.set_title("Popup hotkey")
+        hk_row.set_subtitle(
+            "Press this anywhere to open the popup. If you have text "
+            "highlighted, it shows actions for that text. If not, it "
+            "shows a paste menu instead.")
+        recorder = HotkeyRecorder(
+            self._settings.get("hotkey") or "",
+            on_changed=lambda v: self._save_key("hotkey", v),
+        )
+        hk_row.add(recorder)
+        clear = Gtk.Button.new_from_icon_name(
+            "edit-clear-symbolic", Gtk.IconSize.BUTTON)
+        clear.set_valign(Gtk.Align.CENTER)
+        clear.set_tooltip_text("Disable hotkey")
+        clear.connect("clicked", lambda *_: recorder.set_value(""))
+        hk_row.add(clear)
+        group.add(hk_row)
+
         # 'Hotkey reads from' (PRIMARY vs CLIPBOARD) was removed from the
-        # UI here when the no-selection popup landed - with the paste
-        # menu always available, the only reason to ever flip the source
-        # to CLIPBOARD was the old 'I don't have a selection but I want
-        # the hotkey to do something' case, which now Just Works.
-        # The setting is still read from settings.json on launch for
-        # power users who want to flip it manually.
+        # UI when the no-selection popup landed. Setting is still read
+        # from settings.json on launch for power users.
 
         poll_row = Handy.ActionRow()
         poll_row.set_title("Trigger on first press")
