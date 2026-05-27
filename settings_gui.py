@@ -604,15 +604,23 @@ class SettingsDialog:
                 parent=self._window,
                 title="Edit trigger blocklist",
                 subtitle=(
-                    "One pattern per line. Case-insensitive substring "
-                    "match against the focused window's title and class."),
+                    "Apps and sites where snippet triggers should NEVER "
+                    "auto-expand. Useful for password managers, terminals, "
+                    "and banking sites - places where typing 'rraak' is "
+                    "supposed to stay 'rraak'."),
                 initial_text=initial,
                 placeholder_text=(
-                    "Type one pattern per line.\n\n"
-                    "Examples:\n"
-                    "  KeePassXC\n"
-                    "  gnome-terminal\n"
-                    "  bank.no"),
+                    "Type one app or site per line. Each line is matched "
+                    "(case-insensitive) against the focused window's "
+                    "title and class - if any line is a substring of "
+                    "either, expansion is skipped for that window.\n\n"
+                    "Try things like:\n"
+                    "  KeePassXC        - the password manager\n"
+                    "  gnome-terminal   - any terminal you use\n"
+                    "  bank.no          - matches whatever your bank's\n"
+                    "                     site name shows in the title\n"
+                    "  1Password\n"
+                    "  Bitwarden"),
             )
             if new_text is None:
                 return
@@ -681,16 +689,24 @@ class SettingsDialog:
                 parent=self._window,
                 title="Edit snippet variables",
                 subtitle=(
-                    "One per line as  name = value. Use {var:name} in any "
-                    "snippet to pull the value in. Change a value here and "
-                    "every snippet referencing it updates next paste."),
+                    "Reusable values that any snippet can pull in. "
+                    "Define a value once here, then write {var:name} "
+                    "in any snippet to drop it in. Change the value "
+                    "later and every snippet that uses it updates "
+                    "automatically."),
                 initial_text=initial,
                 placeholder_text=(
-                    "Type one variable per line as  name = value.\n\n"
-                    "Examples:\n"
-                    "  email = you@example.com\n"
-                    "  signature = Best, Alex\n"
-                    "  phone = +47 555 1234"),
+                    "Type one variable per line in the form\n"
+                    "    name = value\n\n"
+                    "Then write {var:name} in your snippets to pull the "
+                    "value in. Common ones to start with:\n\n"
+                    "  email     = you@example.com\n"
+                    "  signature = Best,\\nAlex\n"
+                    "  phone     = +47 555 1234\n"
+                    "  company   = Acme AS\n"
+                    "  address   = Karl Johans gate 1, 0154 Oslo\n\n"
+                    "Names can be anything you'd recognise later -\n"
+                    "letters, digits, underscores, hyphens."),
             )
             if new_text is None:
                 return
@@ -875,15 +891,23 @@ class SettingsDialog:
                 parent=self._window,
                 title="Edit popup blocklist",
                 subtitle=(
-                    "One pattern per line. Case-insensitive substring "
-                    "match against the active window's title and class."),
+                    "Apps and pages where the popup should never appear. "
+                    "Useful for password managers, banking sites, and any "
+                    "other context where a floating menu would be in "
+                    "the way."),
                 initial_text=initial,
                 placeholder_text=(
-                    "Type one pattern per line.\n\n"
-                    "Examples:\n"
+                    "Type one app or site per line. Each line is matched "
+                    "(case-insensitive) against the focused window's "
+                    "title and class - if any line is a substring of "
+                    "either, the popup stays hidden for that window.\n\n"
+                    "Try things like:\n"
                     "  KeePassXC\n"
                     "  1Password\n"
-                    "  Mozilla Firefox - DNB"),
+                    "  Bitwarden\n"
+                    "  Mozilla Firefox - DNB     - just the bank tab\n"
+                    "  - kjøp                    - any browser tab whose\n"
+                    "                              title contains this"),
             )
             if new_text is None:
                 return
