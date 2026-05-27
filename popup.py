@@ -105,7 +105,7 @@ def _build_css(size: int) -> bytes:
     popup shrinks/grows as a single visual unit instead of leaving
     chunky borders around tiny buttons (or hairline borders around
     huge ones)."""
-    pad_v = max(2, size // 8)
+    pad_v = max(1, size // 12)
     pad_h = max(3, size // 6)
     win_pad = max(2, size // 7)        # gutter between bar and frame
     win_radius = max(6, size // 2 - 2) # outer corner roundness
