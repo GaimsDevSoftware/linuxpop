@@ -678,6 +678,8 @@ class RecipeWizard:
         self._template_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self._template_view.override_font(
             Pango.FontDescription("monospace 11"))
+        # Visible input-field background so the user can see it's editable.
+        self._template_view.get_style_context().add_class("lp-cmd-edit")
         self._template_buffer = self._template_view.get_buffer()
 
         # Style tag for the dimmed sample text. Has to live on the

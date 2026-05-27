@@ -37,10 +37,18 @@ try:
     _FOCUS_STABLE   = float(_settings.get("ai_focus_stability_seconds", 0.25) or 0.25)
     _SETTLE         = float(_settings.get("ai_paste_settle_seconds", 0.2) or 0.2)
 except Exception:
+    _settings = None
     _WINDOW_TIMEOUT = 10.0
     _FOCUS_TIMEOUT  = 3.0
     _FOCUS_STABLE   = 0.25
     _SETTLE         = 0.2
+
+
+def _auto_submit_enabled() -> bool:
+    """Read fresh each call so the toggle takes effect without a restart."""
+    if _settings is None:
+        return False
+    return bool(_settings.get("ai_paste_auto_submit", False))
 
 # Browsers truncate URLs around 8 KB and UX degrades earlier. Past this,
 # fall back to paste mode for that single click instead of opening a
@@ -300,6 +308,15 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
         # the same tick has a small race where the destination sees the
         # old clipboard content.
         time.sleep(0.4)
+        # Optional auto-submit: hit Return so the user doesn't have to.
+        # Off by default - some services lose drafts, and shift+enter for
+        # newline is harder once the prompt has been sent. Read fresh so
+        # the toggle takes effect without a daemon restart.
+        if _auto_submit_enabled():
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "Return"],
+                check=False,
+            )
         _restore_selections(saved_selections)
 
     threading.Thread(target=worker, daemon=True, name=f"ai-paste-{service}").start()

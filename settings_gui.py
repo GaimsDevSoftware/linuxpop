@@ -468,6 +468,9 @@ class SettingsDialog:
             tblock_view.set_monospace(True)
         except AttributeError:
             pass
+        # Pick up the input-field look (visible fill + caret colour) so
+        # the textarea reads as an editable input instead of a label.
+        tblock_view.get_style_context().add_class("lp-cmd-edit")
         tblock_buf = tblock_view.get_buffer()
         tblock_buf.set_text("\n".join(
             self._settings.get("trigger_blocklist_patterns") or []))
@@ -636,6 +639,9 @@ class SettingsDialog:
             block_view.set_monospace(True)
         except AttributeError:
             pass
+        # Pick up the input-field look (visible fill + caret colour) so
+        # the textarea reads as an editable input instead of a label.
+        block_view.get_style_context().add_class("lp-cmd-edit")
         block_buf = block_view.get_buffer()
         block_buf.set_text("\n".join(
             self._settings.get("blocklist_patterns") or []))
@@ -702,6 +708,27 @@ class SettingsDialog:
             row.add(sw)
             row.set_activatable_widget(sw)
             group.add(row)
+
+        # Auto-submit after paste. Speeds up the paste-mode services
+        # (Claude, Gemini) by sending Return automatically, so the user
+        # doesn't have to press Enter themselves.
+        submit_row = Handy.ActionRow()
+        submit_row.set_title("Auto-submit after paste")
+        submit_row.set_subtitle(
+            "Press Return for you after the prompt is pasted, so paste-mode "
+            "services (Claude, Gemini) send immediately. Off by default so "
+            "you can edit the prompt first. No effect on URL services that "
+            "already auto-submit.")
+        submit_sw = Gtk.Switch()
+        submit_sw.set_valign(Gtk.Align.CENTER)
+        submit_sw.set_active(
+            bool(self._settings.get("ai_paste_auto_submit", False)))
+        submit_sw.connect(
+            "notify::active", self._on_switch, "ai_paste_auto_submit")
+        submit_row.add(submit_sw)
+        submit_row.set_activatable_widget(submit_sw)
+        group.add(submit_row)
+
         return group
 
     def _on_ai_toggle(self, switch: Gtk.Switch, _param, key: str) -> None:
