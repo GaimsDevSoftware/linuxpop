@@ -127,7 +127,7 @@ class Entry:
     image_path: str = ""
     name: str = ""    # only used for snippets
     # Snippet auto-expansion shortcode(s). Comma-separated to allow more
-    # than one trigger per snippet ("rraak, rb, email" all → same text).
+    # than one trigger per snippet (";email, ;e, em" all -> same text).
     # Single-trigger entries from older saves load as-is because the
     # parser strips whitespace and ignores empty parts.
     trigger: str = ""
@@ -1717,10 +1717,13 @@ class _PickerDialog:
                  "If you give a snippet a shortcut like <tt>;email</tt>, "
                  "you can type <tt>;email</tt> followed by a space "
                  "anywhere on your computer and LinuxPop replaces it "
-                 "with the full text. One snippet can have many "
-                 "triggers - write them comma-separated: "
-                 "<tt>rraak, rb, email</tt>. Triggers must be turned "
-                 "on in Settings → Hotkeys."),
+                 "with the full text. Starting your triggers with a "
+                 "non-letter character (<tt>;</tt>, <tt>:</tt>, "
+                 "<tt>!</tt>, <tt>@</tt>) is the usual convention - it "
+                 "keeps them from clashing with real words you type. "
+                 "One snippet can have many triggers, comma-separated: "
+                 "<tt>;email, ;e, em</tt>. Triggers must be turned on "
+                 "in Settings -> Hotkeys."),
                 ("3.", "Let it fill in the blanks",
                  "A snippet can contain little tags like <tt>{date}</tt> "
                  "or <tt>{ask:Name}</tt>. They're called <b>placeholders</b> "
@@ -1863,16 +1866,52 @@ class _PickerDialog:
             case_body.set_line_wrap(True)
             case_body.set_markup(
                 "<span foreground='#d8dce8'>"
-                "Triggers don't care about capital letters when they "
-                "match, but they DO copy your capitalisation to the "
-                "output. If your trigger is <tt>rraak</tt> and the "
-                "snippet is <tt>raakanin@gmail.com</tt>:"
+                "Triggers match without caring about capital letters, "
+                "but they copy your capitalisation to the output. "
+                "If your trigger is <tt>;name</tt> and the snippet "
+                "is <tt>alex morgan</tt>:"
                 "</span>\n\n"
-                "  <tt>rraak </tt> → raakanin@gmail.com\n"
-                "  <tt>Rraak </tt> → Raakanin@gmail.com\n"
-                "  <tt>RRAAK </tt> → RAAKANIN@GMAIL.COM"
+                "  <tt>;name </tt> -> alex morgan\n"
+                "  <tt>;Name </tt> -> Alex morgan\n"
+                "  <tt>;NAME </tt> -> ALEX MORGAN"
             )
             outer.pack_start(case_body, False, False, 0)
+
+            sep5 = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            outer.pack_start(sep5, False, False, 4)
+
+            # Type a trigger literally
+            esc_head = Gtk.Label(xalign=0)
+            esc_head.set_markup(
+                "<span size='large' weight='bold'>"
+                "Typing a trigger without expanding it</span>")
+            outer.pack_start(esc_head, False, False, 0)
+            esc_body = Gtk.Label(xalign=0)
+            esc_body.set_line_wrap(True)
+            esc_body.set_markup(
+                "<span foreground='#d8dce8'>"
+                "Sometimes you need to write the literal trigger - "
+                "for instance, when telling a colleague which "
+                "shortcut you use. A few ways:"
+                "</span>\n\n"
+                "  Wrap it in quotes or brackets:  "
+                "<tt>\";email\"</tt>, <tt>(;email)</tt>, "
+                "<tt>[;email]</tt>\n"
+                "    The trailing character isn't a space/tab/enter, "
+                "so expansion never fires.\n\n"
+                "  Press Esc mid-word: clears the trigger buffer "
+                "so the next space won't expand.\n\n"
+                "  Toggle <i>Snippet triggers</i> off in Settings "
+                "if you'll be typing literal triggers a lot.\n\n"
+                "<span foreground='#b8c0d4'>"
+                "Tip: a trigger that begins with a non-letter "
+                "character (<tt>;</tt>, <tt>:</tt>, <tt>!</tt>, "
+                "<tt>@</tt>, <tt>(</tt>, etc.) practically never "
+                "fires by accident, because real words don't start "
+                "that way."
+                "</span>"
+            )
+            outer.pack_start(esc_body, False, False, 0)
 
             scroll.add(outer)
             dlg.get_content_area().pack_start(scroll, True, True, 0)
@@ -1920,7 +1959,7 @@ class _PickerDialog:
             triggers_on = bool(_cfg("snippet_triggers_enabled", False))
             if triggers_on:
                 trig_entry.set_placeholder_text(
-                    "e.g. rraak, rb - any of them auto-expands"
+                    "e.g. ;email, ;e - any of them auto-expands"
                 )
             else:
                 trig_entry.set_placeholder_text(
@@ -1999,7 +2038,7 @@ class _PickerDialog:
             trigger_entry = Gtk.Entry()
             if triggers_on:
                 trigger_entry.set_placeholder_text(
-                    "e.g. rraak, rb - any of them + space/tab auto-expands"
+                    "e.g. ;email, ;e - any of them + space/tab auto-expands"
                 )
             else:
                 trigger_entry.set_placeholder_text(
