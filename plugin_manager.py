@@ -282,9 +282,15 @@ class PluginManagerDialog:
 
     # Display order for category sections. Categories present in the
     # manifest but missing here are appended in first-seen order.
-    _CATEGORY_ORDER = ["Productivity", "Web shortcuts", "AI", "Developer"]
+    _CATEGORY_ORDER = [
+        "Snippets & Clipboard", "Productivity", "Web shortcuts",
+        "AI", "Developer",
+    ]
     _CATEGORY_DESCRIPTIONS = {
-        "Productivity":  "Everyday actions - clipboard, math, counts, speech.",
+        "Snippets & Clipboard":
+            "The picker that remembers what you've copied and the snippets "
+            "you save for reuse. The core of what LinuxPop is for.",
+        "Productivity":  "Everyday actions - math, counts, speech, formatting.",
         "Web shortcuts": "Open the selection in a search engine or web service.",
         "AI":            "Send the selection to a chat AI or run one locally.",
         "Developer":     "Encoders, hashes and converters for technical text.",
