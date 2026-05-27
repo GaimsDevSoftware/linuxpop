@@ -743,6 +743,37 @@ class RecipeWizard:
             inserter_row.pack_start(btn, False, False, 0)
         self._detail_container.pack_start(inserter_row, False, False, 0)
 
+        # More-placeholders chip row: dynamic tokens recipes pick up
+        # from the snippet engine. Inserting one of these drops a tag
+        # like {date} or {clipboard} into the template at the cursor;
+        # it gets resolved when the button is actually clicked, not now.
+        extra_label = Gtk.Label(xalign=0)
+        extra_label.set_markup(
+            "<span foreground='#9aa3b8' size='small'>"
+            "Or insert a dynamic value (filled in when the button runs):</span>")
+        extra_label.set_margin_top(6)
+        self._detail_container.pack_start(extra_label, False, False, 0)
+        extra_flow = Gtk.FlowBox()
+        extra_flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        extra_flow.set_max_children_per_line(6)
+        extra_flow.set_column_spacing(4)
+        extra_flow.set_row_spacing(4)
+        for chip_label, chip_token, chip_tip in [
+            ("{date}",       "{date}",       "Today's date, e.g. 2026-05-27"),
+            ("{time}",       "{time}",       "Current time, e.g. 14:30"),
+            ("{weekday}",    "{weekday}",    "Name of the day"),
+            ("{date:+7d}",   "{date:+7d}",   "Date math: +7d, -1w, +3m, +2y"),
+            ("{name}",       "{name}",       "Your full name (from your user account)"),
+            ("{clipboard}",  "{clipboard}",  "Whatever's on your clipboard when the button runs"),
+            ("{selection}",  "{selection}",  "Whatever text is highlighted on screen"),
+        ]:
+            chip = Gtk.Button(label=chip_label)
+            chip.set_tooltip_text(chip_tip)
+            chip.connect("clicked",
+                          lambda _b, t=chip_token: self._on_insert(None, t))
+            extra_flow.add(chip)
+        self._detail_container.pack_start(extra_flow, False, False, 0)
+
         # "Try also" chip row - replaces the template with a known-good
         # example. Saves the user from having to invent valid patterns
         # by hand the first time they meet an action type.
