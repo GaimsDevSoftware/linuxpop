@@ -299,6 +299,27 @@ class SettingsDialog:
         sel_row.set_activatable_widget(sel_switch)
         group.add(sel_row)
 
+        # Double-click in an empty editable field shows the edit menu
+        # (Paste / Select all / Backspace). PopClip's text-field gesture.
+        dbl_row = Handy.ActionRow()
+        dbl_row.set_title("Double-click in empty field for edit menu")
+        dbl_row.set_subtitle(
+            "Double-click inside an empty text field to bring up Paste / "
+            "Select all / Backspace at the cursor. Requires LinuxPop to "
+            "watch mouse clicks globally - only left-button double-clicks "
+            "are inspected, nothing is logged or sent.")
+        dbl_switch = Gtk.Switch()
+        dbl_switch.set_valign(Gtk.Align.CENTER)
+        dbl_switch.set_active(
+            bool(self._settings.get("double_click_popup_enabled", False)))
+        dbl_switch.connect(
+            "notify::active", self._on_switch, "double_click_popup_enabled")
+        # Live-apply happens through the settings on_changed callback in
+        # main.py - no separate plumbing needed here.
+        dbl_row.add(dbl_switch)
+        dbl_row.set_activatable_widget(dbl_switch)
+        group.add(dbl_row)
+
         # Autostart at login (switch row) - driven by ~/.config/autostart
         # rather than a settings.json key, since the .desktop file is what
         # the DE actually reads. We just toggle the file from here.
