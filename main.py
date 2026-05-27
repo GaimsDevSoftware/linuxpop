@@ -405,7 +405,7 @@ class App:
             "edit-select-all-symbolic", "Select all", _send_keys("ctrl+a"),
         ))
         items.append((
-            "edit-clear-rtl-symbolic", "Backspace", _send_keys("BackSpace"),
+            "edit-clear-symbolic", "Backspace", _send_keys("BackSpace"),
         ))
         self.popup.show_actions(items, x, y)
 
