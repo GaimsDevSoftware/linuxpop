@@ -590,6 +590,17 @@ _LIGHT_REMAP = {
     "#353c52": "#c0c5d2",  # switch border
     "#4a5266": "#a8b0c0",  # disabled text
     "#5a6378": "#7a8090",  # placeholder text
+    # Pango-markup greys that several dialogs hard-code for dim/muted
+    # secondary text. Inverted into a darker grey for light mode so the
+    # contrast ratio stays readable (the original tones were tuned
+    # against a dark surface).
+    "#8a92a8": "#5a6378",
+    "#9aa3b8": "#5a6378",
+    "#9ba3b8": "#3a4258",
+    # White-tinted highlights used for the "inset top edge" lift on
+    # cards and the header bar. Invisible on a light surface (white on
+    # white) - swap to a subtle dark shadow so the dimension survives.
+    "rgba(255, 255, 255, 0.06)": "rgba(0, 0, 0, 0.06)",
 }
 
 
