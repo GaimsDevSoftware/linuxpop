@@ -110,7 +110,22 @@ _COMMAND_TOKENS = {
     "direnv", "asdf", "mise", "nvm", "pyenv", "rbenv", "fnm", "volta",
 }
 
-_COMMAND_HINTS = re.compile(r"(\s&&\s|\s\|\|\s|\s\|\s|\s>\s|\s>>\s|\$\(|`)")
+# Shell metacharacters / patterns that strongly suggest the text is
+# meant to be executed. Relaxed in 2026-05 after several real shell
+# pastes were classified as plain text: the old version required
+# spaces around `|`/`>`/`&&`, missed flag-only lines like `--dry-run`,
+# and didn't catch executable paths or heredoc syntax.
+_COMMAND_HINTS = re.compile(
+    r"(?:"
+    r"&&|\|\||(?<!\|)\|(?!\|)|"   # logical and/or, pipe (but not || alone twice)
+    r"\s>+\s|\s>>\s|"             # redirection with surrounding space
+    r"\$\(|\$\{|"                 # command substitution / brace expansion
+    r"`[^`]+`|"                    # backtick expansion
+    r"<<\w+|<<-|"                  # heredoc
+    r"(?:^|\s)[-]{1,2}[A-Za-z][\w-]*(?:\s|=|$)|"  # flags like -v, --dry-run, --foo=bar
+    r"(?:^|\s)(?:\./|/usr/|/bin/|/sbin/|~/)[\w./-]+(?:\s|$)"  # executable path
+    r")"
+)
 
 
 def _line_first_token(line: str) -> str:
@@ -190,7 +205,13 @@ def classify(text: str) -> ContentType:
     # shell-prompt prefix doesn't hide the actual command underneath.
     if _looks_like_command(stripped):
         return ContentType.COMMAND
-    if _COMMAND_HINTS.search(stripped) and len(stripped) < 500:
+    # Robert preferred "fires one time too many" over "misses real
+    # commands". Cap raised to 4000 chars (was 500) so multi-line
+    # snippets and pasted scripts with shell metacharacters still
+    # classify as COMMAND. Pure prose almost never hits these
+    # patterns - the only false positives come from technical writing
+    # quoting actual shell, which is fine to surface a Run button for.
+    if _COMMAND_HINTS.search(stripped) and len(stripped) < 4000:
         return ContentType.COMMAND
 
     return ContentType.PLAIN_TEXT
