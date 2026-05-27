@@ -84,17 +84,17 @@ def _unellipsize_tab_labels(root: Gtk.Widget) -> None:
             try:
                 widget.set_ellipsize(Pango.EllipsizeMode.NONE)
                 widget.set_max_width_chars(-1)
-                # For the tab labels specifically: also set width-chars
-                # to the text length so the label REQUESTS at least that
-                # many character-widths from its parent. Without this,
-                # ellipsize=NONE alone just lets the label render beyond
-                # its tight allocation and get visually clipped by the
-                # parent button's overflow -- which is what was happening
-                # ('Availat' shown without ellipsis dots, because there
-                # were no ellipsis dots, just visual overflow clipping).
                 text = widget.get_text() or ""
                 if text in tab_names:
-                    widget.set_width_chars(len(text) + 1)
+                    # width_chars alone wasn't enough: HdyViewSwitcher's
+                    # internal Gtk.Stack allocates each tab a fixed slot
+                    # that still clipped the last character. Force a
+                    # generous pixel-based minimum and let the parent
+                    # widen instead of cropping us. ~14 px per character
+                    # is roomy for the system font.
+                    widget.set_width_chars(len(text) + 2)
+                    widget.set_size_request(len(text) * 14, -1)
+                    widget.set_hexpand(True)
                 else:
                     widget.set_width_chars(-1)
             except Exception:
