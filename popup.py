@@ -29,8 +29,8 @@ box.linuxpop-bar {
     background-image: linear-gradient(to bottom, #262d3f, #1c2231);
     background-color: #1c2231;
     border: 1px solid #3a4258;
-    border-radius: 9px;
-    padding: 3px;
+    border-radius: __WIN_RADIUS__px;
+    padding: __WIN_PAD__px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55),
                 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
 }
@@ -38,7 +38,7 @@ box.linuxpop-bar {
 button.linuxpop-action {
     background: transparent;
     border: none;
-    border-radius: 6px;
+    border-radius: __BTN_RADIUS__px;
     padding: __PAD_V__px __PAD_H__px;
     margin: 0;
     min-width: __BTN_SIZE__px;
@@ -101,14 +101,22 @@ def _resolve_button_size() -> int:
 
 def _build_css(size: int) -> bytes:
     """Substitute the per-size measurements into the static CSS template.
-    Padding scales linearly with button size so the icon's halo grows
-    in proportion."""
+    Padding, radii and inner gutters scale with button size so the
+    popup shrinks/grows as a single visual unit instead of leaving
+    chunky borders around tiny buttons (or hairline borders around
+    huge ones)."""
     pad_v = max(2, size // 8)
     pad_h = max(3, size // 6)
+    win_pad = max(2, size // 7)        # gutter between bar and frame
+    win_radius = max(6, size // 2 - 2) # outer corner roundness
+    btn_radius = max(3, size // 4)     # button corner roundness
     css = (_CSS
            .replace(b"__BTN_SIZE__", str(size).encode())
            .replace(b"__PAD_V__", str(pad_v).encode())
-           .replace(b"__PAD_H__", str(pad_h).encode()))
+           .replace(b"__PAD_H__", str(pad_h).encode())
+           .replace(b"__WIN_PAD__", str(win_pad).encode())
+           .replace(b"__WIN_RADIUS__", str(win_radius).encode())
+           .replace(b"__BTN_RADIUS__", str(btn_radius).encode()))
     return css
 
 
