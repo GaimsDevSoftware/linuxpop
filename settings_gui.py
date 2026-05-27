@@ -396,6 +396,38 @@ class SettingsDialog:
         theme_row.add(theme_combo)
         theme_row.set_activatable_widget(theme_combo)
         group.add(theme_row)
+
+        # Popup button size: how big each action chip in the floating
+        # popup is. Clamped to [14, 48] pixels - smaller is unreadable,
+        # bigger eats too much screen.
+        size_row = Handy.ActionRow()
+        size_row.set_title("Popup button size")
+        size_row.set_subtitle(
+            "How big each action button in the popup is, in pixels. "
+            "14 is small and dense; 48 is large and easy to click.")
+        size_adj = Gtk.Adjustment(
+            value=int(self._settings.get("popup_button_size", 22) or 22),
+            lower=14, upper=48, step_increment=1, page_increment=4,
+        )
+        size_spin = Gtk.SpinButton()
+        size_spin.set_valign(Gtk.Align.CENTER)
+        size_spin.set_adjustment(size_adj)
+        size_spin.set_numeric(True)
+
+        def _on_size_changed(spin: Gtk.SpinButton) -> None:
+            self._save_key("popup_button_size", int(spin.get_value()))
+            # Live-apply: rebuild the popup's CSS provider so the next
+            # show_for() renders at the new size.
+            try:
+                import popup as _popup
+                _popup.reinstall_popup_css()
+            except Exception as exc:
+                print(f"[settings] popup css reload failed: {exc}")
+        size_spin.connect("value-changed", _on_size_changed)
+        size_row.add(size_spin)
+        size_row.set_activatable_widget(size_spin)
+        group.add(size_row)
+
         return group
 
     def _build_activation_group(self) -> Handy.PreferencesGroup:
