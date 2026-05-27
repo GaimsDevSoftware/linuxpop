@@ -306,6 +306,17 @@ menu separator {
     box-shadow: unset;
 }
 
+/* Hover/highlight on the menu item the pointer is over. Uses the
+   accent overlay at low opacity so the panel's own background colour
+   shows through - reads correctly on both a light and a dark panel
+   without overriding the label colour the panel set. */
+menu menuitem:hover,
+menu menuitem:focus,
+menu menuitem.highlight {
+    background-color: rgba(91, 125, 245, 0.22);
+    border-radius: 4px;
+}
+
 /* ----- popovers ----- */
 popover,
 popover.background {
