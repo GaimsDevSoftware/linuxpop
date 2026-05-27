@@ -541,6 +541,40 @@ textview.lp-cmd-edit text {
     padding: 6px 10px;
 }
 
+/* ----- Snippet / clipboard picker -----
+   Force every container inside the picker window to inherit the window
+   background instead of the default GTK list/notebook tones. Without
+   this the listbox area stays charcoal even in light mode because GTK
+   paints a fallback there that our generic `window` rule doesn't reach.
+   Selected row keeps the accent gradient from the global list rule;
+   hover gets a tinted overlay that reads on either palette. */
+.lp-picker,
+.lp-picker box,
+.lp-picker notebook,
+.lp-picker notebook stack,
+.lp-picker scrolledwindow,
+.lp-picker viewport,
+.lp-picker list,
+.lp-picker list > row {
+    background-color: transparent;
+    background-image: none;
+}
+
+.lp-picker {
+    background-color: #0e1118;
+}
+
+.lp-picker list > row:hover {
+    background-color: rgba(91, 125, 245, 0.10);
+}
+
+.lp-picker list > row:selected {
+    background-image: linear-gradient(to right,
+        rgba(91, 125, 245, 0.22),
+        rgba(124, 58, 237, 0.22));
+    color: #ffffff;
+}
+
 /* ----- LinuxPop-specific helper classes -----
    Any widget that adds these style classes via add_css_class()
    gets premium accents on top of the generic widget styling. */

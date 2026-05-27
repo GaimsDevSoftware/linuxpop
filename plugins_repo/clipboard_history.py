@@ -1340,6 +1340,10 @@ class _PickerDialog:
         self.target_window = target_window
 
         win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
+        # Tag the picker so the theme can force-clear the dark fallback
+        # GTK paints over ListBox content. Without an explicit class
+        # the row area kept a dark cast in the light theme.
+        win.get_style_context().add_class("lp-picker")
         win.set_title("LinuxPop - Clipboard & Snippets")
         win.set_default_size(580, 540)
         win.set_position(Gtk.WindowPosition.CENTER)
