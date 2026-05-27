@@ -82,10 +82,15 @@ def register(register_plugin) -> None:
         priority=12,
         requires_editable=True,
     ))
+    # Same handler (xdotool BackSpace key) as the no-selection edit
+     # menu's "Backspace" button - label them the same so the user
+    # doesn't read them as two separate actions. With a selection
+    # active, BackSpace deletes the selection; without one it deletes
+    # the character before the cursor - same key, different effect.
     register_plugin(Plugin(
         name="backspace",
         icon="edit-delete-symbolic",
-        tooltip="Delete selection",
+        tooltip="Backspace (delete the selected text)",
         handler=_backspace,
         content_types=(),
         priority=13,
