@@ -6,6 +6,7 @@ import argparse
 import fcntl
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -364,34 +365,43 @@ class App:
         self._show_for_text(text, x, y)
 
     def _show_no_selection_popup(self, x: int, y: int) -> None:
-        """Build a small paste-menu popup for the no-selection case.
+        """Build a PopClip-style edit menu for the no-selection case.
 
-        Right now this surfaces a single entry point - the clipboard /
-        snippets picker - which is the natural answer to 'I want to
-        paste something'. Future entries (Paste latest, Paste plain,
-        Paste snippet by name) slot in here as the snippet engine and
-        modifier support land.
+        Shown when the popup hotkey fires while you're sitting in an
+        editable field with nothing selected. Mirrors PopClip's "click
+        in text field" popup: paste, select-all, backspace, plus the
+        clipboard picker as the dedicated entry point for snippets and
+        recent items.
         """
         if _active_window_blocked(list(self.settings.get("blocklist_patterns") or [])):
             log.info("[blocked] suppressed no-selection popup -- active window blocked")
             return
+
+        def _send_keys(combo: str) -> "Callable[[], None]":
+            def _fire() -> None:
+                if shutil.which("xdotool"):
+                    subprocess.run(
+                        ["xdotool", "key", "--clearmodifiers", combo],
+                        check=False,
+                    )
+            return _fire
+
         items: list[tuple[str, str, "Callable[[], None]"]] = []
+        items.append((
+            "edit-paste-symbolic", "Paste", _send_keys("ctrl+v"),
+        ))
         if bool(self.settings.get("clipboard_history_enabled", True)):
             items.append((
-                "edit-paste-symbolic",
-                "Paste from clipboard history",
+                "linuxpop-clipboard-symbolic",
+                "Paste from history",
                 self._on_clipboard_hotkey,
             ))
-        if not items:
-            # Nothing to offer - fall back to the old toast so the user
-            # at least gets feedback that the hotkey was received.
-            subprocess.run(
-                ["notify-send", "--hint=byte:transient:1", "-t", "3000",
-                 "-i", "dialog-information",
-                 "LinuxPop", "Nothing selected"],
-                check=False,
-            )
-            return
+        items.append((
+            "edit-select-all-symbolic", "Select all", _send_keys("ctrl+a"),
+        ))
+        items.append((
+            "edit-clear-symbolic", "Backspace", _send_keys("BackSpace"),
+        ))
         self.popup.show_actions(items, x, y)
 
     # ---- watcher -------------------------------------------------------------

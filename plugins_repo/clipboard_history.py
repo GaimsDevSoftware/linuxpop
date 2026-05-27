@@ -1274,6 +1274,29 @@ class _PickerDialog:
         outer.set_margin_start(8)
         outer.set_margin_end(8)
 
+        # Branding header - keeps the picker recognisably "LinuxPop"
+        # without a window decoration to lean on (this is a borderless
+        # popup). The icon is the full-colour app logo so it reads on
+        # both the dark and the light theme.
+        brand_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        brand_row.set_margin_bottom(6)
+        brand_icon = Gtk.Image.new_from_icon_name(
+            "linuxpop", Gtk.IconSize.LARGE_TOOLBAR)
+        brand_icon.set_pixel_size(24)
+        brand_row.pack_start(brand_icon, False, False, 0)
+        brand_text_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        brand_text_box.set_valign(Gtk.Align.CENTER)
+        brand_name = Gtk.Label(xalign=0)
+        brand_name.set_markup("<b>LinuxPop</b>")
+        brand_text_box.pack_start(brand_name, False, False, 0)
+        brand_sub = Gtk.Label(label="Clipboard & snippets", xalign=0)
+        brand_sub.get_style_context().add_class("dim-label")
+        brand_text_box.pack_start(brand_sub, False, False, 0)
+        brand_row.pack_start(brand_text_box, True, True, 0)
+        outer.pack_start(brand_row, False, False, 0)
+
         # Search
         self.search_entry = Gtk.SearchEntry()
         self.search_entry.set_placeholder_text("Type to filter…")
