@@ -102,9 +102,10 @@ def _resolve_button_size() -> int:
 def _build_css(size: int) -> bytes:
     """Substitute the per-size measurements into the static CSS template.
     Padding, radii and inner gutters scale with button size so the
-    popup shrinks/grows as a single visual unit instead of leaving
-    chunky borders around tiny buttons (or hairline borders around
-    huge ones)."""
+    popup shrinks/grows as a single visual unit. Colours are remapped
+    through theme._LIGHT_REMAP when the user's theme is light, so the
+    popup background/border/text follow the same palette as the rest
+    of the app."""
     pad_v = max(1, size // 12)
     pad_h = max(3, size // 6)
     win_pad = max(2, size // 7)        # gutter between bar and frame
@@ -117,7 +118,31 @@ def _build_css(size: int) -> bytes:
            .replace(b"__WIN_PAD__", str(win_pad).encode())
            .replace(b"__WIN_RADIUS__", str(win_radius).encode())
            .replace(b"__BTN_RADIUS__", str(btn_radius).encode()))
+    # Apply the same dark->light palette swap the main theme uses, so
+    # the popup doesn't end up as a dark island in a light window.
+    try:
+        import theme as _theme
+        mode = _theme._resolve_mode(
+            (get_settings_func() or {}).get("theme", "dark")
+        )
+        if mode == "light":
+            css = _theme._apply_remap(css, _theme._LIGHT_REMAP)
+    except Exception:
+        # If theme can't be imported, fall back to dark - it was the
+        # default for a long time and won't surprise anyone.
+        pass
     return css
+
+
+def get_settings_func():
+    """Single point that yields the live settings dict-like, or {} if
+    settings can't be reached. Wrapped so _build_css doesn't have to
+    care about import-time ordering."""
+    try:
+        from settings import get_settings
+        return get_settings()
+    except Exception:
+        return {}
 
 
 def _install_css() -> None:

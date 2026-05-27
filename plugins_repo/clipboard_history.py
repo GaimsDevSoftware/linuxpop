@@ -1642,7 +1642,7 @@ class _PickerDialog:
             if entry.kind == "text":
                 meta += f"  ·  {len(entry.text)} chars"
             sub = Gtk.Label(xalign=0)
-            sub.set_markup(f"<small><span foreground='#888'>{meta}</span></small>")
+            sub.set_markup(f"<small><span foreground='#8a92a8'>{meta}</span></small>")
             vbox.pack_start(sub, False, False, 0)
         hbox.pack_start(vbox, True, True, 0)
 

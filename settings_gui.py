@@ -391,6 +391,13 @@ class SettingsDialog:
                 _theme.install_premium_theme(mode)
             except Exception as exc:
                 print(f"[settings] theme reload failed: {exc}")
+            # Popup uses its own CSS provider; rebuild it so the
+            # selection popup picks up the new palette too.
+            try:
+                import popup as _popup
+                _popup.reinstall_popup_css()
+            except Exception as exc:
+                print(f"[settings] popup theme reload failed: {exc}")
         theme_combo.connect("changed", _on_theme_changed)
         theme_row.add(theme_combo)
         theme_row.set_activatable_widget(theme_combo)
