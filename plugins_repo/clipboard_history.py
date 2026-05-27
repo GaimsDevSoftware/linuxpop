@@ -131,6 +131,10 @@ class Entry:
     # Single-trigger entries from older saves load as-is because the
     # parser strips whitespace and ignores empty parts.
     trigger: str = ""
+    # Count of times this snippet has been pasted - via picker click,
+    # trigger expansion, or programmatic paste. Persisted in snippets.json
+    # so it survives daemon restarts. Defaults to 0 on older files.
+    usage_count: int = 0
 
     def trigger_list(self) -> List[str]:
         """Parse `trigger` into a list of clean shortcodes."""
@@ -267,6 +271,20 @@ def _create_snippet(name: str, text: str, trigger: str = "") -> None:
         _snippets.insert(0, snippet)
     _save_snippets()
     _rebuild_trigger_index()
+
+
+def _bump_usage(snippet_id: str) -> None:
+    """Increment a snippet's usage counter and persist. Cheap fire-and-
+    forget - failure to save isn't worth blocking the paste over."""
+    with _snippets_lock:
+        for s in _snippets:
+            if s.id == snippet_id:
+                s.usage_count = int(s.usage_count or 0) + 1
+                break
+    try:
+        _save_snippets()
+    except Exception as exc:
+        print(f"[clipboard] usage save failed (ignored): {exc}")
 
 
 def _set_snippet_trigger(snippet_id: str, trigger: str) -> None:
@@ -669,6 +687,7 @@ def _fire_trigger_expansion(
     # Case-propagation: typed 'Rraak' → Title-case output;
     # typed 'RRAAK' → UPPER output.
     rendered = _propagate_case(typed, rendered)
+    _bump_usage(snippet.id)
 
     def worker():
         if not shutil.which("xdotool"):
@@ -1022,11 +1041,24 @@ def _paste_to_window(
 #   {ask:Label}    - label runs up to the next "}"
 _PLACEHOLDER_RE = re.compile(
     r"\{("
-    r"date(?::[^}]+)?|time|datetime|weekday|clipboard|cursor|name"
+    r"date(?::[^}]+)?|time|datetime|weekday|clipboard|selection|cursor|name"
     r"|ask:[^}]+"
     r"|shell:[^}]+"
     r")\}"
 )
+
+
+def _read_primary_selection() -> str:
+    """Read the current X11 PRIMARY selection (the highlighted text).
+    Returns empty string if nothing is highlighted or xclip is missing."""
+    try:
+        out = subprocess.run(
+            ["xclip", "-selection", "primary", "-o"],
+            capture_output=True, timeout=0.5,
+        )
+        return out.stdout.decode("utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def _render_shell_token(cmd: str) -> str:
@@ -1189,6 +1221,12 @@ def render_placeholders(
             if clipboard_value is None:
                 clipboard_value = _read_clipboard_text() or ""
             return clipboard_value
+        if token == "selection":
+            # PRIMARY (the currently highlighted text). Captured fresh
+            # at expansion time - whatever the user has selected when
+            # the snippet fires gets pulled in. Enables transform-style
+            # snippets: "Quote: {selection}", "TODO: {selection}".
+            return _read_primary_selection()
         if token == "cursor":
             return _CURSOR_SENTINEL
         if token.startswith("ask:"):
@@ -1496,13 +1534,26 @@ class _PickerDialog:
         vbox.pack_start(title, False, False, 0)
 
         if is_snippet and entry.name:
-            # Show a preview of contents under the name
+            # Show a preview of contents under the name, plus a usage
+            # counter once the snippet has been used a few times - a
+            # quiet "you reach for this one a lot" signal that doubles
+            # as a hint for pruning unused snippets.
             preview = entry.text[:80] if entry.kind == "text" else entry.image_path
+            preview = preview.replace("\n", " ↵ ")
+            count = int(entry.usage_count or 0)
+            count_suffix = ""
+            if count >= 3:
+                count_suffix = (
+                    f"  ·  used {count} times" if count > 1 else "  ·  used once"
+                )
             sub = Gtk.Label(xalign=0)
-            sub.set_markup(f"<small><span foreground='#888'>"
-                            f"{GLib.markup_escape_text(preview)}</span></small>")
+            sub.set_markup(
+                f"<small><span foreground='#8a92a8'>"
+                f"{GLib.markup_escape_text(preview)}"
+                f"{GLib.markup_escape_text(count_suffix)}"
+                f"</span></small>")
             sub.set_ellipsize(3)
-            sub.set_max_width_chars(70)
+            sub.set_max_width_chars(80)
             vbox.pack_start(sub, False, False, 0)
         else:
             meta = time.strftime("%H:%M:%S", time.localtime(entry.timestamp))
@@ -1569,6 +1620,8 @@ class _PickerDialog:
 
     def _paste_and_close(self, entry: Entry, is_snippet: bool = False) -> None:
         target = self.target_window  # captured before we showed
+        if is_snippet:
+            _bump_usage(entry.id)
         cursor_left = 0
         # Only snippets get placeholder substitution. Recent-history entries
         # are pasted verbatim - a "{date}" the user copied from somewhere
@@ -1715,7 +1768,7 @@ class _PickerDialog:
             intro = Gtk.Label(xalign=0)
             intro.set_line_wrap(True)
             intro.set_markup(
-                "<span foreground='#b8c0d4'>A <b>snippet</b> is a "
+                "<span foreground='#8a92a8'>A <b>snippet</b> is a "
                 "piece of text you save once and reuse forever. Your "
                 "email signature, a phone number, a reply to a "
                 "frequently asked question, a bug-report template - "
@@ -1762,7 +1815,7 @@ class _PickerDialog:
                 row.pack_start(num, False, False, 0)
                 text = Gtk.Label(xalign=0, yalign=0)
                 text.set_markup(
-                    f"<b>{head}</b>\n<span foreground='#b8c0d4'>"
+                    f"<b>{head}</b>\n<span foreground='#8a92a8'>"
                     f"{body}</span>")
                 text.set_line_wrap(True)
                 text.set_hexpand(True)
@@ -1801,6 +1854,10 @@ class _PickerDialog:
                  "Your full name, taken from your user account."),
                 ("{clipboard}",
                  "Whatever's currently on your clipboard at paste time."),
+                ("{selection}",
+                 "Whatever you have highlighted on screen right now. "
+                 "Lets you build wrap-the-selection snippets like "
+                 "<tt>Quote: \"{selection}\"</tt> or <tt>TODO: {selection}</tt>."),
                 ("{cursor}",
                  "Marks where the typing cursor should land after paste. "
                  "Useful for templates like <tt>[ ] {cursor}</tt>."),
@@ -1826,7 +1883,7 @@ class _PickerDialog:
                 grid.attach(tag_lbl, 0, i, 1, 1)
                 desc_lbl = Gtk.Label(xalign=0, yalign=0)
                 desc_lbl.set_markup(
-                    f"<span foreground='#d8dce8'>{desc}</span>")
+                    f"<span foreground='#9ba3b8'>{desc}</span>")
                 desc_lbl.set_line_wrap(True)
                 desc_lbl.set_hexpand(True)
                 grid.attach(desc_lbl, 1, i, 1, 1)
@@ -1864,15 +1921,25 @@ class _PickerDialog:
                 box = Gtk.Box(
                     orientation=Gtk.Orientation.VERTICAL, spacing=2)
                 box.set_margin_start(8)
+                # Code block: a Frame with the .lp-card CSS class so the
+                # surface follows the active theme (dark vs light). The
+                # accent foreground is fine on either surface.
+                code_frame = Gtk.Frame()
+                code_frame.get_style_context().add_class("lp-card")
                 code = Gtk.Label(xalign=0, selectable=True)
                 code.set_markup(
-                    f"<tt><span foreground='#5B7DF5' background='#181d2a'> "
-                    f"{GLib.markup_escape_text(body_text)} </span></tt>")
+                    f"<tt><span foreground='#5B7DF5'>"
+                    f"{GLib.markup_escape_text(body_text)}</span></tt>")
                 code.set_line_wrap(True)
-                box.pack_start(code, False, False, 0)
+                code.set_margin_top(4)
+                code.set_margin_bottom(4)
+                code.set_margin_start(8)
+                code.set_margin_end(8)
+                code_frame.add(code)
+                box.pack_start(code_frame, False, False, 0)
                 note_lbl = Gtk.Label(xalign=0)
                 note_lbl.set_markup(
-                    f"<small><span foreground='#b8c0d4'>{note}</span></small>")
+                    f"<small><span foreground='#8a92a8'>{note}</span></small>")
                 note_lbl.set_line_wrap(True)
                 box.pack_start(note_lbl, False, False, 0)
                 outer.pack_start(box, False, False, 0)
@@ -1888,7 +1955,7 @@ class _PickerDialog:
             case_body = Gtk.Label(xalign=0)
             case_body.set_line_wrap(True)
             case_body.set_markup(
-                "<span foreground='#d8dce8'>"
+                "<span foreground='#9ba3b8'>"
                 "Triggers match without caring about capital letters, "
                 "but they copy your capitalisation to the output. "
                 "If your trigger is <tt>;name</tt> and the snippet "
@@ -1912,7 +1979,7 @@ class _PickerDialog:
             esc_body = Gtk.Label(xalign=0)
             esc_body.set_line_wrap(True)
             esc_body.set_markup(
-                "<span foreground='#d8dce8'>"
+                "<span foreground='#9ba3b8'>"
                 "Sometimes you need to write the literal trigger - "
                 "for instance, when telling a colleague which "
                 "shortcut you use. A few ways:"
@@ -1926,7 +1993,7 @@ class _PickerDialog:
                 "so the next space won't expand.\n\n"
                 "  Toggle <i>Snippet triggers</i> off in Settings "
                 "if you'll be typing literal triggers a lot.\n\n"
-                "<span foreground='#b8c0d4'>"
+                "<span foreground='#8a92a8'>"
                 "Tip: a trigger that begins with a non-letter "
                 "character (<tt>;</tt>, <tt>:</tt>, <tt>!</tt>, "
                 "<tt>@</tt>, <tt>(</tt>, etc.) practically never "
@@ -2143,6 +2210,7 @@ class _PickerDialog:
                 ("{date:+7d}",    "{date:+7d}",    "Date math: shift by days (d) / weeks (w) / months (m≈30d) / y. Edit the number to change. Combine with format like {date:+7d:%A}.", 6, 3),
                 ("{name}",        "{name}",        "Your full name (from your user account)", 0, 0),
                 ("{clipboard}",   "{clipboard}",   "Current clipboard contents", 0, 0),
+                ("{selection}",   "{selection}",   "Whatever you currently have highlighted on screen (PRIMARY selection). Lets you wrap or transform selected text - e.g. 'Quote: {selection}'.", 0, 0),
                 ("{cursor}",      "{cursor}",      "Where the caret lands after paste", 0, 0),
                 ("{ask:Label}",   "{ask:Label}",   "Prompt for a value at paste time. Multiple {ask:} fields show in one dialog. Rename 'Label' to what you want the prompt to say.", 5, 5),
                 ("{ask:Label|Opt}", "{ask:Status|Open|Closed|WIP}", "Dropdown variant: pipe-separated options after the label give a chooser instead of free text. Edit the label and options to match your case.", 5, 6),

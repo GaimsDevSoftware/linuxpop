@@ -76,7 +76,7 @@ def show_welcome_dialog(
     head_box.pack_start(title, False, False, 0)
     sub = Gtk.Label(xalign=0)
     sub.set_markup(
-        "<span foreground='#b8c0d4'>"
+        "<span foreground='#8a92a8'>"
         "A floating popup of context-aware actions for any text you select."
         "</span>")
     sub.set_line_wrap(True)
@@ -112,7 +112,7 @@ def show_welcome_dialog(
             f"<span foreground='#5B7DF5' weight='bold' size='large'>{n}.</span>")
         steps_grid.attach(num, 0, row, 1, 1)
         h = Gtk.Label(xalign=0, yalign=0)
-        h.set_markup(f"<b>{head}</b>  <span foreground='#b8c0d4'>{body}</span>")
+        h.set_markup(f"<b>{head}</b>  <span foreground='#8a92a8'>{body}</span>")
         h.set_line_wrap(True)
         h.set_hexpand(True)
         steps_grid.attach(h, 1, row, 1, 1)
@@ -136,7 +136,7 @@ def show_welcome_dialog(
 
         support_blurb = Gtk.Label(xalign=0)
         support_blurb.set_markup(
-            "<span foreground='#b8c0d4'>"
+            "<span foreground='#8a92a8'>"
             "LinuxPop is free and open source. If it saves you time, a "
             "small tip keeps the project moving. No pressure -- the link "
             "is also in the tray menu under About."
@@ -217,7 +217,7 @@ def open_support_picker(settings, parent: Gtk.Window | None = None) -> None:
     if not configured:
         msg = Gtk.Label(xalign=0)
         msg.set_markup(
-            "<span foreground='#b8c0d4'>"
+            "<span foreground='#8a92a8'>"
             "No donation links are configured. Set "
             "<tt>support_paypal_url</tt> in your settings.json to "
             "enable the PayPal button."
@@ -231,7 +231,7 @@ def open_support_picker(settings, parent: Gtk.Window | None = None) -> None:
         box.pack_start(head, False, False, 0)
         blurb = Gtk.Label(xalign=0)
         blurb.set_markup(
-            "<span foreground='#b8c0d4'>"
+            "<span foreground='#8a92a8'>"
             "Tips are what let one-person Linux projects keep shipping."
             "</span>")
         blurb.set_line_wrap(True)

@@ -253,7 +253,7 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
 
     explain = Gtk.Label(xalign=0)
     explain.set_markup(
-        "<span foreground='#b8c0d4' size='small'>"
+        "<span foreground='#8a92a8' size='small'>"
         "Press <b>Run</b> to launch it as-is, <b>Edit</b> to tweak it first."
         "</span>")
     explain.set_line_wrap(True)
@@ -319,7 +319,7 @@ def _confirm_run_then_launch(cmd: str, binary: str, prefix: list[str]) -> bool:
         edit_btn.set_sensitive(False)
         edit_btn.set_label("Editing…")
         explain.set_markup(
-            "<span foreground='#b8c0d4' size='small'>"
+            "<span foreground='#8a92a8' size='small'>"
             "<b>Editing</b> -- Ctrl+Enter to run, Esc to cancel."
             "</span>")
     edit_btn.connect("clicked", _enter_edit_mode)

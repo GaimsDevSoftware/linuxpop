@@ -52,6 +52,36 @@ def _mock_case(text: str) -> str:
     return "".join(c.upper() if rng.random() < 0.5 else c.lower() for c in text)
 
 
+def _apply_snippet_placeholders(text: str) -> str:
+    """Bridge to the snippet placeholder engine in clipboard_history.
+
+    Lets recipes use {date}, {time}, {datetime}, {weekday}, {date:FORMAT},
+    {date:+7d}, {name}, {clipboard}, {selection}, {shell:CMD} - the same
+    dynamic tokens snippets support. {ask:} resolves to an empty string
+    here because recipes fire from popup clicks where blocking on a
+    dialog is jarring; users who need fill-ins should make a snippet.
+
+    Lookup is best-effort: if clipboard_history isn't loaded (it's
+    user-installed and could be removed), recipes fall back to the
+    text passing through unchanged.
+    """
+    if "{" not in text:
+        return text
+    try:
+        import sys
+        ch = (sys.modules.get("linuxpop_user_clipboard_history")
+              or sys.modules.get("clipboard_history"))
+        if ch is None or not hasattr(ch, "render_placeholders"):
+            return text
+        rendered, _, _ = ch.render_placeholders(
+            text, lambda fields: {label: "" for label, _ in fields},
+        )
+        return rendered
+    except Exception as exc:
+        print(f"[recipe] snippet-placeholder bridge failed: {exc}")
+        return text
+
+
 def _render(template: str, text: str) -> str:
     """Substitute template variables. Unknown placeholders are left as-is."""
     safe = {
@@ -64,10 +94,14 @@ def _render(template: str, text: str) -> str:
         "text_mock":  _mock_case(text),  # jEg eR sJeFeN - for mocking quotes
     }
     try:
-        return template.format_map(_DefaultMissing(safe))
+        first = template.format_map(_DefaultMissing(safe))
     except Exception as exc:  # noqa: BLE001
         print(f"[recipe] template render failed: {exc}")
         return template
+    # Second pass: snippet-style dynamic placeholders (date, name,
+    # clipboard, etc.). Adds the snippet engine's vocabulary to recipes
+    # without duplicating the code.
+    return _apply_snippet_placeholders(first)
 
 
 class _DefaultMissing(dict):
