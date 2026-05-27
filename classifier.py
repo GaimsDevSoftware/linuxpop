@@ -123,7 +123,12 @@ _COMMAND_HINTS = re.compile(
     r"`[^`]+`|"                    # backtick expansion
     r"<<\w+|<<-|"                  # heredoc
     r"(?:^|\s)[-]{1,2}[A-Za-z][\w-]*(?:\s|=|$)|"  # flags like -v, --dry-run, --foo=bar
-    r"(?:^|\s)(?:\./|/usr/|/bin/|/sbin/|~/)[\w./-]+(?:\s|$)"  # executable path
+    r"(?:^|\s)(?:\./|/usr/|/bin/|/sbin/|~/)[\w./-]+(?:\s|$)|"  # executable path
+    # Hyphenated all-lowercase command name followed by space + arg.
+    # Catches xdg-settings, gnome-terminal, apt-get, gtk-update-icon-cache,
+    # systemd-run, dpkg-reconfigure, etc. Plain English prose
+    # essentially never starts a line with this shape.
+    r"(?:^|\n)\s*[a-z]+(?:-[a-z][\w-]*)+\s+\S"
     r")"
 )
 
