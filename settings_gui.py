@@ -365,7 +365,7 @@ class SettingsDialog:
         trigger_row = Handy.ActionRow()
         trigger_row.set_title("Snippet triggers (text expansion)")
         trigger_row.set_subtitle(
-            "When ON, typing a snippet's trigger code (e.g. 'rraak') followed "
+            "When ON, typing a snippet's trigger code (e.g. ';email') followed "
             "by space or tab auto-expands it. Requires LinuxPop to watch "
             "global keystrokes locally - keys are matched against your "
             "snippet triggers only, never logged or sent anywhere.")
