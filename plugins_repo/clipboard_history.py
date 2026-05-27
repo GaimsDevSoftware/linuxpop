@@ -1669,13 +1669,18 @@ class _PickerDialog:
             rename_btn.connect("clicked", self._on_rename_clicked, entry)
             hbox.pack_end(rename_btn, False, False, 0)
 
-            unpin_btn = Gtk.Button.new_from_icon_name(
-                "starred-symbolic", Gtk.IconSize.BUTTON,
+            # Delete this snippet entirely. Used to be a "star/unpin"
+            # button from the days when snippets were pinned clipboard
+            # entries; now that snippets are first-class items with
+            # triggers and bodies of their own, "delete" matches the
+            # mental model better.
+            delete_btn = Gtk.Button.new_from_icon_name(
+                "user-trash-symbolic", Gtk.IconSize.BUTTON,
             )
-            unpin_btn.set_valign(Gtk.Align.CENTER)
-            unpin_btn.set_tooltip_text("Unpin")
-            unpin_btn.connect("clicked", self._on_unpin_clicked, entry)
-            hbox.pack_end(unpin_btn, False, False, 0)
+            delete_btn.set_valign(Gtk.Align.CENTER)
+            delete_btn.set_tooltip_text("Delete this snippet")
+            delete_btn.connect("clicked", self._on_unpin_clicked, entry)
+            hbox.pack_end(delete_btn, False, False, 0)
         else:
             pin_btn = Gtk.Button.new_from_icon_name(
                 "non-starred-symbolic", Gtk.IconSize.BUTTON,
@@ -1819,6 +1824,35 @@ class _PickerDialog:
             self.notebook.set_current_page(1)
 
     def _on_unpin_clicked(self, _btn, entry: Entry) -> None:
+        """Delete a snippet. Confirms first since the body, triggers,
+        and category all go away with it - no undo."""
+        label = entry.name or entry.preview(40) or "this snippet"
+        self._modal_child_open = True
+        try:
+            dlg = Gtk.MessageDialog(
+                transient_for=self.dialog,
+                modal=True,
+                message_type=Gtk.MessageType.QUESTION,
+                buttons=Gtk.ButtonsType.NONE,
+                text=f"Delete \"{label}\"?",
+                secondary_text=(
+                    "The snippet, its triggers, and its category will "
+                    "be removed. This can't be undone."),
+            )
+            dlg.add_buttons(
+                "Cancel", Gtk.ResponseType.CANCEL,
+                "Delete", Gtk.ResponseType.OK,
+            )
+            # Style the destructive button red so the choice reads at a glance.
+            ok_btn = dlg.get_widget_for_response(Gtk.ResponseType.OK)
+            if ok_btn is not None:
+                ok_btn.get_style_context().add_class("destructive-action")
+            response = dlg.run()
+            dlg.destroy()
+        finally:
+            self._modal_child_open = False
+        if response != Gtk.ResponseType.OK:
+            return
         _unpin_snippet(entry.id)
         self._populate_snippets()
 
