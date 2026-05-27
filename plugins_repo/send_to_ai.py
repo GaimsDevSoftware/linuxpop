@@ -56,6 +56,36 @@ def _auto_submit_enabled() -> bool:
 _URL_MAX_CHARS = 6000
 
 
+def _desktop_env() -> dict:
+    """Build an env that lets browsers / xdg-open talk to the running
+    desktop session.
+
+    If LinuxPop was started without inheriting the user's session
+    environment (e.g. launched from a barebones shell), Firefox's
+    "is there an instance running?" probe fails because DBus is the
+    transport it uses to find the existing process. With no DBus
+    address the new firefox-bin starts, sees the profile lock from
+    the *real* running Firefox, can't reach it, and pops the
+    "already running but not responding" dialog every single time.
+
+    Best-effort patch: copy os.environ and, if DBUS_SESSION_BUS_ADDRESS
+    or XDG_RUNTIME_DIR are missing, fill them in with the canonical
+    values from /run/user/$UID. Same trick for DISPLAY/XAUTHORITY -
+    cheap insurance for systemd-user daemons.
+    """
+    import os
+    env = dict(os.environ)
+    uid = os.getuid()
+    runtime_dir = f"/run/user/{uid}"
+    if not env.get("XDG_RUNTIME_DIR"):
+        env["XDG_RUNTIME_DIR"] = runtime_dir
+    if not env.get("DBUS_SESSION_BUS_ADDRESS"):
+        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={runtime_dir}/bus"
+    if not env.get("DISPLAY"):
+        env["DISPLAY"] = ":0"
+    return env
+
+
 # ---- url mode -----------------------------------------------------------
 
 def _send_via_url(service: str, url_template: str, text: str,
@@ -63,7 +93,11 @@ def _send_via_url(service: str, url_template: str, text: str,
     encoded = urllib.parse.quote(text, safe="")
     url = url_template.format(text_url=encoded)
     try:
-        subprocess.Popen(["xdg-open", url], start_new_session=True)
+        subprocess.Popen(
+            ["xdg-open", url],
+            start_new_session=True,
+            env=_desktop_env(),
+        )
     except FileNotFoundError:
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
@@ -256,7 +290,11 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
     }
     _stuff_text(text)
     try:
-        subprocess.Popen(["xdg-open", url], start_new_session=True)
+        subprocess.Popen(
+            ["xdg-open", url],
+            start_new_session=True,
+            env=_desktop_env(),
+        )
     except FileNotFoundError:
         # Restore immediately on failure - we never paste, so the user's
         # clipboard shouldn't stay overwritten.
