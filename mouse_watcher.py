@@ -45,7 +45,14 @@ def _read_primary_snapshot() -> bytes:
 
 _DOUBLE_CLICK_MS = 300
 _POSITION_TOLERANCE_PX = 8
-_POST_CLICK_DELAY_MS = 50
+# How long to wait after the second click before checking PRIMARY.
+# Was 50 ms, but several apps (Firefox, GTK textviews) take longer
+# than that to publish a freshly-selected word to PRIMARY. Result:
+# we'd snapshot too early, see no change, and fire the no-selection
+# popup over what was actually a word-selection gesture.
+# 200 ms is roughly the upper bound observed in testing; humans
+# don't perceive sub-200 ms latency as lag for a deliberate gesture.
+_POST_CLICK_DELAY_MS = 200
 
 
 class DoubleClickWatcher:
