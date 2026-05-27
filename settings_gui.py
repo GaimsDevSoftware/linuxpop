@@ -77,6 +77,58 @@ def _unwrap_subtitle_labels(root: Gtk.Widget) -> None:
     GLib.timeout_add(150, _again)
 
 
+def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> None:
+    """Give a Gtk.TextView the placeholder-text behaviour that Gtk.Entry
+    has built-in. When the buffer is empty the placeholder shows in
+    grey italics; focus or any typing wipes it. Empty state is restored
+    on focus-out so the user always sees the hint when the field is blank.
+
+    Save handlers MUST check view._placeholder_active and treat the
+    placeholder text as "no value" - otherwise the placeholder string
+    would be persisted as data.
+    """
+    buf = view.get_buffer()
+    # Per-view tag so callers can have multiple placeholders without
+    # name collisions in the buffer's tag table.
+    tag = buf.create_tag(
+        f"lp-placeholder-{id(view)}",
+        foreground="#7a8090",
+        style=Pango.Style.ITALIC,
+    )
+    view._placeholder_active = False
+
+    def _set_placeholder() -> None:
+        # Suppress the 'changed' signal during the placeholder swap so
+        # debounced save handlers don't fire on what is really UI chrome.
+        view._setting_placeholder = True
+        buf.set_text(placeholder_text)
+        s, e = buf.get_bounds()
+        buf.apply_tag(tag, s, e)
+        view._placeholder_active = True
+        view._setting_placeholder = False
+
+    s, e = buf.get_bounds()
+    if not buf.get_text(s, e, True):
+        _set_placeholder()
+
+    def _on_focus_in(_w, _e):
+        if view._placeholder_active:
+            view._setting_placeholder = True
+            buf.set_text("")
+            view._placeholder_active = False
+            view._setting_placeholder = False
+        return False
+
+    def _on_focus_out(_w, _e):
+        s, e = buf.get_bounds()
+        if not buf.get_text(s, e, True).strip():
+            _set_placeholder()
+        return False
+
+    view.connect("focus-in-event", _on_focus_in)
+    view.connect("focus-out-event", _on_focus_out)
+
+
 def _force_to_front(window: Gtk.Window) -> None:
     """Raise the window to the foreground on X11 even when WM focus-
     stealing prevention or another LinuxPop dialog's keep_above would
@@ -457,13 +509,25 @@ class SettingsDialog:
         # the textarea reads as an editable input instead of a label.
         tblock_view.get_style_context().add_class("lp-cmd-edit")
         tblock_buf = tblock_view.get_buffer()
-        tblock_buf.set_text("\n".join(
-            self._settings.get("trigger_blocklist_patterns") or []))
+        existing_patterns = self._settings.get("trigger_blocklist_patterns") or []
+        if existing_patterns:
+            tblock_buf.set_text("\n".join(existing_patterns))
+        _attach_textarea_placeholder(
+            tblock_view,
+            "Type one pattern per line. Each one is matched against the "
+            "focused window's title and class (case-insensitive).\n\n"
+            "Examples:\n"
+            "  KeePassXC\n"
+            "  gnome-terminal\n"
+            "  bank.no")
 
         self._tblock_save_pending_id: int | None = None
 
         def _flush_tblock(buf: Gtk.TextBuffer) -> bool:
             self._tblock_save_pending_id = None
+            if getattr(tblock_view, "_placeholder_active", False):
+                self._save_key("trigger_blocklist_patterns", [])
+                return False
             start, end = buf.get_start_iter(), buf.get_end_iter()
             raw = buf.get_text(start, end, True)
             patterns = [
@@ -473,6 +537,8 @@ class SettingsDialog:
             return False
 
         def _on_tblock_changed(buf: Gtk.TextBuffer) -> None:
+            if getattr(tblock_view, "_setting_placeholder", False):
+                return
             if self._tblock_save_pending_id is not None:
                 GLib.source_remove(self._tblock_save_pending_id)
             self._tblock_save_pending_id = GLib.timeout_add(
@@ -514,13 +580,19 @@ class SettingsDialog:
         vars_buf = vars_view.get_buffer()
         # Serialise the dict as "name = value" lines for human editing.
         existing = self._settings.get("snippet_variables") or {}
-        if isinstance(existing, dict):
+        if isinstance(existing, dict) and existing:
             vars_text = "\n".join(
                 f"{k} = {v}" for k, v in sorted(existing.items())
             )
-        else:
-            vars_text = ""
-        vars_buf.set_text(vars_text)
+            vars_buf.set_text(vars_text)
+        _attach_textarea_placeholder(
+            vars_view,
+            "Type one variable per line as  name = value.\n"
+            "Use {var:name} in any snippet to pull the value in.\n\n"
+            "Examples:\n"
+            "  email = you@example.com\n"
+            "  signature = Best, Alex\n"
+            "  phone = +47 555 1234")
 
         self._vars_save_pending_id: int | None = None
 
@@ -541,12 +613,17 @@ class SettingsDialog:
 
         def _flush_vars(buf: Gtk.TextBuffer) -> bool:
             self._vars_save_pending_id = None
+            if getattr(vars_view, "_placeholder_active", False):
+                self._save_key("snippet_variables", {})
+                return False
             start, end = buf.get_start_iter(), buf.get_end_iter()
             raw = buf.get_text(start, end, True)
             self._save_key("snippet_variables", _parse_vars_text(raw))
             return False
 
         def _on_vars_changed(buf: Gtk.TextBuffer) -> None:
+            if getattr(vars_view, "_setting_placeholder", False):
+                return
             if self._vars_save_pending_id is not None:
                 GLib.source_remove(self._vars_save_pending_id)
             self._vars_save_pending_id = GLib.timeout_add(
@@ -726,8 +803,17 @@ class SettingsDialog:
         # the textarea reads as an editable input instead of a label.
         block_view.get_style_context().add_class("lp-cmd-edit")
         block_buf = block_view.get_buffer()
-        block_buf.set_text("\n".join(
-            self._settings.get("blocklist_patterns") or []))
+        existing_block = self._settings.get("blocklist_patterns") or []
+        if existing_block:
+            block_buf.set_text("\n".join(existing_block))
+        _attach_textarea_placeholder(
+            block_view,
+            "Type one pattern per line. Each one is matched against the "
+            "focused window's title and class (case-insensitive).\n\n"
+            "Examples:\n"
+            "  KeePassXC\n"
+            "  1Password\n"
+            "  Mozilla Firefox - DNB")
 
         # Debounce blocklist saves: typing 20 chars used to fire 20 settings
         # writes + 20 plugin_loader.load_all() calls. Hold the latest text,
@@ -736,6 +822,9 @@ class SettingsDialog:
 
         def _flush_block(buf: Gtk.TextBuffer) -> bool:
             self._block_save_pending_id = None
+            if getattr(block_view, "_placeholder_active", False):
+                self._save_key("blocklist_patterns", [])
+                return False
             start, end = buf.get_start_iter(), buf.get_end_iter()
             raw = buf.get_text(start, end, True)
             patterns = [
@@ -746,6 +835,8 @@ class SettingsDialog:
             return False  # one-shot timer
 
         def _on_block_changed(buf: Gtk.TextBuffer) -> None:
+            if getattr(block_view, "_setting_placeholder", False):
+                return
             if self._block_save_pending_id is not None:
                 GLib.source_remove(self._block_save_pending_id)
             self._block_save_pending_id = GLib.timeout_add(
