@@ -44,10 +44,14 @@ class SelectionWatcher:
 
     def _read_primary(self) -> str:
         try:
+            # 2 s timeout - xclip can take noticeable time to pull a
+            # large selection (several MB of pasted text, a Firefox
+            # readability-mode paragraph, etc.). 0.5 s was timing out
+            # on long selections and we'd silently skip the popup.
             output = subprocess.run(
                 ["xclip", "-selection", "primary", "-o"],
                 capture_output=True,
-                timeout=0.5,
+                timeout=2.0,
             )
             return output.stdout.decode("utf-8", errors="replace")
         except (OSError, subprocess.SubprocessError):
@@ -61,10 +65,11 @@ class SelectionWatcher:
         # Try a few times to read the new content. The xfixes event fires
         # on owner change, but the new owner often hasn't actually written
         # the data yet (esp. apps that build their selection lazily on
-        # CONVERT_SELECTION). One short sleep was racy on slower machines
-        # and certain GTK apps. Retry with backoff up to ~250 ms.
+        # CONVERT_SELECTION). Extended retry budget (~700 ms total) so
+        # large selections from slow lazy-converters (Firefox readers,
+        # PDF viewers) have time to settle.
         text = ""
-        for delay in (0.04, 0.08, 0.15):
+        for delay in (0.04, 0.08, 0.15, 0.20, 0.25):
             time.sleep(delay)
             text = self._read_primary()
             if text and text.strip():
