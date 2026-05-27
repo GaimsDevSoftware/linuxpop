@@ -21,6 +21,13 @@ DEFAULTS: dict[str, Any] = {
     # premium palette was designed against the cobalt + violet scheme.
     "theme": "dark",
     "show_on_selection": True,
+    # PopClip-style: double-click inside an empty editable field pops
+    # the edit menu (Paste / Select all / Backspace) at the cursor.
+    # Off by default because turning it on means LinuxPop watches all
+    # mouse clicks globally via the X11 RECORD extension. Only the
+    # second click of a left-button double-click triggers a check;
+    # nothing is logged or transmitted.
+    "double_click_popup_enabled": False,
     # Hotkey to summon the popup with the current PRIMARY selection at the cursor.
     # Format: "<modifiers>+<key>", e.g. "super+shift+y", "ctrl+alt+y", "super+space".
     # Set to null/empty to disable. Use the recorder in Innstillinger to capture

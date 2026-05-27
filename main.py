@@ -271,6 +271,10 @@ class App:
         self.watcher: SelectionWatcher | None = None
         self.hotkey = None
         self.clipboard_hotkey = None
+        # Optional global double-click watcher. Created lazily when the
+        # double_click_popup_enabled setting is on - PopClip-style
+        # click-in-text-field popup.
+        self.dblclick_watcher = None
         # Debounce id for plugin reloads triggered by settings saves -
         # prevents a load_all storm when many keys change in quick
         # succession (textarea editing, bulk toggles).
@@ -297,6 +301,7 @@ class App:
 
         self._start_hotkey()
         self._start_clipboard_hotkey()
+        self._maybe_start_dblclick_watcher()
         if enable_tray:
             self._start_tray()
         self._maybe_first_run()
@@ -403,6 +408,45 @@ class App:
             "edit-clear-symbolic", "Backspace", _send_keys("BackSpace"),
         ))
         self.popup.show_actions(items, x, y)
+
+    def _maybe_start_dblclick_watcher(self) -> None:
+        """Honour the double_click_popup_enabled setting. Idempotent.
+        Called at startup and again from the settings callback."""
+        enabled = bool(self.settings.get("double_click_popup_enabled", False))
+        if enabled:
+            if self.dblclick_watcher is None:
+                from mouse_watcher import DoubleClickWatcher
+                self.dblclick_watcher = DoubleClickWatcher(
+                    self._on_global_double_click)
+            self.dblclick_watcher.start()
+        elif self.dblclick_watcher is not None:
+            self.dblclick_watcher.stop()
+            self.dblclick_watcher = None
+
+    def _on_global_double_click(self, x: int, y: int) -> None:
+        """PopClip-style: double-click inside an empty editable field
+        pops the edit menu. We check both conditions before showing -
+        if the user has a word selected (a normal double-click word
+        selection), the regular selection popup will handle it instead."""
+        try:
+            if not is_focus_editable():
+                return
+        except Exception:
+            return
+        # If the second click selected a word (the normal text-widget
+        # behaviour for double-click in non-empty content), PRIMARY now
+        # holds that word. Stay out of the way - the selection watcher
+        # will surface the regular popup for that selection.
+        try:
+            sel = subprocess.run(
+                ["xclip", "-selection", "primary", "-o"],
+                capture_output=True, text=True, timeout=0.2,
+            ).stdout
+            if sel.strip():
+                return
+        except (OSError, subprocess.SubprocessError):
+            pass
+        self._show_no_selection_popup(x, y)
 
     # ---- watcher -------------------------------------------------------------
 
@@ -588,6 +632,8 @@ class App:
                     self._bound_clipboard_hotkey = ""
                     if new_clip:
                         self._start_clipboard_hotkey()
+                # Live-apply the double-click watcher toggle.
+                self._maybe_start_dblclick_watcher()
                 log.info("settings reloaded")
 
             self._settings_dialog = SettingsDialog(on_changed=on_changed)
