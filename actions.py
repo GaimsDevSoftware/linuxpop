@@ -203,13 +203,39 @@ def replace_selection(new_text: str) -> None:
         print("[actions] xdotool paste timed out - text on clipboard only")
 
 
+def _desktop_env() -> dict:
+    """Env that lets xdg-open talk to the running desktop session.
+
+    If LinuxPop was launched without inheriting DBUS_SESSION_BUS_ADDRESS
+    (some systemd-user / detached-shell scenarios), Firefox's
+    "is there an instance running?" probe fails - it can't find the
+    real process via DBus, sees the profile lockfile, and pops
+    "already running but not responding" every time. Filling in the
+    canonical /run/user/$UID values is a cheap safety net.
+    """
+    env = dict(os.environ)
+    uid = os.getuid()
+    runtime_dir = f"/run/user/{uid}"
+    if not env.get("XDG_RUNTIME_DIR"):
+        env["XDG_RUNTIME_DIR"] = runtime_dir
+    if not env.get("DBUS_SESSION_BUS_ADDRESS"):
+        env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={runtime_dir}/bus"
+    if not env.get("DISPLAY"):
+        env["DISPLAY"] = ":0"
+    return env
+
+
 def open_url(text: str) -> None:
     url = _strip_invisible(text)
     # Naked URLs (no scheme) get https:// so xdg-open routes them to the browser
     if not url.lower().startswith(("http://", "https://", "ftp://", "file://", "mailto:")):
         url = "https://" + url
     try:
-        subprocess.Popen(["xdg-open", url], start_new_session=True)
+        subprocess.Popen(
+            ["xdg-open", url],
+            start_new_session=True,
+            env=_desktop_env(),
+        )
         print(f"[actions] opened URL: {url}")
     except FileNotFoundError:
         print("[actions] xdg-open not available")
@@ -257,7 +283,11 @@ def _search_template() -> str:
 def search_web(text: str) -> None:
     query = urllib.parse.quote_plus(_strip_invisible(text))
     url = _search_template().replace("{q}", query)
-    subprocess.Popen(["xdg-open", url], start_new_session=True)
+    subprocess.Popen(
+        ["xdg-open", url],
+        start_new_session=True,
+        env=_desktop_env(),
+    )
 
 
 def _find_terminal() -> Optional[tuple[str, list[str]]]:
@@ -514,7 +544,11 @@ def run_in_terminal(text: str) -> None:
 def open_path(text: str) -> None:
     path = os.path.expanduser(_strip_invisible(text))
     try:
-        subprocess.Popen(["xdg-open", path], start_new_session=True)
+        subprocess.Popen(
+            ["xdg-open", path],
+            start_new_session=True,
+            env=_desktop_env(),
+        )
         print(f"[actions] opened path: {path}")
     except FileNotFoundError:
         print("[actions] xdg-open not available")
@@ -522,4 +556,8 @@ def open_path(text: str) -> None:
 
 def compose_email(text: str) -> None:
     addr = _strip_invisible(text)
-    subprocess.Popen(["xdg-open", f"mailto:{addr}"], start_new_session=True)
+    subprocess.Popen(
+        ["xdg-open", f"mailto:{addr}"],
+        start_new_session=True,
+        env=_desktop_env(),
+    )
