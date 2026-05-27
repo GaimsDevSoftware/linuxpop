@@ -425,27 +425,16 @@ class App:
 
     def _on_global_double_click(self, x: int, y: int) -> None:
         """PopClip-style: double-click inside an empty editable field
-        pops the edit menu. We check both conditions before showing -
-        if the user has a word selected (a normal double-click word
-        selection), the regular selection popup will handle it instead."""
+        pops the edit menu. The watcher has already compared PRIMARY
+        before and after the second click - if a word got selected,
+        the watcher dropped the call entirely, so by the time we're
+        here we know it's a real "double-click in empty field" gesture.
+        We only need to confirm the focused widget is editable."""
         try:
             if not is_focus_editable():
                 return
         except Exception:
             return
-        # If the second click selected a word (the normal text-widget
-        # behaviour for double-click in non-empty content), PRIMARY now
-        # holds that word. Stay out of the way - the selection watcher
-        # will surface the regular popup for that selection.
-        try:
-            sel = subprocess.run(
-                ["xclip", "-selection", "primary", "-o"],
-                capture_output=True, text=True, timeout=0.2,
-            ).stdout
-            if sel.strip():
-                return
-        except (OSError, subprocess.SubprocessError):
-            pass
         self._show_no_selection_popup(x, y)
 
     # ---- watcher -------------------------------------------------------------
