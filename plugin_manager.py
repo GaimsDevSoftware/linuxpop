@@ -393,7 +393,8 @@ class PluginManagerDialog:
         group = Handy.PreferencesGroup()
         group.set_title("User plugins")
         group.set_description(
-            f"Files in {USER_PLUGIN_DIR}. Drop your own .py files there or install from the Available tab."
+            "Plugins you currently have. Install more from the Available tab, "
+            "or remove the ones you don't use."
         )
         self._fill_installed_group(group)
         return group
@@ -413,10 +414,15 @@ class PluginManagerDialog:
             row = Handy.ActionRow()
             if entry is not None:
                 row.set_title(entry.get("title", path.name))
-                row.set_subtitle(f"{path.name}\n{entry.get('description','')}")
+                # Just the human description - the .py filename is
+                # implementation detail the user shouldn't need to see.
+                row.set_subtitle(entry.get("description", ""))
             else:
-                row.set_title(path.name)
-                row.set_subtitle("User-installed (not in catalogue)")
+                # User-dropped file that isn't in the catalogue: we only
+                # have the filename to identify it by, so it does appear
+                # as the title here. Strip the .py for readability.
+                row.set_title(path.stem.replace("_", " ").title())
+                row.set_subtitle("Installed by hand (not in the catalogue)")
 
             remove_btn = Gtk.Button(label="Remove")
             remove_btn.set_valign(Gtk.Align.CENTER)
@@ -478,13 +484,22 @@ class PluginManagerDialog:
 
     def _fill_custom_group(self, group: Handy.PreferencesGroup) -> None:
         import recipe_loader
+        # Translate the internal action-type slug into something a person
+        # who didn't write the JSON would recognise.
+        atype_labels = {
+            "open_url":         "Opens a web page",
+            "run_command":      "Runs a command",
+            "notify":           "Shows a notification",
+            "copy_transformed": "Transforms text and copies it",
+        }
         for path, recipe in recipe_loader.list_recipes():
             row = Handy.ActionRow()
             row.set_title(recipe.get("tooltip") or recipe.get("name", path.stem))
-            atype = (recipe.get("action") or {}).get("type", "?")
+            atype = (recipe.get("action") or {}).get("type", "")
             template = (recipe.get("action") or {}).get("template", "")
             short = template if len(template) <= 70 else template[:67] + "…"
-            row.set_subtitle(f"{atype}  ·  {short}")
+            action_label = atype_labels.get(atype, atype or "Custom action")
+            row.set_subtitle(f"{action_label}  ·  {short}")
 
             # On/off toggle. Lets the user disable a custom button without
             # deleting it. Default-True for recipes that don't carry the
