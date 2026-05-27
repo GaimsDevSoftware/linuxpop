@@ -287,6 +287,25 @@ combobox arrow {
     color: #b8c0d4;
 }
 
+/* ----- tray / panel menus ----------------------------------------
+   The Ayatana tray menu is rendered by the desktop panel (Cinnamon),
+   not by our process, but our CSS provider can leak into menu labels
+   on some indicator implementations. Reset every styleable property
+   on the menu widget tree to its default so the panel's own theme
+   wins on colour - prevents the "dark text on dark panel" disappearing
+   trick that happens when our colours get applied to the panel-side
+   rendering. */
+menu,
+menu menuitem,
+menu menuitem label,
+menu separator {
+    background-color: unset;
+    background-image: unset;
+    color: unset;
+    border: unset;
+    box-shadow: unset;
+}
+
 /* ----- popovers ----- */
 popover,
 popover.background {
