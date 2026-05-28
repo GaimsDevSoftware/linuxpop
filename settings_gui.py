@@ -480,12 +480,13 @@ class SettingsDialog:
         # Double-click in an empty editable field shows the edit menu
         # (Paste / Select all / Backspace). PopClip's text-field gesture.
         dbl_row = Handy.ActionRow()
-        dbl_row.set_title("Double-click in empty field for edit menu")
+        dbl_row.set_title("Ctrl+double-click for the edit menu")
         dbl_row.set_subtitle(
-            "Double-click inside an empty text field to bring up Paste / "
-            "Select all / Backspace at the cursor. Requires LinuxPop to "
-            "watch mouse clicks globally - only left-button double-clicks "
-            "are inspected, nothing is logged or sent.")
+            "Hold Ctrl and double-click inside any text field to bring "
+            "up Paste / Select all / Backspace at the cursor. Ctrl is "
+            "required so it never collides with the app's own "
+            "double-click-to-select-a-word gesture. Requires LinuxPop "
+            "to watch mouse clicks globally - nothing is logged or sent.")
         dbl_switch = Gtk.Switch()
         dbl_switch.set_valign(Gtk.Align.CENTER)
         dbl_switch.set_active(
