@@ -982,9 +982,10 @@ class SettingsDialog:
         method_combo = Gtk.ComboBoxText()
         method_combo.set_valign(Gtk.Align.CENTER)
         for key, label in [
-            ("browser", "Browser - open chat website (no setup)"),
-            ("cli",     "Desktop CLI - use your Pro/Plus subscription"),
-            ("api",     "API key - use pay-as-you-go API"),
+            ("browser",    "Browser - open chat website (no setup)"),
+            ("userscript", "Browser + userscript bridge (reliable on Claude/Gemini)"),
+            ("cli",        "Desktop CLI - use your Pro/Plus subscription"),
+            ("api",        "API key - use pay-as-you-go API"),
         ]:
             method_combo.append(key, label)
         current_method = (self._settings.get("ai_send_method") or "browser").lower()
@@ -1050,6 +1051,102 @@ class SettingsDialog:
                 row.add(check)
             cli_install_rows.append(row)
             group.add(row)
+
+        # ---- Userscript bridge panel (visible in userscript mode) -------
+        userscript_rows: list[Handy.ActionRow] = []
+
+        bridge_row = Handy.ActionRow()
+        bridge_row.set_title("Browser bridge")
+        bridge_row.set_subtitle("…")
+        try:
+            img = Gtk.Image.new_from_icon_name(
+                "applications-internet", Gtk.IconSize.LARGE_TOOLBAR)
+            img.set_pixel_size(28)
+            bridge_row.add_prefix(img)
+        except Exception:
+            pass
+
+        bridge_install_btn = Gtk.Button(label="Install userscript")
+        bridge_install_btn.set_valign(Gtk.Align.CENTER)
+
+        def _bridge_status_text() -> str:
+            try:
+                import sys
+                # Bridge import is best-effort; the daemon process may
+                # not have it on path when the settings GUI runs.
+                mod = sys.modules.get("bridge_server")
+                if mod is None:
+                    import importlib
+                    try:
+                        mod = importlib.import_module("bridge_server")
+                    except Exception:
+                        mod = None
+                if mod and getattr(mod, "is_running", lambda: False)():
+                    port = mod.current_port()
+                    return (
+                        f"Running on 127.0.0.1:{port}. After installing the "
+                        "userscript, AI buttons send instantly to Claude / "
+                        "ChatGPT / Gemini / Perplexity.")
+                port = int(self._settings.get(
+                    "ai_userscript_bridge_port", 8766) or 8766)
+                return (
+                    f"Bridge starts on first AI click (port {port}). "
+                    "Install the userscript once - it stays put.")
+            except Exception:
+                return "Local HTTP bridge on 127.0.0.1."
+
+        def _refresh_bridge_status():
+            bridge_row.set_subtitle(_bridge_status_text())
+            return False
+
+        bridge_row.set_subtitle(_bridge_status_text())
+
+        def _on_install_userscript(_btn):
+            # Start (or reuse) the bridge so the install URL is reachable,
+            # then open it in the user's browser. Tampermonkey/Violentmonkey
+            # detects the .user.js extension and shows the install prompt.
+            import importlib
+            try:
+                mod = importlib.import_module("bridge_server")
+                port = int(self._settings.get(
+                    "ai_userscript_bridge_port", 8766) or 8766)
+                actual_port = mod.start(port)
+                # Save the actually-bound port so the rest of the system
+                # uses the same number.
+                if actual_port != port:
+                    self._save_key("ai_userscript_bridge_port", actual_port)
+                url = f"http://127.0.0.1:{actual_port}/userscript.js"
+                subprocess.Popen(
+                    ["xdg-open", url],
+                    start_new_session=True,
+                )
+                bridge_row.set_subtitle(
+                    f"Opened {url} in your browser. Confirm in "
+                    "Tampermonkey/Violentmonkey. If nothing happened, "
+                    "install one of those extensions first.")
+            except Exception as exc:
+                bridge_row.set_subtitle(f"Could not start bridge: {exc}")
+
+        bridge_install_btn.connect("clicked", _on_install_userscript)
+        bridge_row.add(bridge_install_btn)
+        userscript_rows.append(bridge_row)
+        group.add(bridge_row)
+
+        prereq_row = Handy.ActionRow()
+        prereq_row.set_title("Need a userscript manager?")
+        prereq_row.set_subtitle(
+            "Install Tampermonkey (Chrome/Edge/Brave) or Violentmonkey "
+            "(Firefox) from your browser's add-on store. Then click "
+            "Install userscript above. One-time setup.")
+        try:
+            img = Gtk.Image.new_from_icon_name(
+                "system-software-install", Gtk.IconSize.LARGE_TOOLBAR)
+            img.set_pixel_size(28)
+            prereq_row.add_prefix(img)
+        except Exception:
+            pass
+        userscript_rows.append(prereq_row)
+        group.add(prereq_row)
 
         # ---- API key panel (visible in api mode) ------------------------
         api_rows: list[Handy.ActionRow] = []
@@ -1141,7 +1238,14 @@ class SettingsDialog:
                 r.set_visible(current == "cli")
             for r in api_rows:
                 r.set_visible(current == "api")
-            submit_row.set_visible(current == "browser")
+            for r in userscript_rows:
+                r.set_visible(current == "userscript")
+            # Auto-submit applies to both browser-paste and userscript
+            # modes; the userscript respects the `submit` flag we send
+            # with the prompt.
+            submit_row.set_visible(current in ("browser", "userscript"))
+            if current == "userscript":
+                bridge_row.set_subtitle(_bridge_status_text())
         # Run once now and again after the window is realised so the
         # initial visibility matches the saved setting.
         _refresh_method_visibility()
