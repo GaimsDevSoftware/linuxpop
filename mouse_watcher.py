@@ -164,9 +164,9 @@ class DoubleClickWatcher:
             self._last_ms = 0
             self._last_xy = (0, 0)
             # Tiny settle so the app sees the click first, then we
-            # show the menu. No need to poll PRIMARY - Ctrl-double-
-            # click is unambiguous user intent.
-            GLib.timeout_add(50, self._fire_callback, x, y)
+            # show the menu. Modifier+double-click is unambiguous user
+            # intent so we don't need to wait for PRIMARY-resolution.
+            GLib.timeout_add(20, self._fire_callback, x, y)
             return
         self._last_ms = now_ms
         self._last_xy = (x, y)
