@@ -47,15 +47,38 @@ _focus_listener_ref = None  # keep listener alive (GC would otherwise drop it)
 
 # AT-SPI is optional. If gi bindings aren't installed we skip to the
 # WM_CLASS fallback only - no hard dependency.
+#
+# Defensive probe: before importing Atspi, check that the user's a11y
+# bus socket exists at the canonical XDG path AND we can read it.
+# Without this guard, a stale root-owned at-spi-bus-launcher on the
+# system can cause our Atspi calls to hard-crash via glib's
+# dbind-ERROR (SIGTRAP, uncatchable from Python). The probe sees the
+# unreachable socket and lets us silently fall back to WM_CLASS.
 _HAS_ATSPI = False
 try:
-    import gi
-    gi.require_version("Atspi", "2.0")
-    from gi.repository import Atspi  # type: ignore[attr-defined]
-    _HAS_ATSPI = True
-except (ImportError, ValueError):
-    _log.info("[editable] Atspi gi bindings unavailable - "
-              "will use WM_CLASS heuristic only")
+    import os as _os
+    _runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
+                    or f"/run/user/{_os.getuid()}")
+    _bus_socket = _os.path.join(_runtime_dir, "at-spi", "bus_0")
+    _bus_reachable = (_os.path.exists(_bus_socket)
+                      and _os.access(_bus_socket, _os.R_OK | _os.W_OK))
+except Exception:
+    _bus_reachable = False
+
+if _bus_reachable:
+    try:
+        import gi
+        gi.require_version("Atspi", "2.0")
+        from gi.repository import Atspi  # type: ignore[attr-defined]
+        _HAS_ATSPI = True
+    except (ImportError, ValueError):
+        _log.info("[editable] Atspi gi bindings unavailable - "
+                  "will use WM_CLASS heuristic only")
+else:
+    _log.info("[editable] at-spi bus socket not reachable at %s - "
+              "using WM_CLASS heuristic only (this is normal if a "
+              "stale root-owned at-spi-bus-launcher is on the system)",
+              _bus_socket if 'bus_socket' in dir() else "(unknown path)")
 
 
 # WM_CLASS substrings (case-insensitive) for apps where the focused
