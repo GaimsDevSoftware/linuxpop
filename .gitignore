@@ -23,3 +23,9 @@ dist/
 .env
 .envrc
 .flatpak-builder/
+
+# Dev-tool state that may land in the repo if an MCP server runs from
+# this directory. Not part of LinuxPop.
+var/
+*.sqlite3
+*.sqlite
