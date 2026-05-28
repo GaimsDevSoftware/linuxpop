@@ -400,6 +400,11 @@ _SERVICES = {
         paste_key="ctrl+v",      # ProseMirror-style editor; Ctrl+V is what it expects
         settle_extra=0.8,        # Claude's input mounts noticeably slower than Gemini's
         priority=101,
+        # CLI binary name to delegate to when ai_send_method="cli".
+        # `claude -p "..."` runs in non-interactive print mode.
+        cli_cmd="claude",
+        cli_args=["-p"],
+        cli_api_key_env="ANTHROPIC_API_KEY",
     ),
     "chatgpt": dict(
         name="send-to-chatgpt",
@@ -415,6 +420,10 @@ _SERVICES = {
         window_terms=["ChatGPT", "chat.openai.com", "chatgpt.com"],
         auto_submits=False,
         priority=102,
+        cli_cmd="codex",
+        # codex exec runs non-interactive with prompt as positional arg.
+        cli_args=["exec"],
+        cli_api_key_env="OPENAI_API_KEY",
     ),
     "gemini": dict(
         name="send-to-gemini",
@@ -425,6 +434,11 @@ _SERVICES = {
         url="https://gemini.google.com/app",
         window_terms=["Gemini", "gemini.google.com"],
         priority=103,
+        # Google rebrands their CLI - try both names in detection order.
+        cli_cmd="antigravity",
+        cli_fallback_cmd="gemini",
+        cli_args=["-p"],
+        cli_api_key_env="GEMINI_API_KEY",
     ),
     "perplexity": dict(
         name="send-to-perplexity",
@@ -440,27 +454,381 @@ _SERVICES = {
 }
 
 
+# ---- cli mode -----------------------------------------------------------
+
+def detect_cli(spec: dict) -> str | None:
+    """Return the executable path of the official CLI for this service,
+    or None when no install is detected. Tries the primary cmd first
+    and falls back to a secondary name (Gemini -> antigravity, then gemini)."""
+    primary = spec.get("cli_cmd")
+    fallback = spec.get("cli_fallback_cmd")
+    for name in (primary, fallback):
+        if not name:
+            continue
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
+def _send_via_cli(service: str, spec: dict, text: str) -> None:
+    """Delegate the prompt to the service's official CLI binary (claude
+    / codex / antigravity) in print mode, then surface the reply in a
+    LinuxPop response dialog. The CLI owns auth (OAuth via the user's
+    Pro/Plus subscription), so we don't touch credentials."""
+    cli_path = detect_cli(spec)
+    if cli_path is None:
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "3500",
+             "-i", "dialog-warning", f"{service}: CLI not installed",
+             "Falling back to browser. Install the CLI from "
+             "Settings > AI services for richer integration."],
+            check=False,
+        )
+        # Fall through to URL mode if available, else paste.
+        if "url_template" in spec:
+            _send_via_url(service, spec["url_template"], text,
+                          auto_submits=spec.get("auto_submits", True))
+        else:
+            _send_via_paste(
+                service, spec["url"], spec.get("window_terms", []), text,
+                paste_key=spec.get("paste_key", "ctrl+v"),
+                settle_extra=spec.get("settle_extra", 0.0),
+            )
+        return
+
+    args = [cli_path] + list(spec.get("cli_args", [])) + [text]
+    _show_response_dialog_async(service, args)
+
+
+def _send_via_api(service: str, spec: dict, text: str) -> None:
+    """Use a REST API call with the user's own key. Cheap and reliable
+    but pay-as-you-go pricing - users explicitly opt in. Currently
+    implemented for Claude (Anthropic) and ChatGPT (OpenAI). Gemini
+    API falls back to browser since the Google Cloud setup is heavy."""
+    try:
+        from settings import get_settings
+        s = get_settings()
+    except Exception:
+        s = None
+    handlers = {
+        "Claude":  ("ai_anthropic_api_key", _call_anthropic_api),
+        "ChatGPT": ("ai_openai_api_key",    _call_openai_api),
+    }
+    handler_pair = handlers.get(service)
+    if handler_pair is None or s is None:
+        # API not supported for this service - fall back to URL/paste
+        if "url_template" in spec:
+            _send_via_url(service, spec["url_template"], text,
+                          auto_submits=spec.get("auto_submits", True))
+        else:
+            _send_via_paste(
+                service, spec["url"], spec.get("window_terms", []), text,
+                paste_key=spec.get("paste_key", "ctrl+v"),
+                settle_extra=spec.get("settle_extra", 0.0),
+            )
+        return
+    key_setting, api_call = handler_pair
+    api_key = (s.get(key_setting) or "").strip()
+    if not api_key:
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "3500",
+             "-i", "dialog-warning", f"{service}: no API key set",
+             "Falling back to browser. Add your API key from "
+             "Settings > AI services > API mode."],
+            check=False,
+        )
+        if "url_template" in spec:
+            _send_via_url(service, spec["url_template"], text,
+                          auto_submits=spec.get("auto_submits", True))
+        else:
+            _send_via_paste(
+                service, spec["url"], spec.get("window_terms", []), text,
+                paste_key=spec.get("paste_key", "ctrl+v"),
+                settle_extra=spec.get("settle_extra", 0.0),
+            )
+        return
+    _show_api_response_dialog_async(service, api_key, text, api_call)
+
+
+def _call_anthropic_api(api_key: str, prompt: str) -> str:
+    """Single-turn message to Claude via Anthropic Messages API."""
+    import json
+    import urllib.request
+    body = json.dumps({
+        "model": "claude-sonnet-4-5",
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=body,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    parts = [c.get("text", "") for c in data.get("content", [])
+             if c.get("type") == "text"]
+    return "".join(parts).strip() or "(empty reply)"
+
+
+def _call_openai_api(api_key: str, prompt: str) -> str:
+    """Single-turn message to ChatGPT via OpenAI Chat Completions API."""
+    import json
+    import urllib.request
+    body = json.dumps({
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    choices = data.get("choices") or []
+    if not choices:
+        return "(empty reply)"
+    return (choices[0].get("message") or {}).get("content", "").strip() or "(empty reply)"
+
+
+def _show_response_dialog_async(service: str, args: list[str]) -> None:
+    """Run the CLI in a worker thread and stream output into a dialog.
+    The dialog opens immediately with a spinner so the user sees that
+    something's happening; the reply replaces the spinner when it's
+    ready."""
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import GLib, Gtk
+
+    def _open_dialog() -> None:
+        dlg = Gtk.Dialog(title=f"{service} - reply", flags=0)
+        dlg.set_default_size(640, 480)
+        dlg.set_icon_name("linuxpop")
+        dlg.add_button("Close", Gtk.ResponseType.CLOSE)
+        dlg.set_default_response(Gtk.ResponseType.CLOSE)
+        content = dlg.get_content_area()
+        content.set_spacing(8)
+        content.set_margin_top(10)
+        content.set_margin_bottom(10)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+
+        spinner = Gtk.Spinner()
+        spinner.start()
+        spinner_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        spinner_row.pack_start(spinner, False, False, 0)
+        wait_lbl = Gtk.Label(
+            label=f"Waiting for {service}...", xalign=0)
+        wait_lbl.get_style_context().add_class("dim-label")
+        spinner_row.pack_start(wait_lbl, True, True, 0)
+        content.add(spinner_row)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_shadow_type(Gtk.ShadowType.IN)
+        scroll.set_hexpand(True)
+        scroll.set_vexpand(True)
+        view = Gtk.TextView()
+        view.set_editable(False)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        view.get_style_context().add_class("lp-cmd-edit")
+        buf = view.get_buffer()
+        scroll.add(view)
+        content.pack_start(scroll, True, True, 0)
+
+        copy_btn = Gtk.Button(label="Copy reply")
+        copy_btn.connect(
+            "clicked",
+            lambda _b: subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=buf.get_text(buf.get_start_iter(),
+                                    buf.get_end_iter(),
+                                    True).encode("utf-8"),
+                check=False, timeout=2.0,
+            ),
+        )
+        copy_btn.set_sensitive(False)
+        dlg.get_action_area().pack_start(copy_btn, False, False, 0)
+        dlg.get_action_area().reorder_child(copy_btn, 0)
+
+        dlg.show_all()
+
+        def worker() -> None:
+            try:
+                result = subprocess.run(
+                    args, capture_output=True, text=True, timeout=180,
+                )
+                reply = (result.stdout or "").rstrip()
+                if not reply and result.stderr:
+                    reply = f"[CLI error]\n{result.stderr.rstrip()}"
+                if not reply:
+                    reply = ("(no reply)\n\nThe CLI returned empty output. "
+                             "It may need a one-time login - try running "
+                             f"`{args[0]}` in a terminal first.")
+            except subprocess.TimeoutExpired:
+                reply = f"[Timed out after 180 s waiting for {service}]"
+            except Exception as exc:
+                reply = f"[Failed to call CLI: {exc}]"
+            GLib.idle_add(_set_reply, reply)
+
+        def _set_reply(reply: str) -> bool:
+            try:
+                spinner.stop()
+                spinner_row.hide()
+                buf.set_text(reply)
+                copy_btn.set_sensitive(True)
+            except Exception:
+                pass
+            return False
+
+        threading.Thread(
+            target=worker, daemon=True, name=f"ai-cli-{service}").start()
+
+        dlg.run()
+        dlg.destroy()
+
+    GLib.idle_add(_open_dialog)
+
+
+def _show_api_response_dialog_async(
+    service: str, api_key: str, prompt: str, api_call,
+) -> None:
+    """Same shape as the CLI dialog but the worker calls a Python
+    function (REST) instead of running a subprocess."""
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import GLib, Gtk
+
+    def _open_dialog() -> None:
+        dlg = Gtk.Dialog(title=f"{service} - reply", flags=0)
+        dlg.set_default_size(640, 480)
+        dlg.set_icon_name("linuxpop")
+        dlg.add_button("Close", Gtk.ResponseType.CLOSE)
+        dlg.set_default_response(Gtk.ResponseType.CLOSE)
+        content = dlg.get_content_area()
+        content.set_spacing(8)
+        content.set_margin_top(10)
+        content.set_margin_bottom(10)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+
+        spinner = Gtk.Spinner()
+        spinner.start()
+        spinner_row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        spinner_row.pack_start(spinner, False, False, 0)
+        wait_lbl = Gtk.Label(label=f"Waiting for {service}...", xalign=0)
+        wait_lbl.get_style_context().add_class("dim-label")
+        spinner_row.pack_start(wait_lbl, True, True, 0)
+        content.add(spinner_row)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_shadow_type(Gtk.ShadowType.IN)
+        scroll.set_hexpand(True)
+        scroll.set_vexpand(True)
+        view = Gtk.TextView()
+        view.set_editable(False)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        view.get_style_context().add_class("lp-cmd-edit")
+        buf = view.get_buffer()
+        scroll.add(view)
+        content.pack_start(scroll, True, True, 0)
+
+        copy_btn = Gtk.Button(label="Copy reply")
+        copy_btn.connect(
+            "clicked",
+            lambda _b: subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=buf.get_text(buf.get_start_iter(),
+                                    buf.get_end_iter(),
+                                    True).encode("utf-8"),
+                check=False, timeout=2.0,
+            ),
+        )
+        copy_btn.set_sensitive(False)
+        dlg.get_action_area().pack_start(copy_btn, False, False, 0)
+        dlg.get_action_area().reorder_child(copy_btn, 0)
+
+        dlg.show_all()
+
+        def worker() -> None:
+            try:
+                reply = api_call(api_key, prompt)
+            except Exception as exc:
+                reply = f"[API call failed: {exc}]"
+            GLib.idle_add(_set_reply, reply)
+
+        def _set_reply(reply: str) -> bool:
+            try:
+                spinner.stop()
+                spinner_row.hide()
+                buf.set_text(reply)
+                copy_btn.set_sensitive(True)
+            except Exception:
+                pass
+            return False
+
+        threading.Thread(
+            target=worker, daemon=True, name=f"ai-api-{service}").start()
+
+        dlg.run()
+        dlg.destroy()
+
+    GLib.idle_add(_open_dialog)
+
+
+# ---- dispatch -----------------------------------------------------------
+
 def _send(spec: dict):
-    """Build a handler that dispatches based on the per-service mode.
-    Settings can override mode via ai_<service_key>_mode."""
+    """Build a handler that dispatches based on the global ai_send_method
+    setting and the service's per-method capability. Per-service mode
+    overrides via ai_<service_key>_mode are still honoured for legacy
+    setups."""
     service_key = spec["name"].replace("send-to-", "").replace("-", "_")
 
     def handler(text: str) -> None:
         try:
             from settings import get_settings
-            mode_override = get_settings().get(f"ai_{service_key}_mode", None)
+            settings_obj = get_settings()
+            send_method = (settings_obj.get("ai_send_method") or "browser").lower()
+            mode_override = settings_obj.get(f"ai_{service_key}_mode", None)
         except Exception:
+            send_method = "browser"
             mode_override = None
-        mode = mode_override or spec.get("mode", "paste")
 
-        # Auto-fallback: url mode but prompt too long → paste mode
+        # Per-service override still wins (legacy setting).
+        if mode_override:
+            mode = mode_override
+        elif send_method == "cli":
+            mode = "cli"
+        elif send_method == "api":
+            mode = "api"
+        else:
+            mode = spec.get("mode", "paste")
+
+        # Auto-fallback for url: too-long or no template → paste.
         if mode == "url":
-            if len(text) > _URL_MAX_CHARS:
-                mode = "paste"
-            elif "url_template" not in spec:
+            if len(text) > _URL_MAX_CHARS or "url_template" not in spec:
                 mode = "paste"
 
-        if mode == "url":
+        if mode == "cli":
+            _send_via_cli(spec["service"], spec, text)
+        elif mode == "api":
+            _send_via_api(spec["service"], spec, text)
+        elif mode == "url":
             _send_via_url(
                 spec["service"], spec["url_template"], text,
                 auto_submits=spec.get("auto_submits", True),

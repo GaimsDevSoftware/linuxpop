@@ -73,6 +73,28 @@ DEFAULTS: dict[str, Any] = {
     # hitting Enter. Has no effect on URL-mode services that already
     # auto-submit (Google AI, Perplexity, ChatGPT URL mode).
     "ai_paste_auto_submit": False,
+    # How the Send-to-AI buttons deliver the selection to the chat AI.
+    # "browser" : open the chat website in your browser (URL prefill
+    #             where supported, paste-via-xdotool otherwise). No
+    #             setup needed, works without any subscription. This
+    #             is the historic default - kept as default for new
+    #             users so the buttons just work.
+    # "cli"     : send through the official Anthropic / OpenAI / Google
+    #             CLI binary (claude, codex, antigravity). Uses your
+    #             Pro / Plus subscription. Reply appears in a LinuxPop
+    #             dialog. No browser tabs, no paste race. Requires
+    #             the CLI app installed; falls back to browser mode
+    #             per-service when it isn't.
+    # "api"     : send via REST with your own API key. Most reliable
+    #             but pay-as-you-go pricing. Requires the key set
+    #             below; falls back to browser mode without it.
+    "ai_send_method": "browser",
+    # Per-service API keys for "api" send method. Stored as plain
+    # text in settings.json - the user is told this in the GUI; the
+    # alternative would be a system-keyring dependency we don't want
+    # to introduce just for this.
+    "ai_anthropic_api_key": "",
+    "ai_openai_api_key": "",
     # Shared snippet variables. Reusable values that snippets can pull
     # in via {var:NAME}. Define once (your email, signature, phone,
     # company name) and reference everywhere - change it here, every

@@ -8,6 +8,10 @@ Apply-on-change semantics: edits save immediately, no Save/Cancel buttons.
 """
 from __future__ import annotations
 
+import shlex
+import shutil
+import subprocess
+import threading
 from typing import Callable
 
 import gi
@@ -945,26 +949,162 @@ class SettingsDialog:
         group = Handy.PreferencesGroup()
         group.set_title("AI services")
         group.set_description(
-            "Which chat-AI buttons the popup shows. Toggle off any you don't use. "
-            "Requires the 'Send to chat AI' plugin to be installed."
+            "Which chat-AI buttons the popup shows, and how they "
+            "deliver text. Toggle off any service you don't use."
         )
 
+        # ---- "How to send" mode picker ----------------------------------
+        # Three deliberate choices, plainly worded:
+        #   browser  - what we did before: opens the chat site in your
+        #              browser with the text prefilled (or paste-via-
+        #              xdotool when the site doesn't take a URL). No
+        #              setup, no subscription needed - but it's fragile
+        #              in Electron-based browsers and creates a tab
+        #              every time.
+        #   cli      - sends through the official Anthropic/OpenAI/Google
+        #              CLI (claude, codex, antigravity) that the user
+        #              already signed into with their subscription.
+        #              Reply shows up in a LinuxPop dialog. Most reliable
+        #              when a CLI is installed; per-service fallback to
+        #              browser otherwise.
+        #   api      - sends via the provider's REST API with the user's
+        #              own key. Most reliable for those who already pay
+        #              per call. Falls back to browser per service
+        #              without a key.
+        method_row = Handy.ActionRow()
+        method_row.set_title("How to send the text")
+        method_row.set_subtitle(
+            "Pick the method that fits how you use AI services. You "
+            "can switch any time - changes take effect on the next "
+            "click. Methods that need extra setup (CLI install, API "
+            "key) fall back to the browser per-service if the setup "
+            "isn't done.")
+        method_combo = Gtk.ComboBoxText()
+        method_combo.set_valign(Gtk.Align.CENTER)
+        for key, label in [
+            ("browser", "Browser - open chat website (no setup)"),
+            ("cli",     "Desktop CLI - use your Pro/Plus subscription"),
+            ("api",     "API key - use pay-as-you-go API"),
+        ]:
+            method_combo.append(key, label)
+        current_method = (self._settings.get("ai_send_method") or "browser").lower()
+        method_combo.set_active_id(current_method)
+        method_combo.connect(
+            "changed",
+            lambda c: (
+                self._save_key("ai_send_method", c.get_active_id() or "browser"),
+                _refresh_method_visibility(),
+            ),
+        )
+        method_row.add(method_combo)
+        method_row.set_activatable_widget(method_combo)
+        group.add(method_row)
+
+        # ---- CLI status / install panel (visible in cli mode) ----------
+        cli_status_row = Handy.ActionRow()
+        cli_status_row.set_title("Desktop CLI status")
+
+        cli_specs = [
+            ("Claude",  "claude",
+             "https://claude.ai/install.sh",
+             "Anthropic Claude Code. Uses your Claude.ai login (Pro/Max).",
+             "linuxpop-claude"),
+            ("ChatGPT", "codex",
+             "https://chatgpt.com/codex/install.sh",
+             "OpenAI Codex CLI. Needs ChatGPT Plus or higher.",
+             "linuxpop-chatgpt"),
+            ("Gemini",  "antigravity",
+             None,
+             "Google Antigravity. Install from "
+             "codelabs.developers.google.com/getting-started-google-antigravity",
+             "linuxpop-gemini"),
+        ]
+        cli_install_rows: list[Handy.ActionRow] = []
+        for label, cmd, install_url, blurb, icon_name in cli_specs:
+            row = Handy.ActionRow()
+            row.set_title(f"{label} CLI")
+            try:
+                img = Gtk.Image.new_from_icon_name(
+                    icon_name, Gtk.IconSize.LARGE_TOOLBAR)
+                img.set_pixel_size(28)
+                row.add_prefix(img)
+            except Exception:
+                pass
+            installed = shutil.which(cmd) is not None
+            if installed:
+                row.set_subtitle(f"Installed at {shutil.which(cmd)}. {blurb}")
+            else:
+                row.set_subtitle(f"Not installed. {blurb}")
+            if install_url and not installed:
+                btn = Gtk.Button(label="Install in background")
+                btn.set_valign(Gtk.Align.CENTER)
+                btn.connect(
+                    "clicked",
+                    lambda _b, lab=label, url=install_url, r=row, c=cmd:
+                        self._on_install_cli(lab, url, r, c))
+                row.add(btn)
+            elif installed:
+                check = Gtk.Image.new_from_icon_name(
+                    "emblem-ok-symbolic", Gtk.IconSize.BUTTON)
+                check.set_valign(Gtk.Align.CENTER)
+                row.add(check)
+            cli_install_rows.append(row)
+            group.add(row)
+
+        # ---- API key panel (visible in api mode) ------------------------
+        api_rows: list[Handy.ActionRow] = []
+        for label, setting_key, icon_name in [
+            ("Anthropic API key (Claude)", "ai_anthropic_api_key", "linuxpop-claude"),
+            ("OpenAI API key (ChatGPT)",   "ai_openai_api_key",    "linuxpop-chatgpt"),
+        ]:
+            row = Handy.ActionRow()
+            row.set_title(label)
+            row.set_subtitle(
+                "Stored in settings.json as plain text. Treat it like "
+                "the file holds a secret - keep your machine to yourself.")
+            try:
+                img = Gtk.Image.new_from_icon_name(
+                    icon_name, Gtk.IconSize.LARGE_TOOLBAR)
+                img.set_pixel_size(28)
+                row.add_prefix(img)
+            except Exception:
+                pass
+            entry = Gtk.Entry()
+            entry.set_visibility(False)
+            entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+            entry.set_valign(Gtk.Align.CENTER)
+            entry.set_width_chars(20)
+            entry.set_text(self._settings.get(setting_key) or "")
+            entry.set_placeholder_text("sk-...")
+            entry.connect(
+                "changed",
+                lambda e, k=setting_key:
+                    self._save_key(k, e.get_text().strip()))
+            row.add(entry)
+            api_rows.append(row)
+            group.add(row)
+
+        # ---- Service list -----------------------------------------------
         services = [
-            ("claude",     "Claude",            "linuxpop-claude",       "claude.ai · paste mode"),
-            ("chatgpt",    "ChatGPT",           "linuxpop-chatgpt",      "chatgpt.com · URL prefill (you press Enter)"),
-            ("gemini",     "Gemini",            "linuxpop-gemini",       "gemini.google.com · paste mode"),
-            ("perplexity", "Perplexity",        "linuxpop-perplexity",   "perplexity.ai · URL search (auto-submits)"),
-            ("google_ai",  "Google AI Search",  "linuxpop-google-ai",    "google.com/search?udm=50 · URL search (auto-submits)"),
+            ("claude",     "Claude",            "linuxpop-claude",
+             "Anthropic's chat assistant. Best for nuanced writing and reasoning."),
+            ("chatgpt",    "ChatGPT",           "linuxpop-chatgpt",
+             "OpenAI's chat assistant. Default URL mode prefills without sending."),
+            ("gemini",     "Gemini",            "linuxpop-gemini",
+             "Google's chat assistant. Currently paste-mode in the browser."),
+            ("perplexity", "Perplexity",        "linuxpop-perplexity",
+             "Search-grounded answers with citations. Auto-submits."),
+            ("google_ai",  "Google AI Search",  "linuxpop-google-ai",
+             "Google Search's AI Mode. No login, instant answers."),
         ]
         current = list(self._settings.get("ai_services") or [])
-
         for key, label, icon_name, host in services:
             row = Handy.ActionRow()
             row.set_title(label)
             row.set_subtitle(host)
-            # Colored brand icon on the left
             try:
-                img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.LARGE_TOOLBAR)
+                img = Gtk.Image.new_from_icon_name(
+                    icon_name, Gtk.IconSize.LARGE_TOOLBAR)
                 img.set_pixel_size(28)
                 row.add_prefix(img)
             except Exception:
@@ -977,16 +1117,14 @@ class SettingsDialog:
             row.set_activatable_widget(sw)
             group.add(row)
 
-        # Auto-submit after paste. Speeds up the paste-mode services
-        # (Claude, Gemini) by sending Return automatically, so the user
-        # doesn't have to press Enter themselves.
+        # ---- Auto-submit (browser mode only) ----------------------------
         submit_row = Handy.ActionRow()
         submit_row.set_title("Auto-submit after paste")
         submit_row.set_subtitle(
-            "Press Return for you after the prompt is pasted, so paste-mode "
-            "services (Claude, Gemini) send immediately. Off by default so "
-            "you can edit the prompt first. No effect on URL services that "
-            "already auto-submit.")
+            "In browser mode for paste-fallback services (Claude, "
+            "Gemini), press Return after the prompt is pasted so the "
+            "chat sends immediately. Off by default to let you edit the "
+            "prompt first.")
         submit_sw = Gtk.Switch()
         submit_sw.set_valign(Gtk.Align.CENTER)
         submit_sw.set_active(
@@ -997,7 +1135,108 @@ class SettingsDialog:
         submit_row.set_activatable_widget(submit_sw)
         group.add(submit_row)
 
+        def _refresh_method_visibility() -> None:
+            current = (self._settings.get("ai_send_method") or "browser").lower()
+            for r in cli_install_rows:
+                r.set_visible(current == "cli")
+            for r in api_rows:
+                r.set_visible(current == "api")
+            submit_row.set_visible(current == "browser")
+        # Run once now and again after the window is realised so the
+        # initial visibility matches the saved setting.
+        _refresh_method_visibility()
+        GLib.idle_add(_refresh_method_visibility)
+
         return group
+
+    def _on_install_cli(
+        self, label: str, install_url: str,
+        row: Handy.ActionRow, cmd: str,
+    ) -> None:
+        """Confirm + kick off a CLI installer in a background thread.
+        Status is reflected in the row's subtitle. The installer is a
+        curl|bash one-liner from the vendor - we surface the URL in
+        the confirmation dialog so the user can see what they're
+        about to run."""
+        confirm = Gtk.MessageDialog(
+            transient_for=self._window,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text=f"Install {label} CLI?",
+            secondary_text=(
+                f"LinuxPop will download and run the official installer from:\n\n"
+                f"{install_url}\n\n"
+                "It runs in the background - no terminal needed. You'll be "
+                "asked to sign in with your subscription account in your "
+                "browser the first time you use it. Continue?"
+            ),
+        )
+        confirm.add_buttons(
+            "Cancel", Gtk.ResponseType.CANCEL,
+            "Install", Gtk.ResponseType.OK,
+        )
+        ok_btn = confirm.get_widget_for_response(Gtk.ResponseType.OK)
+        if ok_btn is not None:
+            ok_btn.get_style_context().add_class("suggested-action")
+        resp = confirm.run()
+        confirm.destroy()
+        if resp != Gtk.ResponseType.OK:
+            return
+
+        row.set_subtitle(f"Installing {label} CLI - this can take a minute...")
+        spinner = Gtk.Spinner()
+        spinner.start()
+        spinner.set_valign(Gtk.Align.CENTER)
+        # Clear current buttons + add spinner. Simpler: just add spinner.
+        row.add(spinner)
+        row.show_all()
+
+        def worker() -> None:
+            try:
+                # Equivalent of: curl -fsSL <url> | bash
+                # Run in shell so the pipe works as intended.
+                proc = subprocess.run(
+                    ["bash", "-c",
+                     f"curl -fsSL {shlex.quote(install_url)} | bash"],
+                    capture_output=True, text=True, timeout=600,
+                )
+                ok = proc.returncode == 0
+                tail = (proc.stdout or "")[-400:] + (proc.stderr or "")[-400:]
+            except subprocess.TimeoutExpired:
+                ok = False
+                tail = "Installer took longer than 10 minutes - aborted."
+            except Exception as exc:
+                ok = False
+                tail = f"{exc}"
+            GLib.idle_add(_finish_install, ok, tail)
+
+        def _finish_install(ok: bool, tail: str) -> bool:
+            spinner.stop()
+            try:
+                row.remove(spinner)
+            except Exception:
+                pass
+            new_path = shutil.which(cmd)
+            if ok and new_path:
+                row.set_subtitle(
+                    f"Installed at {new_path}. Sign in by running "
+                    f"`{cmd}` in a terminal once - or just click the "
+                    f"{label} button in the popup; LinuxPop will open "
+                    "the sign-in for you.")
+                check = Gtk.Image.new_from_icon_name(
+                    "emblem-ok-symbolic", Gtk.IconSize.BUTTON)
+                check.set_valign(Gtk.Align.CENTER)
+                row.add(check)
+                row.show_all()
+            else:
+                row.set_subtitle(
+                    f"Install failed. Last output:\n{tail[-300:]}"
+                )
+            return False
+
+        threading.Thread(
+            target=worker, daemon=True, name=f"cli-install-{cmd}").start()
 
     def _on_ai_toggle(self, switch: Gtk.Switch, _param, key: str) -> None:
         current = list(self._settings.get("ai_services") or [])
