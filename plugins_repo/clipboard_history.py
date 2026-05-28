@@ -1030,6 +1030,36 @@ def _get_active_window() -> str | None:
         return None
 
 
+# Terminal WM_CLASS values that use Ctrl+Shift+V for paste instead of
+# the standard Ctrl+V. Match is case-insensitive substring against
+# WM_CLASS pulled via xprop.
+_TERMINAL_CLASSES = (
+    "gnome-terminal", "konsole", "xfce4-terminal", "terminator",
+    "tilix", "mate-terminal", "alacritty", "kitty", "xterm",
+    "x-terminal-emulator",
+)
+
+
+def _paste_keystroke_for_window(wid: str | None) -> str:
+    """Most apps paste with Ctrl+V; terminals want Ctrl+Shift+V. Detect
+    the target's WM_CLASS so the picker pastes correctly into a terminal
+    too."""
+    if not wid or not shutil.which("xprop"):
+        return "ctrl+v"
+    try:
+        out = subprocess.run(
+            ["xprop", "-id", wid, "WM_CLASS"],
+            capture_output=True, text=True, timeout=0.5,
+        )
+        wm_class = out.stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return "ctrl+v"
+    for term in _TERMINAL_CLASSES:
+        if term in wm_class:
+            return "ctrl+shift+v"
+    return "ctrl+v"
+
+
 def _paste_to_window(
     entry: Entry,
     target_window: str | None,
@@ -1054,25 +1084,56 @@ def _paste_to_window(
              "-i", entry.image_path], check=False,
         )
 
+    import logging
+    _log = logging.getLogger("linuxpop")
+    _log.info("[clipboard.paste] target_window=%s kind=%s cursor_left=%d",
+              target_window, entry.kind, cursor_left)
+
     def worker():
-        if target_window and shutil.which("xdotool"):
+        if not (target_window and shutil.which("xdotool")):
+            _log.warning("[clipboard.paste] skipped - no target or no xdotool")
+            return
+        # The hotkey (e.g. ctrl+super+v) leaves modifiers logically held
+        # in X until the user releases them. Without an explicit keyup,
+        # xdotool's --clearmodifiers races with the real key-up events
+        # and the paste lands as garbage (or not at all). Mirror what
+        # the snippet trigger expansion does.
+        time.sleep(0.06)
+        subprocess.run(
+            ["xdotool", "keyup", "ctrl", "shift", "alt", "super",
+             "Control_L", "Control_R", "Super_L", "Super_R",
+             "Shift_L", "Shift_R", "Alt_L", "Alt_R"],
+            check=False,
+        )
+        subprocess.run(
+            ["xdotool", "windowactivate", "--sync", target_window],
+            check=False,
+        )
+        # Cinnamon/muffin sometimes queues the activate for the next
+        # compositor frame; 100 ms wasn't always enough.
+        time.sleep(0.18)
+        paste_key = _paste_keystroke_for_window(target_window)
+        _log.info("[clipboard.paste] sending %s to window %s",
+                  paste_key, target_window)
+        subprocess.run(
+            ["xdotool", "key", "--clearmodifiers", paste_key],
+            check=False,
+        )
+        if cursor_left > 0:
+            # Give the paste a tick to land before we move the caret.
+            time.sleep(0.05)
             subprocess.run(
-                ["xdotool", "windowactivate", "--sync", target_window],
+                ["xdotool", "key", "--clearmodifiers",
+                 "--repeat", str(cursor_left), "--delay", "0", "Left"],
                 check=False,
             )
-            time.sleep(0.1)  # let focus settle
-            subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
-                check=False,
-            )
-            if cursor_left > 0:
-                # Give the paste a tick to land before we move the caret.
-                time.sleep(0.05)
-                subprocess.run(
-                    ["xdotool", "key", "--clearmodifiers",
-                     "--repeat", str(cursor_left), "--delay", "0", "Left"],
-                    check=False,
-                )
+        # Defensive: clear any modifier the WM might have re-asserted
+        # while we activated the window.
+        subprocess.run(
+            ["xdotool", "keyup", "ctrl", "shift", "alt", "super",
+             "Control_L", "Control_R", "Super_L", "Super_R"],
+            check=False,
+        )
 
     threading.Thread(target=worker, daemon=True, name="clipboard-paste").start()
 
