@@ -25,14 +25,18 @@ DEFAULTS: dict[str, Any] = {
     # scales proportionally. Clamped to [14, 48] by popup.py.
     "popup_button_size": 22,
     "show_on_selection": True,
-    # PopClip-style: Ctrl+double-click anywhere pops the edit menu
-    # (Paste / Select all / Backspace) at the cursor. Ctrl as the
-    # gating modifier means the gesture never collides with the
-    # app's own double-click-to-select-a-word behaviour.
+    # PopClip-style: modifier+double-click anywhere pops the edit menu
+    # (Paste / Select all / Backspace) at the cursor. The modifier
+    # is required so the gesture doesn't collide with the app's own
+    # double-click-to-select-a-word behaviour.
     # Off by default because turning it on means LinuxPop watches all
     # mouse clicks globally via the X11 RECORD extension. Nothing is
-    # logged or transmitted - we only look for the Ctrl+left chord.
+    # logged or transmitted - we only look for the chosen chord.
     "double_click_popup_enabled": False,
+    # Which modifier key has to be held for the double-click chord.
+    # One of "ctrl", "shift", "alt", "super". Read fresh each click
+    # so a setting change takes effect without restarting the daemon.
+    "double_click_modifier": "ctrl",
     # Hotkey to summon the popup with the current PRIMARY selection at the cursor.
     # Format: "<modifiers>+<key>", e.g. "super+shift+y", "ctrl+alt+y", "super+space".
     # Set to null/empty to disable. Use the recorder in Innstillinger to capture
