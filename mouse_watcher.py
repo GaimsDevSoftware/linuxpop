@@ -29,6 +29,29 @@ _DOUBLE_CLICK_MS = 300
 _POSITION_TOLERANCE_PX = 8
 
 
+def _required_modifier_mask() -> int:
+    """Return the X11 modifier mask the user wants on the chord. Read
+    fresh each event so the setting takes effect without a restart.
+
+    Mapping is the standard X.h constants:
+      ShiftMask   = 1
+      ControlMask = 4
+      Mod1Mask    = 8   (Alt)
+      Mod4Mask    = 64  (Super / Windows key)
+    """
+    try:
+        from settings import get_settings
+        name = (get_settings().get("double_click_modifier") or "ctrl").lower()
+    except Exception:
+        name = "ctrl"
+    return {
+        "ctrl":  4,
+        "shift": 1,
+        "alt":   8,
+        "super": 64,
+    }.get(name, 4)
+
+
 class DoubleClickWatcher:
     """Listens for global left-button double-clicks on the root window."""
 
@@ -105,14 +128,13 @@ class DoubleClickWatcher:
                 event, data = rq.EventField(None).parse_binary_value(
                     data, self._record_display.display, None, None,
                 )
-                # Button 1 = primary mouse button (left for right-
-                # handers, right for southpaws who've swapped). Ignore
-                # mouse wheel (4/5) and middle (2). Require Ctrl held
-                # so we never collide with the app's own word-select
-                # gesture - this is the chord that opens our menu.
+                # Button 1 = primary mouse button. Require the user's
+                # configured modifier held so the gesture never
+                # collides with the app's own double-click word-
+                # select behaviour.
                 if (event.type == X.ButtonPress
                         and event.detail == 1
-                        and event.state & X.ControlMask):
+                        and event.state & _required_modifier_mask()):
                     self._on_left_click(event.root_x, event.root_y)
 
         try:

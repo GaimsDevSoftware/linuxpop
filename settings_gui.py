@@ -480,13 +480,14 @@ class SettingsDialog:
         # Double-click in an empty editable field shows the edit menu
         # (Paste / Select all / Backspace). PopClip's text-field gesture.
         dbl_row = Handy.ActionRow()
-        dbl_row.set_title("Ctrl+double-click for the edit menu")
+        dbl_row.set_title("Modifier+double-click for the edit menu")
         dbl_row.set_subtitle(
-            "Hold Ctrl and double-click inside any text field to bring "
-            "up Paste / Select all / Backspace at the cursor. Ctrl is "
-            "required so it never collides with the app's own "
-            "double-click-to-select-a-word gesture. Requires LinuxPop "
-            "to watch mouse clicks globally - nothing is logged or sent.")
+            "Hold the modifier key below and double-click inside any "
+            "text field to bring up Paste / Select all / Backspace at "
+            "the cursor. The modifier is required so it never collides "
+            "with the app's own double-click-to-select-a-word gesture. "
+            "Requires LinuxPop to watch mouse clicks globally - "
+            "nothing is logged or sent.")
         dbl_switch = Gtk.Switch()
         dbl_switch.set_valign(Gtk.Align.CENTER)
         dbl_switch.set_active(
@@ -498,6 +499,38 @@ class SettingsDialog:
         dbl_row.add(dbl_switch)
         dbl_row.set_activatable_widget(dbl_switch)
         group.add(dbl_row)
+
+        mod_row = Handy.ActionRow()
+        mod_row.set_title("Modifier key")
+        mod_row.set_subtitle(
+            "Which key must be held during the double-click. "
+            "Ctrl is the safest default; pick another if Ctrl is "
+            "already mapped to something you do with the mouse.")
+        mod_combo = Gtk.ComboBoxText()
+        mod_combo.set_valign(Gtk.Align.CENTER)
+        for key, label in [
+            ("ctrl",  "Ctrl"),
+            ("shift", "Shift"),
+            ("alt",   "Alt"),
+            ("super", "Super (Windows key)"),
+        ]:
+            mod_combo.append(key, label)
+        current_mod = (self._settings.get("double_click_modifier") or "ctrl").lower()
+        mod_combo.set_active_id(current_mod)
+        mod_combo.connect(
+            "changed",
+            lambda c: self._save_key(
+                "double_click_modifier", c.get_active_id() or "ctrl"))
+        mod_row.add(mod_combo)
+        mod_row.set_activatable_widget(mod_combo)
+        # Sensitive only when the toggle above is on, so it's obvious
+        # the picker is doing nothing while the feature itself is off.
+        mod_row.set_sensitive(
+            bool(self._settings.get("double_click_popup_enabled", False)))
+        dbl_switch.connect(
+            "notify::active",
+            lambda s, _p: mod_row.set_sensitive(s.get_active()))
+        group.add(mod_row)
 
         # Autostart at login (switch row) - driven by ~/.config/autostart
         # rather than a settings.json key, since the .desktop file is what
