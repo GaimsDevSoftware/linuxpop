@@ -45,14 +45,15 @@ def _read_primary_snapshot() -> bytes:
 
 _DOUBLE_CLICK_MS = 300
 _POSITION_TOLERANCE_PX = 8
-# How long to wait after the second click before checking PRIMARY.
-# Was 50 ms, but several apps (Firefox, GTK textviews) take longer
-# than that to publish a freshly-selected word to PRIMARY. Result:
-# we'd snapshot too early, see no change, and fire the no-selection
-# popup over what was actually a word-selection gesture.
-# 200 ms is roughly the upper bound observed in testing; humans
-# don't perceive sub-200 ms latency as lag for a deliberate gesture.
-_POST_CLICK_DELAY_MS = 200
+# After the second click of a double-click we POLL the PRIMARY
+# selection at this interval and bail the moment it changes - that
+# means the second click selected a word / line / chunk of text and
+# the user wants the regular selection popup, not our edit menu.
+# Polling (vs one fixed wait) means a fast app like a GTK Entry
+# barely sees lag while a slow lazy-publisher like a Firefox text
+# field still gets caught.
+_PRIMARY_POLL_MS = 80
+_PRIMARY_POLL_MAX_ATTEMPTS = 6  # 80 * 6 = ~500 ms total window
 
 
 class DoubleClickWatcher:
@@ -167,26 +168,54 @@ class DoubleClickWatcher:
             self._last_ms = 0
             self._last_xy = (0, 0)
             self._primary_at_first = b""
-            GLib.timeout_add(_POST_CLICK_DELAY_MS,
-                              self._fire_callback, x, y, primary_before)
+            # Kick off the polling check - first poll fires after one
+            # interval so the app gets a moment to react to the click.
+            GLib.timeout_add(
+                _PRIMARY_POLL_MS,
+                self._poll_primary,
+                x, y, primary_before, 0,
+            )
             return
         self._last_ms = now_ms
         self._last_xy = (x, y)
-        # Snapshot PRIMARY now so we can tell the difference, in
-        # _fire_callback 50 ms from now, between "the second click
-        # selected a word" (PRIMARY changed) and "double-clicked in
-        # an empty field" (PRIMARY identical, ours to handle).
+        # Snapshot PRIMARY now so we can tell the difference, after
+        # the second click, between "the second click selected a word"
+        # (PRIMARY changed) and "double-clicked in an empty field"
+        # (PRIMARY identical, ours to handle).
         self._primary_at_first = _read_primary_snapshot()
 
-    def _fire_callback(self, x: int, y: int, primary_before: bytes) -> bool:
-        primary_now = _read_primary_snapshot()
-        if primary_now != primary_before:
-            # The second click selected a word - the selection watcher
-            # will surface the regular popup for that selection. We stay
-            # out of the way.
-            return False
+    def _poll_primary(
+        self, x: int, y: int, primary_before: bytes, attempt: int,
+    ) -> bool:
+        """Check PRIMARY periodically after a double-click. If it
+        differs from the snapshot, the click landed on text and we
+        bail. After _PRIMARY_POLL_MAX_ATTEMPTS unchanged checks we
+        accept that the user really did click in an empty field and
+        fire the callback.
+
+        Polling beats a single big wait: a fast app barely sees lag
+        because we exit the moment selection lands, while a slow
+        Firefox-style lazy converter still gets caught before we
+        wrongly conclude 'empty field'.
+        """
         try:
-            self._cb(x, y)
-        except Exception as exc:
-            print(f"[dblclick] callback failed: {exc}")
-        return False  # one-shot
+            primary_now = _read_primary_snapshot()
+        except Exception:
+            primary_now = primary_before
+        if primary_now != primary_before:
+            # Selection appeared - SelectionWatcher will surface the
+            # regular popup, we stay out of the way.
+            return False
+        if attempt + 1 >= _PRIMARY_POLL_MAX_ATTEMPTS:
+            try:
+                self._cb(x, y)
+            except Exception as exc:
+                print(f"[dblclick] callback failed: {exc}")
+            return False
+        # Schedule next poll.
+        GLib.timeout_add(
+            _PRIMARY_POLL_MS,
+            self._poll_primary,
+            x, y, primary_before, attempt + 1,
+        )
+        return False  # one-shot for this attempt
