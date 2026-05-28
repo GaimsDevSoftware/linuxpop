@@ -1093,6 +1093,8 @@ def _paste_to_window(
         if not (target_window and shutil.which("xdotool")):
             _log.warning("[clipboard.paste] skipped - no target or no xdotool")
             return
+        paste_key = _paste_keystroke_for_window(target_window)
+        is_terminal = paste_key == "ctrl+shift+v"
         # The hotkey (e.g. ctrl+super+v) leaves modifiers logically held
         # in X until the user releases them. Without an explicit keyup,
         # xdotool's --clearmodifiers races with the real key-up events
@@ -1105,20 +1107,81 @@ def _paste_to_window(
              "Shift_L", "Shift_R", "Alt_L", "Alt_R"],
             check=False,
         )
-        subprocess.run(
+        # Activate twice via two different paths. muffin / gnome-terminal-
+        # server is finicky: xdotool windowactivate alone sometimes returns
+        # before the focus has actually transferred (the `_NET_ACTIVE_WINDOW`
+        # round-trip races the compositor's redraw). wmctrl -ia goes
+        # through EWMH directly and is what actions._focus_via_wmctrl uses
+        # as the primary path. Belt + braces here because the picker has
+        # already stolen focus, unlike the no-focus-steal popup.
+        act_x = subprocess.run(
             ["xdotool", "windowactivate", "--sync", target_window],
-            check=False,
+            check=False, capture_output=True, text=True,
         )
+        if act_x.returncode != 0:
+            _log.warning("[clipboard.paste] windowactivate failed rc=%d %s",
+                         act_x.returncode, act_x.stderr.strip())
+        if shutil.which("wmctrl"):
+            try:
+                hex_id = f"0x{int(target_window):08x}"
+                subprocess.run(["wmctrl", "-ia", hex_id], check=False,
+                               capture_output=True, timeout=1.0)
+            except (OSError, subprocess.SubprocessError, ValueError):
+                pass
         # Cinnamon/muffin sometimes queues the activate for the next
-        # compositor frame; 100 ms wasn't always enough.
-        time.sleep(0.18)
-        paste_key = _paste_keystroke_for_window(target_window)
-        _log.info("[clipboard.paste] sending %s to window %s",
-                  paste_key, target_window)
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", paste_key],
-            check=False,
+        # compositor frame; 100 ms wasn't enough. Terminals need extra
+        # time because VTE only commits its focus-in handler after the
+        # compositor's enter-notify, which lags ~50 ms behind activation.
+        time.sleep(0.30 if is_terminal else 0.18)
+        # Confirm focus before we fire so a missed activation is loud in
+        # the log instead of just a silent no-paste.
+        try:
+            cur = subprocess.run(
+                ["xdotool", "getactivewindow"],
+                capture_output=True, text=True, timeout=0.5,
+            )
+            active = cur.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            active = ""
+        _log.info("[clipboard.paste] active=%s target=%s sending=%s",
+                  active or "?", target_window, paste_key)
+        if active and active != target_window:
+            # Try one more time before giving up - some WMs need a poke.
+            subprocess.run(
+                ["xdotool", "windowactivate", "--sync", target_window],
+                check=False, timeout=1.0,
+            )
+            time.sleep(0.12)
+        # Terminals + short single-line text: type the characters directly
+        # instead of triggering the terminal's paste accelerator. Bypasses
+        # bracketed-paste markers entirely, so it works even in shell
+        # sessions where the terminal's bracketed-paste state is out of
+        # sync with readline. Multi-line and large text still go through
+        # ctrl+shift+v because xdotool type would press Enter on each
+        # newline (executing each command line as it types) and is slow
+        # for big payloads.
+        use_type = (
+            is_terminal
+            and entry.kind == "text"
+            and "\n" not in entry.text
+            and len(entry.text) <= 2048
         )
+        if use_type:
+            _log.info("[clipboard.paste] using xdotool type (%d chars)",
+                      len(entry.text))
+            ks = subprocess.run(
+                ["xdotool", "type", "--clearmodifiers", "--delay", "1",
+                 "--", entry.text],
+                check=False, capture_output=True, text=True,
+            )
+        else:
+            ks = subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", paste_key],
+                check=False, capture_output=True, text=True,
+            )
+        if ks.returncode != 0:
+            _log.warning("[clipboard.paste] paste rc=%d %s",
+                         ks.returncode, ks.stderr.strip())
         if cursor_left > 0:
             # Give the paste a tick to land before we move the caret.
             time.sleep(0.05)
@@ -1377,6 +1440,50 @@ def render_placeholders(
 
 # ----- picker dialog -----------------------------------------------------
 
+_PICKER_W = 580
+_PICKER_H = 540
+# Offset from the pointer so the picker doesn't open with the cursor
+# already on a row (would risk an instant-select on the next click).
+_PICKER_OFFSET_X = 12
+_PICKER_OFFSET_Y = 12
+
+
+def _position_at_pointer(win: Gtk.Window) -> None:
+    """Place the picker near the pointer, clamped to its monitor.
+
+    Borderless windows can't be moved by the user via a title bar (we
+    don't have one), so opening at the pointer makes the picker land
+    where the user is already looking. The drag handle on the brand
+    row lets them move it after that."""
+    display = Gdk.Display.get_default()
+    if display is None:
+        return
+    try:
+        seat = display.get_default_seat()
+        pointer = seat.get_pointer()
+        _, px, py = pointer.get_position()
+    except Exception:
+        return
+    try:
+        monitor = display.get_monitor_at_point(px, py)
+        geom = monitor.get_geometry()
+    except Exception:
+        # Fall back to a static default if monitor lookup fails.
+        win.move(max(0, px - _PICKER_W // 2),
+                 max(0, py - _PICKER_H // 2))
+        return
+    x = px + _PICKER_OFFSET_X
+    y = py + _PICKER_OFFSET_Y
+    # Clamp so the window fits inside the monitor.
+    if x + _PICKER_W > geom.x + geom.width:
+        x = px - _PICKER_OFFSET_X - _PICKER_W
+    if y + _PICKER_H > geom.y + geom.height:
+        y = py - _PICKER_OFFSET_Y - _PICKER_H
+    x = max(geom.x, x)
+    y = max(geom.y, y)
+    win.move(x, y)
+
+
 class _PickerDialog:
     def __init__(self) -> None:
         self.dialog: Optional[Gtk.Window] = None
@@ -1390,6 +1497,9 @@ class _PickerDialog:
         # focus-out on the picker doesn't blow away the parent the prompt
         # is anchored to. Cleared when the prompt is dismissed.
         self._modal_child_open = False
+        # True while the user is dragging the window via the brand-row
+        # handle. Suppresses the focus-out auto-dismiss during the drag.
+        self._dragging = False
 
     def show(self, target_window: str | None = None) -> None:
         # Stamp each phase via the real logger (not print) so a UI freeze
@@ -1404,6 +1514,10 @@ class _PickerDialog:
         _stamp("entered show()")
 
         if self.dialog is not None and self.dialog.get_visible():
+            # Re-position at the current pointer so a second invocation
+            # follows the cursor instead of staying where the previous
+            # one was.
+            _position_at_pointer(self.dialog)
             _force_to_front(self.dialog)
             _stamp("reused existing")
             return
@@ -1415,14 +1529,18 @@ class _PickerDialog:
         # the row area kept a dark cast in the light theme.
         win.get_style_context().add_class("lp-picker")
         win.set_title("LinuxPop - Clipboard & Snippets")
-        win.set_default_size(580, 540)
-        win.set_position(Gtk.WindowPosition.CENTER)
+        win.set_default_size(_PICKER_W, _PICKER_H)
+        # Position is set explicitly via _position_at_pointer() below;
+        # NONE lets our move() take effect before show.
+        win.set_position(Gtk.WindowPosition.NONE)
+        win.set_gravity(Gdk.Gravity.NORTH_WEST)
         win.set_icon_name("linuxpop")
         win.set_skip_taskbar_hint(True)
         win.set_skip_pager_hint(True)
         win.set_keep_above(True)
         # Borderless, ephemeral picker - no title bar, no min/max/close
         # decorations. Dismissed by Esc, click-outside, or focus-out.
+        # Moveable via the brand-row drag handle below.
         win.set_decorated(False)
         win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         win.set_resizable(False)
@@ -1440,6 +1558,24 @@ class _PickerDialog:
         # without a window decoration to lean on (this is a borderless
         # popup). The icon is the full-colour app logo so it reads on
         # both the dark and the light theme.
+        # Wrapped in an EventBox so button-press on the header begins a
+        # window-move drag - the only way for the user to reposition a
+        # decoration-less Gtk.Window without re-enabling the title bar.
+        brand_event = Gtk.EventBox()
+        brand_event.set_visible_window(False)
+        brand_event.add_events(
+            Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.POINTER_MOTION_MASK
+            | Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        brand_event.connect("button-press-event", self._on_header_press, win)
+        brand_event.connect(
+            "enter-notify-event",
+            lambda w, e: w.get_window().set_cursor(
+                Gdk.Cursor.new_from_name(w.get_display(), "grab"))
+                if w.get_window() else False)
+        brand_event.connect(
+            "leave-notify-event",
+            lambda w, e: w.get_window().set_cursor(None)
+                if w.get_window() else False)
         brand_row = Gtk.Box(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         brand_row.set_margin_bottom(6)
@@ -1457,7 +1593,8 @@ class _PickerDialog:
         brand_sub.get_style_context().add_class("dim-label")
         brand_text_box.pack_start(brand_sub, False, False, 0)
         brand_row.pack_start(brand_text_box, True, True, 0)
-        outer.pack_start(brand_row, False, False, 0)
+        brand_event.add(brand_row)
+        outer.pack_start(brand_event, False, False, 0)
 
         # Search
         self.search_entry = Gtk.SearchEntry()
@@ -1514,8 +1651,12 @@ class _PickerDialog:
         _stamp("populated recent")
         self._populate_snippets()
         _stamp("populated snippets")
+        _position_at_pointer(win)
         win.show_all()
         _stamp("show_all")
+        # Re-issue the move now that the window has a size - some WMs
+        # ignore move() requests on unrealized windows.
+        _position_at_pointer(win)
         _force_to_front(win)
         _stamp("force_to_front")
         # Defer search-entry focus until AFTER the WM has had a chance to
@@ -1530,11 +1671,37 @@ class _PickerDialog:
             self.search_entry.grab_focus()
         return False  # one-shot
 
+    def _on_header_press(self, _widget, event, win: Gtk.Window) -> bool:
+        # Left-click on the header begins a window-move drag via the WM.
+        # The focus-out that fires while the drag is in progress would
+        # otherwise destroy the picker mid-drag; flag it so the focus-out
+        # handler defers, and clear the flag a beat after the drag would
+        # have completed (GTK has no clean "drag ended" callback for
+        # begin_move_drag).
+        if event.button != Gdk.BUTTON_PRIMARY:
+            return False
+        self._dragging = True
+        win.begin_move_drag(event.button, int(event.x_root), int(event.y_root),
+                            event.time)
+        # The drag returns control synchronously after the user releases
+        # the button; clear the flag on the next main-loop tick so any
+        # late focus-out events are still suppressed.
+        GLib.timeout_add(200, self._clear_dragging)
+        return True
+
+    def _clear_dragging(self) -> bool:
+        self._dragging = False
+        return False  # one-shot
+
     def _on_focus_out(self, _widget, _event) -> bool:
         # Don't close while a rename / pin prompt is showing - that
         # dialog is transient_for=self.dialog and tearing it down would
         # orphan the prompt.
         if self._modal_child_open:
+            return False
+        # Don't close mid-drag - the WM steals focus from us while we
+        # move the window, and we want it back when the drag ends.
+        if self._dragging:
             return False
         # IBus/Cinnamon occasionally bounce focus away from the picker
         # for a single frame (input-method window opens, system tray
