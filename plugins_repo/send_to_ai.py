@@ -394,6 +394,8 @@ _SERVICES = {
         service="Claude",
         mode="paste",
         url="https://claude.ai/new",
+        userscript_url="https://claude.ai/new",
+        userscript_supported=True,
         # Narrow window match so Claude Desktop / Claude Code don't hijack.
         # The /new path forces the chat-input page, with title "Claude".
         window_terms=["claude.ai", "Claude"],
@@ -417,6 +419,8 @@ _SERVICES = {
         # sending. The user presses Enter when ready. Best of both worlds.
         url_template="https://chatgpt.com/?q={text_url}&autoSubmit=0",
         url="https://chat.openai.com/",
+        userscript_url="https://chatgpt.com/",
+        userscript_supported=True,
         window_terms=["ChatGPT", "chat.openai.com", "chatgpt.com"],
         auto_submits=False,
         priority=102,
@@ -432,6 +436,8 @@ _SERVICES = {
         service="Gemini",
         mode="paste",
         url="https://gemini.google.com/app",
+        userscript_url="https://gemini.google.com/app",
+        userscript_supported=True,
         window_terms=["Gemini", "gemini.google.com"],
         priority=103,
         # Google rebrands their CLI - try both names in detection order.
@@ -448,6 +454,8 @@ _SERVICES = {
         mode="url",
         url_template="https://www.perplexity.ai/?q={text_url}",
         url="https://www.perplexity.ai/",
+        userscript_url="https://www.perplexity.ai/",
+        userscript_supported=True,
         window_terms=["Perplexity", "perplexity.ai"],
         priority=104,
     ),
@@ -790,6 +798,107 @@ def _show_api_response_dialog_async(
     GLib.idle_add(_open_dialog)
 
 
+# ---- userscript mode (browser bridge) -----------------------------------
+
+def _send_via_userscript(service: str, spec: dict, text: str) -> None:
+    """Hand the prompt to the local HTTP bridge, then open the service's
+    chat page with `#linuxpop=<uuid>` appended. The userscript installed
+    in the user's browser reads the hash, fetches the prompt, and calls
+    document.execCommand("insertText", ...) - the only path that works
+    against React/ProseMirror editors like Claude and Gemini."""
+    base_url = spec.get("userscript_url") or spec.get("url")
+    if not base_url:
+        # No browser URL on this spec; fall back to whatever paste mode
+        # would have done.
+        if "url_template" in spec:
+            _send_via_url(service, spec["url_template"], text,
+                          auto_submits=spec.get("auto_submits", True))
+        else:
+            _send_via_paste(
+                service, spec["url"], spec.get("window_terms", []), text,
+                paste_key=spec.get("paste_key", "ctrl+v"),
+                settle_extra=spec.get("settle_extra", 0.0),
+            )
+        return
+
+    # Bridge import is lazy so the rest of the plugin still works if the
+    # daemon's working directory is set up oddly.
+    try:
+        import bridge_server  # type: ignore
+    except Exception as exc:
+        print(f"[send_to_ai] bridge import failed: {exc}; falling back to paste")
+        _send_via_paste(
+            service, spec["url"], spec.get("window_terms", []), text,
+            paste_key=spec.get("paste_key", "ctrl+v"),
+            settle_extra=spec.get("settle_extra", 0.0),
+        )
+        return
+
+    try:
+        from settings import get_settings
+        start_port = int(get_settings().get("ai_userscript_bridge_port", 8766) or 8766)
+    except Exception:
+        start_port = 8766
+
+    try:
+        port = bridge_server.start(start_port)
+    except Exception as exc:
+        print(f"[send_to_ai] bridge failed to start: {exc}; falling back to paste")
+        _send_via_paste(
+            service, spec["url"], spec.get("window_terms", []), text,
+            paste_key=spec.get("paste_key", "ctrl+v"),
+            settle_extra=spec.get("settle_extra", 0.0),
+        )
+        return
+
+    # Persist the actually-bound port so the Settings UI can show it and
+    # so the next launch reuses the same number.
+    try:
+        from settings import get_settings
+        s = get_settings()
+        if int(s.get("ai_userscript_bridge_port", 0) or 0) != port:
+            s.set("ai_userscript_bridge_port", port)
+            s.save()
+    except Exception:
+        pass
+
+    try:
+        token = bridge_server.enqueue_prompt(
+            text, service=service, submit=_auto_submit_enabled())
+    except ValueError as exc:
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+             "-i", "dialog-error", f"Could not send to {service}", str(exc)],
+            check=False,
+        )
+        return
+
+    sep = "&" if "#" in base_url else "#"
+    url = f"{base_url}{sep}linuxpop={token}"
+
+    try:
+        subprocess.Popen(
+            ["xdg-open", url],
+            start_new_session=True,
+            env=_desktop_env(),
+        )
+    except FileNotFoundError:
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+             "-i", "dialog-error", f"Could not open {service}",
+             "xdg-open is missing"],
+            check=False,
+        )
+        return
+
+    subprocess.run(
+        ["notify-send", "--hint=byte:transient:1", "-t", "2500",
+         "-i", "applications-internet", f"Opened {service}",
+         "Userscript will insert the prompt when the page loads."],
+        check=False,
+    )
+
+
 # ---- dispatch -----------------------------------------------------------
 
 def _send(spec: dict):
@@ -816,6 +925,8 @@ def _send(spec: dict):
             mode = "cli"
         elif send_method == "api":
             mode = "api"
+        elif send_method == "userscript":
+            mode = "userscript"
         else:
             mode = spec.get("mode", "paste")
 
@@ -824,10 +935,19 @@ def _send(spec: dict):
             if len(text) > _URL_MAX_CHARS or "url_template" not in spec:
                 mode = "paste"
 
+        # Userscript mode is only meaningful for services the userscript's
+        # @match patterns cover (Claude, ChatGPT, Gemini, Perplexity). For
+        # services without explicit support (Google AI Search), fall back
+        # to their native mode so the button still does something useful.
+        if mode == "userscript" and not spec.get("userscript_supported"):
+            mode = spec.get("mode", "paste")
+
         if mode == "cli":
             _send_via_cli(spec["service"], spec, text)
         elif mode == "api":
             _send_via_api(spec["service"], spec, text)
+        elif mode == "userscript":
+            _send_via_userscript(spec["service"], spec, text)
         elif mode == "url":
             _send_via_url(
                 spec["service"], spec["url_template"], text,

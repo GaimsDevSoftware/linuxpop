@@ -74,20 +74,27 @@ DEFAULTS: dict[str, Any] = {
     # auto-submit (Google AI, Perplexity, ChatGPT URL mode).
     "ai_paste_auto_submit": False,
     # How the Send-to-AI buttons deliver the selection to the chat AI.
-    # "browser" : open the chat website in your browser (URL prefill
-    #             where supported, paste-via-xdotool otherwise). No
-    #             setup needed, works without any subscription. This
-    #             is the historic default - kept as default for new
-    #             users so the buttons just work.
-    # "cli"     : send through the official Anthropic / OpenAI / Google
-    #             CLI binary (claude, codex, antigravity). Uses your
-    #             Pro / Plus subscription. Reply appears in a LinuxPop
-    #             dialog. No browser tabs, no paste race. Requires
-    #             the CLI app installed; falls back to browser mode
-    #             per-service when it isn't.
-    # "api"     : send via REST with your own API key. Most reliable
-    #             but pay-as-you-go pricing. Requires the key set
-    #             below; falls back to browser mode without it.
+    # "browser"    : open the chat website in your browser (URL prefill
+    #                where supported, paste-via-xdotool otherwise). No
+    #                setup needed, works without any subscription. This
+    #                is the historic default - kept as default for new
+    #                users so the buttons just work.
+    # "userscript" : same as browser, but use a Tampermonkey/Violentmonkey
+    #                userscript that talks to a local HTTP bridge
+    #                (127.0.0.1:ai_userscript_bridge_port) and fills the
+    #                editor via document.execCommand("insertText").
+    #                Reliable on Claude / Gemini / ChatGPT where
+    #                paste-via-xdotool fights React contentEditable.
+    #                Requires one-time userscript install in the browser.
+    # "cli"        : send through the official Anthropic / OpenAI / Google
+    #                CLI binary (claude, codex, antigravity). Uses your
+    #                Pro / Plus subscription. Reply appears in a LinuxPop
+    #                dialog. No browser tabs, no paste race. Requires
+    #                the CLI app installed; falls back to browser mode
+    #                per-service when it isn't.
+    # "api"        : send via REST with your own API key. Most reliable
+    #                but pay-as-you-go pricing. Requires the key set
+    #                below; falls back to browser mode without it.
     "ai_send_method": "browser",
     # Per-service API keys for "api" send method. Stored as plain
     # text in settings.json - the user is told this in the GUI; the
@@ -95,6 +102,13 @@ DEFAULTS: dict[str, Any] = {
     # to introduce just for this.
     "ai_anthropic_api_key": "",
     "ai_openai_api_key": "",
+    # Local HTTP bridge port for the userscript mode. The daemon binds
+    # 127.0.0.1:<port> only; the userscript fetches the queued prompt
+    # by UUID and inserts it into the editor. Default 8766 because the
+    # historic 8765 collides with a uvicorn install on Robert's box and
+    # likely with other dev tooling for users too. If the port is taken,
+    # the bridge tries the next 10 ports and saves whichever it bound.
+    "ai_userscript_bridge_port": 8766,
     # Shared snippet variables. Reusable values that snippets can pull
     # in via {var:NAME}. Define once (your email, signature, phone,
     # company name) and reference everywhere - change it here, every
