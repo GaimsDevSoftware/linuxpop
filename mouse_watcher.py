@@ -1,27 +1,23 @@
-"""Global double-click watcher for the no-selection popup.
+"""Global Ctrl+double-click watcher for the no-selection popup.
 
-PopClip's "click-in-editable-field" feature: double-click in an empty
-text field and the edit menu (Paste / Select All / etc.) appears at
-the cursor. Implemented here with the X11 RECORD extension, the same
-mechanism the snippet-trigger watcher uses for keystrokes.
+PopClip-style "click-in-editable-field" feature: Ctrl+double-click
+anywhere and the edit menu (Paste / Select All / Backspace) appears
+at the cursor. Ctrl as the gating modifier means we never collide
+with the app's own double-click word-select behaviour - the user has
+to deliberately ask for our menu, so there's no race with PRIMARY
+selections from word-select gestures.
 
 Opt-in via the `double_click_popup_enabled` setting. When off, the
 thread is never started and no mouse events are observed.
 
-Edge cases:
-  - Double-clicking inside an existing word in an editable field
-    selects that word. We delay 50 ms after the second click so the
-    selection has time to settle, then check the X11 PRIMARY buffer.
-    If it has text we treat the gesture as "select a word" and stay
-    out of the way - the regular selection popup will handle it.
-  - Position match uses an 8 px tolerance so a tiny mouse wiggle
-    between the two clicks still counts as a double-click.
-  - The watcher emits the callback on the GLib main thread via
-    idle_add, so the popup builder doesn't need its own locking.
+Position match uses an 8 px tolerance so a tiny mouse wiggle
+between the two clicks still counts as a double-click.
+
+The watcher emits the callback on the GLib main thread via
+timeout_add, so the popup builder doesn't need its own locking.
 """
 from __future__ import annotations
 
-import subprocess
 import threading
 import time
 from typing import Callable, Optional
@@ -29,31 +25,8 @@ from typing import Callable, Optional
 from gi.repository import GLib
 
 
-def _read_primary_snapshot() -> bytes:
-    """Capture the current X11 PRIMARY selection as raw bytes. Returned
-    as bytes (not text) so binary or whitespace-only selections compare
-    correctly against later snapshots. Returns empty on any xclip error."""
-    try:
-        out = subprocess.run(
-            ["xclip", "-selection", "primary", "-o"],
-            capture_output=True, timeout=0.3,
-        )
-        return out.stdout or b""
-    except (OSError, subprocess.SubprocessError):
-        return b""
-
-
 _DOUBLE_CLICK_MS = 300
 _POSITION_TOLERANCE_PX = 8
-# After the second click of a double-click we POLL the PRIMARY
-# selection at this interval and bail the moment it changes - that
-# means the second click selected a word / line / chunk of text and
-# the user wants the regular selection popup, not our edit menu.
-# Polling (vs one fixed wait) means a fast app like a GTK Entry
-# barely sees lag while a slow lazy-publisher like a Firefox text
-# field still gets caught.
-_PRIMARY_POLL_MS = 80
-_PRIMARY_POLL_MAX_ATTEMPTS = 6  # 80 * 6 = ~500 ms total window
 
 
 class DoubleClickWatcher:
@@ -70,11 +43,6 @@ class DoubleClickWatcher:
         # following one as a double-click.
         self._last_ms = 0
         self._last_xy = (0, 0)
-        # PRIMARY-selection snapshot from the first click of a potential
-        # double-click. If the second click ends up selecting a word
-        # under the cursor, PRIMARY will differ from this snapshot and
-        # we'll stay out of the way (the selection watcher handles it).
-        self._primary_at_first: bytes = b""
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -137,11 +105,14 @@ class DoubleClickWatcher:
                 event, data = rq.EventField(None).parse_binary_value(
                     data, self._record_display.display, None, None,
                 )
-                # Button 1 = primary mouse button (left for right-handers,
-                # right for southpaws who've swapped). Ignore mouse wheel
-                # (4/5) and middle (2) - this is specifically a left-
-                # button gesture.
-                if event.type == X.ButtonPress and event.detail == 1:
+                # Button 1 = primary mouse button (left for right-
+                # handers, right for southpaws who've swapped). Ignore
+                # mouse wheel (4/5) and middle (2). Require Ctrl held
+                # so we never collide with the app's own word-select
+                # gesture - this is the chord that opens our menu.
+                if (event.type == X.ButtonPress
+                        and event.detail == 1
+                        and event.state & X.ControlMask):
                     self._on_left_click(event.root_x, event.root_y)
 
         try:
@@ -156,6 +127,10 @@ class DoubleClickWatcher:
             self._ctx = None
 
     def _on_left_click(self, x: int, y: int) -> None:
+        """Handle a Ctrl+Left-click. We see only the Ctrl-modified
+        ones - the handler filter upstream drops plain clicks - so
+        any second click within the double-click window IS our
+        gesture and there's no PRIMARY-race to worry about."""
         now_ms = int(time.monotonic() * 1000)
         elapsed = now_ms - self._last_ms
         dx = abs(x - self._last_xy[0])
@@ -164,58 +139,19 @@ class DoubleClickWatcher:
                 and dx < _POSITION_TOLERANCE_PX
                 and dy < _POSITION_TOLERANCE_PX):
             # Reset so a third click doesn't fire again.
-            primary_before = self._primary_at_first
             self._last_ms = 0
             self._last_xy = (0, 0)
-            self._primary_at_first = b""
-            # Kick off the polling check - first poll fires after one
-            # interval so the app gets a moment to react to the click.
-            GLib.timeout_add(
-                _PRIMARY_POLL_MS,
-                self._poll_primary,
-                x, y, primary_before, 0,
-            )
+            # Tiny settle so the app sees the click first, then we
+            # show the menu. No need to poll PRIMARY - Ctrl-double-
+            # click is unambiguous user intent.
+            GLib.timeout_add(50, self._fire_callback, x, y)
             return
         self._last_ms = now_ms
         self._last_xy = (x, y)
-        # Snapshot PRIMARY now so we can tell the difference, after
-        # the second click, between "the second click selected a word"
-        # (PRIMARY changed) and "double-clicked in an empty field"
-        # (PRIMARY identical, ours to handle).
-        self._primary_at_first = _read_primary_snapshot()
 
-    def _poll_primary(
-        self, x: int, y: int, primary_before: bytes, attempt: int,
-    ) -> bool:
-        """Check PRIMARY periodically after a double-click. If it
-        differs from the snapshot, the click landed on text and we
-        bail. After _PRIMARY_POLL_MAX_ATTEMPTS unchanged checks we
-        accept that the user really did click in an empty field and
-        fire the callback.
-
-        Polling beats a single big wait: a fast app barely sees lag
-        because we exit the moment selection lands, while a slow
-        Firefox-style lazy converter still gets caught before we
-        wrongly conclude 'empty field'.
-        """
+    def _fire_callback(self, x: int, y: int) -> bool:
         try:
-            primary_now = _read_primary_snapshot()
-        except Exception:
-            primary_now = primary_before
-        if primary_now != primary_before:
-            # Selection appeared - SelectionWatcher will surface the
-            # regular popup, we stay out of the way.
-            return False
-        if attempt + 1 >= _PRIMARY_POLL_MAX_ATTEMPTS:
-            try:
-                self._cb(x, y)
-            except Exception as exc:
-                print(f"[dblclick] callback failed: {exc}")
-            return False
-        # Schedule next poll.
-        GLib.timeout_add(
-            _PRIMARY_POLL_MS,
-            self._poll_primary,
-            x, y, primary_before, attempt + 1,
-        )
-        return False  # one-shot for this attempt
+            self._cb(x, y)
+        except Exception as exc:
+            print(f"[dblclick] callback failed: {exc}")
+        return False  # one-shot
