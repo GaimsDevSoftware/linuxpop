@@ -48,24 +48,52 @@ _focus_listener_ref = None  # keep listener alive (GC would otherwise drop it)
 # AT-SPI is optional. If gi bindings aren't installed we skip to the
 # WM_CLASS fallback only - no hard dependency.
 #
-# Defensive probe: before importing Atspi, check that the user's a11y
-# bus socket exists at the canonical XDG path AND we can read it.
-# Without this guard, a stale root-owned at-spi-bus-launcher on the
-# system can cause our Atspi calls to hard-crash via glib's
-# dbind-ERROR (SIGTRAP, uncatchable from Python). The probe sees the
-# unreachable socket and lets us silently fall back to WM_CLASS.
-_HAS_ATSPI = False
-try:
+# Two-step defensive probe before letting any code path call Atspi:
+#   1. Our own at-spi bus socket must exist at the XDG path and be
+#      r/w by us.
+#   2. There must be NO at-spi-bus-launcher running as another user.
+#      A foreign-uid launcher (typically a root one left behind by
+#      sudo'd interactions) can route our dbus query to its bus -
+#      we then crash on first use via glib dbind-ERROR (SIGTRAP,
+#      uncatchable from Python).
+# When either check fails, skip the Atspi import entirely and fall
+# back to the WM_CLASS heuristic. The walker still works fine,
+# just without per-widget editable detection inside Electron apps.
+def _atspi_environment_safe() -> tuple[bool, str]:
     import os as _os
-    _runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
-                    or f"/run/user/{_os.getuid()}")
-    _bus_socket = _os.path.join(_runtime_dir, "at-spi", "bus_0")
-    _bus_reachable = (_os.path.exists(_bus_socket)
-                      and _os.access(_bus_socket, _os.R_OK | _os.W_OK))
-except Exception:
-    _bus_reachable = False
+    import glob as _glob
+    try:
+        runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
+                        or f"/run/user/{_os.getuid()}")
+        bus_socket = _os.path.join(runtime_dir, "at-spi", "bus_0")
+        if not _os.path.exists(bus_socket):
+            return False, f"bus socket missing at {bus_socket}"
+        if not _os.access(bus_socket, _os.R_OK | _os.W_OK):
+            return False, f"bus socket unreadable at {bus_socket}"
+        my_uid = _os.getuid()
+        for proc_dir in _glob.glob("/proc/[0-9]*"):
+            try:
+                with open(f"{proc_dir}/comm") as f:
+                    name = f.read().strip()
+                if not name.startswith("at-spi-bus-launc"):
+                    continue
+                proc_uid = _os.stat(proc_dir).st_uid
+                if proc_uid != my_uid:
+                    pid = proc_dir.rsplit("/", 1)[-1]
+                    return False, (
+                        f"a foreign-uid at-spi-bus-launcher "
+                        f"(pid={pid}, uid={proc_uid}) is running - "
+                        f"refusing to risk a dbind crash")
+            except (OSError, ValueError):
+                continue
+        return True, ""
+    except Exception as exc:
+        return False, f"probe error: {exc}"
 
-if _bus_reachable:
+
+_HAS_ATSPI = False
+_atspi_ok, _atspi_skip_reason = _atspi_environment_safe()
+if _atspi_ok:
     try:
         import gi
         gi.require_version("Atspi", "2.0")
@@ -75,10 +103,8 @@ if _bus_reachable:
         _log.info("[editable] Atspi gi bindings unavailable - "
                   "will use WM_CLASS heuristic only")
 else:
-    _log.info("[editable] at-spi bus socket not reachable at %s - "
-              "using WM_CLASS heuristic only (this is normal if a "
-              "stale root-owned at-spi-bus-launcher is on the system)",
-              _bus_socket if 'bus_socket' in dir() else "(unknown path)")
+    _log.info("[editable] AT-SPI skipped (%s) - using WM_CLASS only",
+              _atspi_skip_reason)
 
 
 # WM_CLASS substrings (case-insensitive) for apps where the focused
@@ -242,6 +268,18 @@ def _atspi_focus_editable(timeout: float = 0.15) -> bool | None:
     - caller falls back to the WM_CLASS heuristic on None.
     """
     if not _HAS_ATSPI:
+        return None
+    # Gate the walker behind the same setting that gates the focus
+    # listener. AT-SPI on this machine has a habit of crashing the
+    # whole daemon via dbind-ERROR when a foreign-uid bus-launcher
+    # is in play; if the user hasn't explicitly opted in via Settings
+    # > Advanced > "Smarter editable detection", we don't even try.
+    # WM_CLASS fallback handles the common case fine.
+    try:
+        from settings import get_settings
+        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+            return None
+    except Exception:
         return None
 
     result: list[bool | None] = [None]
