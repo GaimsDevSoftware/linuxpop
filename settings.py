@@ -107,7 +107,15 @@ DEFAULTS: dict[str, Any] = {
     # the popup. Suppresses popup churn while the user is still dragging
     # to extend a selection. ~250-400 ms feels natural; lower = snappier
     # but more likely to interrupt; higher = calmer but feels laggy.
-    "selection_debounce_ms": 300,
+    # How long to wait after the last selection event before showing
+    # the popup. The watcher fires an XFixes event each time the user
+    # extends the highlight, so we need *some* debounce to let a
+    # drag-to-extend gesture settle - but the cost of being too high
+    # is that the popup feels laggy after a fast highlight + release.
+    # 150 ms is in the sweet spot: humans rarely re-extend within
+    # 150 ms of the last move, and 150 ms is below the "this feels
+    # delayed" threshold.
+    "selection_debounce_ms": 150,
     # If True, ignore selections that contain only whitespace
     "ignore_whitespace_only": True,
     # Substrings that, if any matches the active window's title or
