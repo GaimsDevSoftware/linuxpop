@@ -65,11 +65,12 @@ class SelectionWatcher:
         # Try a few times to read the new content. The xfixes event fires
         # on owner change, but the new owner often hasn't actually written
         # the data yet (esp. apps that build their selection lazily on
-        # CONVERT_SELECTION). Extended retry budget (~700 ms total) so
-        # large selections from slow lazy-converters (Firefox readers,
-        # PDF viewers) have time to settle.
+        # CONVERT_SELECTION). 270 ms total budget: fast apps break on
+        # the very first read (40 ms), only lazy converters spend the
+        # whole window. _read_primary's own xclip timeout (2 s) still
+        # protects huge selections that take time to transfer.
         text = ""
-        for delay in (0.04, 0.08, 0.15, 0.20, 0.25):
+        for delay in (0.04, 0.08, 0.15):
             time.sleep(delay)
             text = self._read_primary()
             if text and text.strip():
