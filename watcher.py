@@ -75,8 +75,15 @@ class SelectionWatcher:
             text = self._read_primary()
             if text and text.strip():
                 break
-        if not text or text == self._last_text or not text.strip():
+        if not text or not text.strip():
             return
+        # Note: we used to also bail when text == self._last_text, to
+        # squash spurious owner-change events that didn't carry new
+        # content. Removed because it ate the legitimate "user selected
+        # the same word again" case - re-highlighting a phrase to bring
+        # the popup back must work. XFixes events without a real
+        # selection change are rare in practice, and even if one slips
+        # through it's cheaper to redraw than to miss a re-select.
         self._last_text = text
         try:
             x, y = self._pointer_position(dpy)
