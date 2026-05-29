@@ -1,0 +1,15 @@
+{
+  "name": "strip-trim-paste",
+  "tooltip": "Strip whitespace and paste back",
+  "icon": "format-justify-fill-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 83,
+  "action": {
+    "type": "chain",
+    "title": "Trimmed and pasted",
+    "steps": [
+      {"type": "transform", "template": "{text_strip}"},
+      {"type": "paste"}
+    ]
+  }
+}

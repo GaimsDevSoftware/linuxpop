@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# LinuxPop MCP server launcher.
+#
+# Wire it into Claude Desktop's claude_desktop_config.json:
+#   {
+#     "mcpServers": {
+#       "linuxpop": {
+#         "command": "/path/to/linuxpop/linuxpop-mcp"
+#       }
+#     }
+#   }
+#
+# Once configured, restart Claude Desktop. The 7 LinuxPop tools
+# (get_current_selection, get_clipboard, get_clipboard_history,
+# list_snippets, expand_snippet, list_recipes, put_on_clipboard) show
+# up in the "Available tools" panel.
+
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+exec python3 "$HERE/mcp_server.py" "$@"

@@ -51,6 +51,11 @@ DEFAULTS: dict[str, Any] = {
     # Enter to paste at the cursor. Ignored if clipboard_history_enabled
     # is False.
     "clipboard_hotkey": "super+v",
+    # Hotkey to capture a screen region and OCR it. Requires `maim` and
+    # `tesseract-ocr` on PATH. Empty string disables. Useful for
+    # reaching text inside PDF viewers, video frames, OS chrome, and
+    # custom editors that don't propagate to X11 PRIMARY selection.
+    "ocr_hotkey": "shift+super+o",
     # Snippet triggers - when ON, typing a snippet's shortcode followed
     # by space/tab/enter/punctuation auto-expands it in place. Requires
     # global keystroke monitoring via the X11 RECORD extension. Off by
@@ -73,6 +78,24 @@ DEFAULTS: dict[str, Any] = {
     # hitting Enter. Has no effect on URL-mode services that already
     # auto-submit (Google AI, Perplexity, ChatGPT URL mode).
     "ai_paste_auto_submit": False,
+    # How long _send_via_paste waits for the chat website to open and
+    # focus. The browser-tab dance has phases: window-spawn, page-load,
+    # editor-mount. We poll for each phase with these timeouts.
+    "ai_window_timeout_seconds": 10.0,
+    "ai_focus_timeout_seconds": 3.0,
+    "ai_focus_stability_seconds": 0.25,
+    "ai_paste_settle_seconds": 0.2,
+    # Clipboard history depth. 25 is enough that you can scroll back
+    # to anything you copied within the last day of work; bigger
+    # values just make the picker harder to search.
+    "clipboard_history_size": 25,
+    # Capture image content too (not just text). PNG copies from
+    # screenshot tools or browser drag-out land here as well.
+    "clipboard_history_images": True,
+    # Fallback poll interval when the XFixes selection-event path
+    # isn't available. Most modern X servers do support XFixes so
+    # this rarely fires.
+    "clipboard_poll_interval": 0.5,
     # How the Send-to-AI buttons deliver the selection to the chat AI.
     # "userscript" : DEFAULT. Open the chat website in your browser; a
     #                Tampermonkey / Violentmonkey userscript talking to

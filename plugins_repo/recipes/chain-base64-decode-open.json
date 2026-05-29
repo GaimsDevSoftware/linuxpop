@@ -1,0 +1,15 @@
+{
+  "name": "base64-decode-and-open",
+  "tooltip": "Decode base64 and open as URL",
+  "icon": "applications-internet-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 82,
+  "action": {
+    "type": "chain",
+    "title": "Decoded URL opened",
+    "steps": [
+      {"type": "transform", "template": "{text_b64_decode}"},
+      {"type": "open_url", "template": "{text}"}
+    ]
+  }
+}

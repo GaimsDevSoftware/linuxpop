@@ -28,27 +28,44 @@ import urllib.parse
 from classifier import ContentType
 from plugin_base import Plugin
 
-# Tunable via settings (only used in paste mode):
+# Reads happen per call so live settings edits (slider in Settings, or
+# direct settings.json edit) take effect without a daemon restart. The
+# old module-level snapshot froze these at import time.
 try:
     from settings import get_settings
-    _settings = get_settings()
-    _WINDOW_TIMEOUT = float(_settings.get("ai_window_timeout_seconds", 10.0) or 10.0)
-    _FOCUS_TIMEOUT  = float(_settings.get("ai_focus_timeout_seconds", 3.0) or 3.0)
-    _FOCUS_STABLE   = float(_settings.get("ai_focus_stability_seconds", 0.25) or 0.25)
-    _SETTLE         = float(_settings.get("ai_paste_settle_seconds", 0.2) or 0.2)
 except Exception:
-    _settings = None
-    _WINDOW_TIMEOUT = 10.0
-    _FOCUS_TIMEOUT  = 3.0
-    _FOCUS_STABLE   = 0.25
-    _SETTLE         = 0.2
+    get_settings = None  # type: ignore[assignment]
+
+
+def _cfg(key: str, default):
+    if get_settings is None:
+        return default
+    try:
+        val = get_settings().get(key, default)
+        return val if val is not None else default
+    except Exception:
+        return default
+
+
+def _window_timeout() -> float:
+    return float(_cfg("ai_window_timeout_seconds", 10.0))
+
+
+def _focus_timeout() -> float:
+    return float(_cfg("ai_focus_timeout_seconds", 3.0))
+
+
+def _focus_stability() -> float:
+    return float(_cfg("ai_focus_stability_seconds", 0.25))
+
+
+def _paste_settle() -> float:
+    return float(_cfg("ai_paste_settle_seconds", 0.2))
 
 
 def _auto_submit_enabled() -> bool:
     """Read fresh each call so the toggle takes effect without a restart."""
-    if _settings is None:
-        return False
-    return bool(_settings.get("ai_paste_auto_submit", False))
+    return bool(_cfg("ai_paste_auto_submit", False))
 
 # Browsers truncate URLs around 8 KB and UX degrades earlier. Past this,
 # fall back to paste mode for that single click instead of opening a
@@ -307,15 +324,22 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
         return
 
     def worker():
+        # Re-read live settings on each invocation (replacing an old
+        # import-time snapshot) so slider changes in Settings apply on
+        # the next click without a daemon restart.
+        window_timeout = _window_timeout()
+        focus_timeout = _focus_timeout()
+        focus_stability = _focus_stability()
+        paste_settle = _paste_settle()
         # Try each search term until one finds a real browser window
         window_id = None
         for term in window_terms:
-            window_id = _find_browser_window(term, _WINDOW_TIMEOUT / max(1, len(window_terms)))
+            window_id = _find_browser_window(term, window_timeout / max(1, len(window_terms)))
             if window_id is not None:
                 break
         if window_id is None or not shutil.which("xdotool"):
             print(f"[send_to_ai] {service}: no browser window matched within "
-                  f"{_WINDOW_TIMEOUT}s - terms={window_terms}")
+                  f"{window_timeout}s - terms={window_terms}")
             subprocess.run(
                 ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-warning", service,
                  "Browser window didn't appear in time. "
@@ -333,11 +357,11 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
             )
             subprocess.run(["xdotool", "windowfocus", window_id], check=False)
 
-        _wait_until_active(window_id, timeout=_FOCUS_TIMEOUT,
-                            stability=_FOCUS_STABLE)
-        # Per-service extra settle on top of the global _SETTLE. Claude's
-        # input takes longer to mount than Gemini's, for example.
-        total_settle = _SETTLE + settle_extra
+        _wait_until_active(window_id, timeout=focus_timeout,
+                            stability=focus_stability)
+        # Per-service extra settle on top of the global paste_settle.
+        # Claude's input takes longer to mount than Gemini's.
+        total_settle = paste_settle + settle_extra
         if total_settle > 0:
             time.sleep(total_settle)
         _paste_keystroke(paste_key)

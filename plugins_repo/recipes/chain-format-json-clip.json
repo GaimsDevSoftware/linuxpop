@@ -1,0 +1,15 @@
+{
+  "name": "format-json-and-copy",
+  "tooltip": "Pretty-print JSON and copy",
+  "icon": "view-list-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 80,
+  "action": {
+    "type": "chain",
+    "title": "Formatted JSON copied",
+    "steps": [
+      {"type": "transform", "template": "{text_json}"},
+      {"type": "copy"}
+    ]
+  }
+}
