@@ -1312,8 +1312,48 @@ class SettingsDialog:
         except Exception:
             pass
 
+        bridge_btn_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        bridge_btn_box.set_valign(Gtk.Align.CENTER)
         bridge_install_btn = Gtk.Button(label="Install userscript")
-        bridge_install_btn.set_valign(Gtk.Align.CENTER)
+        # Persisted marker file: written by the bridge on /installed
+        # ping. Survives daemon restarts so the user isn't prompted to
+        # reinstall on every Settings open.
+        try:
+            import bridge_server as _bsv
+            marker_exists = _bsv.userscript_marker_exists()
+        except Exception:
+            _bsv = None
+            marker_exists = False
+        if marker_exists:
+            bridge_install_btn.set_label("Userscript installed ✓")
+            bridge_install_btn.get_style_context().add_class(
+                "suggested-action")
+        # Secondary path for users who already installed the userscript
+        # on a previous run (or before we shipped marker persistence):
+        # this just writes the marker without bouncing them through the
+        # install flow. Hidden once the marker exists.
+        already_btn = Gtk.Button(label="Already installed")
+        already_btn.set_tooltip_text(
+            "Click if the userscript is already active in your "
+            "Tampermonkey/Violentmonkey dashboard - sets the install "
+            "marker so this dialog stops asking.")
+        already_btn.get_style_context().add_class("flat")
+
+        def _on_already_installed(_b):
+            try:
+                import bridge_server as _bs
+                _bs._mark_userscript_installed()
+                bridge_install_btn.set_label("Userscript installed ✓")
+                bridge_install_btn.get_style_context().add_class(
+                    "suggested-action")
+                already_btn.set_visible(False)
+            except Exception as exc:
+                bridge_row.set_subtitle(f"Could not record install: {exc}")
+        already_btn.connect("clicked", _on_already_installed)
+        if marker_exists:
+            already_btn.set_no_show_all(True)
+            already_btn.hide()
         # Poll the bridge's /installed/status endpoint so this label can
         # flip to "Userscript installed ✓" once the userscript actually
         # pings us back. The poll runs while the bridge row is visible
@@ -1405,7 +1445,9 @@ class SettingsDialog:
                 bridge_row.set_subtitle(f"Could not start bridge: {exc}")
 
         bridge_install_btn.connect("clicked", _on_install_userscript)
-        bridge_row.add(bridge_install_btn)
+        bridge_btn_box.pack_start(already_btn, False, False, 0)
+        bridge_btn_box.pack_start(bridge_install_btn, False, False, 0)
+        bridge_row.add(bridge_btn_box)
         userscript_rows.append(bridge_row)
         userscript_group.add(bridge_row)
 

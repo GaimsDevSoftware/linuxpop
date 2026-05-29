@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -37,6 +38,33 @@ _queue_lock = threading.Lock()
 # userscript on first load after install via GET /installed; consumed
 # by Settings to flip the install row to "installed".
 _userscript_installed_at: float | None = None
+# Marker file - lets Settings see "installed" across daemon restarts
+# without having to wait for the userscript to fire again.
+_INSTALL_MARKER = Path(os.path.expanduser(
+    "~/.config/linuxpop/.userscript-installed"))
+
+
+def _mark_userscript_installed() -> None:
+    try:
+        _INSTALL_MARKER.parent.mkdir(parents=True, exist_ok=True)
+        _INSTALL_MARKER.write_text(str(int(time.time())))
+    except OSError:
+        pass
+
+
+def userscript_marker_exists() -> bool:
+    return _INSTALL_MARKER.is_file()
+
+
+def clear_userscript_marker() -> None:
+    """Removed only by the user via Settings (no UI for that today)
+    or by the reset-to-defaults flow. The marker is set-once."""
+    try:
+        _INSTALL_MARKER.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
 
 def _gc_queue() -> None:
@@ -126,17 +154,23 @@ class _Handler(BaseHTTPRequestHandler):
                        content_type="text/javascript; charset=utf-8")
             return
         if self.path == "/installed":
-            # Userscript pings this once on first run after install so
-            # Settings can flip from "Install userscript" -> ✓.
+            # Userscript pings this once on every load after install so
+            # Settings can flip from "Install userscript" -> ✓. Also
+            # writes a marker file so the "installed" state survives
+            # daemon restarts and the user doesn't reinstall what's
+            # already there.
             global _userscript_installed_at
             _userscript_installed_at = time.monotonic()
+            _mark_userscript_installed()
             self._json(HTTPStatus.OK, {"ok": True})
             return
         if self.path == "/installed/status":
             ts = _userscript_installed_at
+            marker = userscript_marker_exists()
             self._json(HTTPStatus.OK, {
-                "installed": ts is not None,
+                "installed": ts is not None or marker,
                 "seconds_ago": (time.monotonic() - ts) if ts else None,
+                "marker_present": marker,
             })
             return
         if self.path.startswith("/prompt/"):
