@@ -1638,9 +1638,9 @@ class _PickerDialog:
         # Hint
         hint = Gtk.Label(xalign=0, margin_top=6)
         hint.set_markup(
-            "<small>Enter to paste · Ctrl+P pin · Ctrl+R rename · "
-            "Snippets support <tt>{date} {time} {datetime} {clipboard} "
-            "{cursor} {ask:Label}</tt> · Esc to close</small>"
+            "<small>Enter to paste · Tab to switch tab · Ctrl+P pin · "
+            "Ctrl+R rename · Snippets support <tt>{date} {time} {datetime} "
+            "{clipboard} {cursor} {ask:Label}</tt> · Esc to close</small>"
         )
         hint.set_line_wrap(True)
         outer.pack_start(hint, False, False, 0)
@@ -2774,6 +2774,14 @@ class _PickerDialog:
         if event.keyval == Gdk.KEY_Escape:
             if self.dialog is not None:
                 self.dialog.destroy()
+            return True
+        # Tab / Shift+Tab → flip between the Recent and Snippets tabs.
+        # Replaces the default focus-cycling (search-entry → listbox →
+        # +New button etc.) which is overkill for a 2-tab popup.
+        if event.keyval in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+            if self.notebook is not None and self.notebook.get_n_pages() > 1:
+                cur = self.notebook.get_current_page()
+                self.notebook.set_current_page(1 - cur)
             return True
         # Ctrl+P → pin currently selected (if in Recent)
         if (event.state & Gdk.ModifierType.CONTROL_MASK
