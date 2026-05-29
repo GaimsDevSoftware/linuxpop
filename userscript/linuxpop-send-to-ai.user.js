@@ -100,6 +100,19 @@
     });
   }
 
+  function pingInstalled() {
+    // Fire-and-forget ping so Settings can flip the install row to
+    // "installed" the first time the user loads any matched site.
+    try {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url: `${BRIDGE}/installed`,
+        timeout: 1500,
+        onload: () => {}, onerror: () => {}, ontimeout: () => {},
+      });
+    } catch (e) { /* non-fatal */ }
+  }
+
   function fetchPrompt(token) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
@@ -222,6 +235,7 @@
   // Single-shot on load. Hash navigation within an SPA also re-fires
   // hashchange, so we listen for that too in case the same tab is
   // re-used for the next send.
+  pingInstalled();
   run();
   window.addEventListener("hashchange", run);
 })();

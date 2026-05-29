@@ -6,7 +6,9 @@ user clicks outside it.
 """
 from __future__ import annotations
 
+import subprocess
 import threading
+from typing import Callable
 
 import gi
 
@@ -60,6 +62,21 @@ button.linuxpop-action:active {
 button.linuxpop-action image {
     color: #f0f3fa;
 }
+
+/* Overflow chip - shown when more plugins matched than the popup
+ * limit allows. Renders as a "+N" pill with a softer tone so it
+ * reads as informational rather than a normal action. */
+button.linuxpop-overflow {
+    color: #c4cad8;
+    font-weight: 600;
+    font-size: 0.85em;
+    padding-left: __PAD_H_OVERFLOW__px;
+    padding-right: __PAD_H_OVERFLOW__px;
+}
+button.linuxpop-overflow:hover {
+    background-image: linear-gradient(to bottom right, #3a4258, #2c3146);
+    color: #ffffff;
+}
 """
 
 
@@ -79,8 +96,8 @@ def _shift_held_in_current_event() -> bool:
     return bool(state & Gdk.ModifierType.SHIFT_MASK)
 
 
-_BUTTON_SIZE_MIN = 14
-_BUTTON_SIZE_MAX = 48
+_BUTTON_SIZE_MIN = 16   # symbolic icons go muddy below this on every screen
+_BUTTON_SIZE_MAX = 32   # > 32 is touch-target territory; mouse users don't benefit
 _BUTTON_SIZE_DEFAULT = 22
 
 _popup_css_provider: Gtk.CssProvider | None = None
@@ -115,6 +132,7 @@ def _build_css(size: int) -> bytes:
            .replace(b"__BTN_SIZE__", str(size).encode())
            .replace(b"__PAD_V__", str(pad_v).encode())
            .replace(b"__PAD_H__", str(pad_h).encode())
+           .replace(b"__PAD_H_OVERFLOW__", str(max(pad_h, 8)).encode())
            .replace(b"__WIN_PAD__", str(win_pad).encode())
            .replace(b"__WIN_RADIUS__", str(win_radius).encode())
            .replace(b"__BTN_RADIUS__", str(btn_radius).encode()))
@@ -179,7 +197,12 @@ class PopupWindow:
         self,
         initial_grace_ms: int = 4000,
         leave_grace_ms: int = 600,
+        on_open_plugin_order: "Callable[[], None] | None" = None,
     ) -> None:
+        # on_open_plugin_order is invoked when the user clicks the
+        # overflow chip - lets us route them straight to Plugin Manager
+        # → Order so they can fix what's been hidden.
+        self._on_open_plugin_order = on_open_plugin_order
         _install_css()
 
         # TOPLEVEL (not POPUP) so the WM actually stacks us above other
@@ -219,9 +242,19 @@ class PopupWindow:
         self._outer.set_margin_end(1)
         self.win.add(self._outer)
 
-        self._bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        # _bar is the rounded pill background. It stacks one or two
+        # rows vertically depending on how many actions matched.
+        self._bar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         self._bar.get_style_context().add_class("linuxpop-bar")
         self._outer.pack_start(self._bar, True, True, 0)
+        self._row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self._row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        self._bar.pack_start(self._row1, False, False, 0)
+        self._bar.pack_start(self._row2, False, False, 0)
+        # Row 2 stays out of the layout entirely until needed; without
+        # this it would leave a faint baseline gap below row 1 even when
+        # empty.
+        self._row2.set_no_show_all(True)
 
         # Track enter/leave + button-press for outside-click detection
         ev = self.win.get_events()
@@ -271,11 +304,19 @@ class PopupWindow:
         # signal-handler GClosures and its child image. remove() alone would
         # rely on Python GC noticing the orphan; this is the belt-and-
         # suspenders form.
-        for child in list(self._bar.get_children()):
-            self._bar.remove(child)
-            child.destroy()
+        for row in (self._row1, self._row2):
+            for child in list(row.get_children()):
+                row.remove(child)
+                child.destroy()
+        # Collapse row 2 until something gets added to it.
+        self._row2.hide()
+        self._row2.set_no_show_all(True)
 
-    def _add_button(self, icon_name: str, tooltip: str, on_click) -> None:
+    def _add_button(
+        self, icon_name: str, tooltip: str, on_click,
+        row: Gtk.Box | None = None,
+    ) -> None:
+        target = row if row is not None else self._row1
         btn = Gtk.Button()
         btn.set_relief(Gtk.ReliefStyle.NONE)
         btn.set_tooltip_text(tooltip)
@@ -284,7 +325,33 @@ class PopupWindow:
         btn.set_image(image)
         btn.set_always_show_image(True)
         btn.connect("clicked", on_click)
-        self._bar.pack_start(btn, False, False, 0)
+        target.pack_start(btn, False, False, 0)
+        if target is self._row2:
+            # Once anything lands in row 2, allow it to show.
+            self._row2.set_no_show_all(False)
+
+    def _max_per_row(self) -> int:
+        """How many buttons fit in a single row before we wrap.
+
+        Uses logical pixels and the user's chosen button size, capped by
+        a "comfortable reading width" constant so even a 5K screen
+        doesn't grow the popup into a freeway-sized strip.
+        """
+        size = _resolve_button_size()
+        # Button outer width: min-width + horizontal padding on each side
+        # (kept in sync with linuxpop.css). Slight overestimate so we
+        # don't push a button half-off the line by one pixel.
+        approx_button_width = size + 14
+        try:
+            screen = self.win.get_screen()
+            display = screen.get_display()
+            cx, cy, _ = display.get_default_seat().get_pointer().get_position()
+            monitor = display.get_monitor_at_point(cx, cy)
+            monitor_w = monitor.get_geometry().width if monitor else 1920
+        except Exception:
+            monitor_w = 1920
+        target_w = min(680, int(monitor_w * 0.5))
+        return max(4, target_w // approx_button_width)
 
     def _make_icon_image(self, icon_name: str) -> Gtk.Image:
         """Render an icon scaled to ~72% of the configured button size,
@@ -323,7 +390,9 @@ class PopupWindow:
             max_btns = int(_gs().get("max_popup_buttons") or 10)
         except Exception:
             max_btns = 10
+        hidden_count = 0
         if max_btns > 0 and len(plugins) > max_btns:
+            hidden_count = len(plugins) - max_btns
             print(f"[popup] capping {len(plugins)} plugins to "
                   f"{max_btns} (max_popup_buttons)")
             plugins = plugins[:max_btns]
@@ -331,41 +400,98 @@ class PopupWindow:
             print(f"[popup] no plugins for {content_type.value} (editable={editable})")
             return
 
-        for plugin in plugins:
-            def make_handler(p):
-                def _on_click(_btn):
-                    # Snapshot text at click time + run on a worker thread so
-                    # blocking handlers (network, subprocess, xdotool) don't
-                    # freeze the GTK main loop.
-                    text_snapshot = self._current_text
-                    plugin_name = p.name
-                    # Read the modifier state on the GTK event that
-                    # triggered this click. Shift means 'copy the
-                    # result instead of pasting it back' (PopClip
-                    # convention) - relevant when the plugin uses
-                    # actions.replace_selection() for an in-place
-                    # transform. Plugins that don't paste are
-                    # unaffected by the flag.
-                    shift_held = _shift_held_in_current_event()
+        per_row = self._max_per_row()
 
-                    def _worker():
-                        try:
-                            if shift_held:
-                                with actions.force_copy_mode():
-                                    p.execute(text_snapshot)
-                            else:
+        def make_handler(p):
+            def _on_click(_btn):
+                # Snapshot text at click time + run on a worker thread so
+                # blocking handlers (network, subprocess, xdotool) don't
+                # freeze the GTK main loop.
+                text_snapshot = self._current_text
+                plugin_name = p.name
+                # Read the modifier state on the GTK event that
+                # triggered this click. Shift means 'copy the
+                # result instead of pasting it back' (PopClip
+                # convention) - relevant when the plugin uses
+                # actions.replace_selection() for an in-place
+                # transform. Plugins that don't paste are
+                # unaffected by the flag.
+                shift_held = _shift_held_in_current_event()
+
+                def _worker():
+                    try:
+                        if shift_held:
+                            with actions.force_copy_mode():
                                 p.execute(text_snapshot)
-                        except Exception as exc:  # noqa: BLE001
-                            print(f"[popup] plugin '{plugin_name}' failed: {exc}")
+                        else:
+                            p.execute(text_snapshot)
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[popup] plugin '{plugin_name}' failed: {exc}")
 
-                    threading.Thread(
-                        target=_worker, daemon=True, name=f"plugin-{plugin_name}",
-                    ).start()
-                    self.hide()
-                return _on_click
-            self._add_button(plugin.icon, plugin.tooltip, make_handler(plugin))
+                threading.Thread(
+                    target=_worker, daemon=True, name=f"plugin-{plugin_name}",
+                ).start()
+                self.hide()
+            return _on_click
+
+        for i, plugin in enumerate(plugins):
+            target_row = self._row1 if i < per_row else self._row2
+            self._add_button(
+                plugin.icon, plugin.tooltip, make_handler(plugin),
+                row=target_row,
+            )
+
+        if hidden_count > 0:
+            # Park the overflow chip on whichever row the last button
+            # landed on so the popup stays visually balanced.
+            chip_row = (self._row2
+                        if len(plugins) > per_row else self._row1)
+            self._add_overflow_chip(hidden_count, max_btns, row=chip_row)
 
         self._present_near(x, y)
+
+    def _add_overflow_chip(
+        self, hidden: int, cap: int, row: Gtk.Box | None = None,
+    ) -> None:
+        """Append a +N chip at the end of the bar when plugins were
+        capped. Click takes the user to Plugin Manager → Order so the
+        hidden ones can be promoted (or the cap raised). Without this
+        the missing buttons are silent - users wonder why their enabled
+        AI service doesn't show up and never connect that to a global
+        cap they set in Settings."""
+        tooltip = (
+            f"{hidden} more action{'s' if hidden != 1 else ''} hidden by the "
+            f"popup limit ({cap}). Click to reorder in Plugin Manager.")
+
+        def _on_click(_btn):
+            try:
+                subprocess.run(
+                    ["notify-send", "--hint=byte:transient:1", "-t", "4000",
+                     "-i", "dialog-information",
+                     f"{hidden} action{'s' if hidden != 1 else ''} hidden",
+                     "Open Plugin Manager → Order to reorder, or raise "
+                     "the popup limit in Settings → Appearance."],
+                    check=False,
+                )
+            except OSError:
+                pass
+            self.hide()
+            if self._on_open_plugin_order is not None:
+                try:
+                    self._on_open_plugin_order()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[popup] open plugin order failed: {exc}")
+
+        btn = Gtk.Button(label=f"+{hidden}")
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.set_tooltip_text(tooltip)
+        btn.get_style_context().add_class("linuxpop-action")
+        btn.get_style_context().add_class("linuxpop-overflow")
+        btn.connect("clicked", _on_click)
+        target = row if row is not None else self._row1
+        target.pack_start(btn, False, False, 0)
+        if target is self._row2:
+            self._row2.set_no_show_all(False)
 
     def show_actions(
         self,
@@ -387,7 +513,8 @@ class PopupWindow:
         if not items:
             return
 
-        for icon, tooltip, callback in items:
+        per_row = self._max_per_row()
+        for i, (icon, tooltip, callback) in enumerate(items):
             def make_handler(cb, name):
                 def _on_click(_btn):
                     def _worker():
@@ -400,7 +527,11 @@ class PopupWindow:
                     ).start()
                     self.hide()
                 return _on_click
-            self._add_button(icon, tooltip, make_handler(callback, tooltip))
+            target_row = self._row1 if i < per_row else self._row2
+            self._add_button(
+                icon, tooltip, make_handler(callback, tooltip),
+                row=target_row,
+            )
 
         self._present_near(x, y)
 

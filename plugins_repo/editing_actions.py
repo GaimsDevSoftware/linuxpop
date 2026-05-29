@@ -53,6 +53,19 @@ def _paste(_text: str) -> None:
     _send_keys("ctrl+v")
 
 
+def _paste_and_enter(_text: str) -> None:
+    """Paste clipboard, settle, then press Return. One-button submit for
+    chat boxes, search bars, and terminal prompts where the user already
+    has the next thing they want to run on the clipboard. The settle
+    pause matters - some Electron apps (Discord, Slack, Claude desktop)
+    debounce input events; without it the Enter beats the paste's
+    committed-text state and the field submits empty."""
+    import time as _t
+    _send_keys("ctrl+v")
+    _t.sleep(0.08)
+    _send_keys("Return")
+
+
 def _backspace(_text: str) -> None:
     _send_keys("BackSpace")
 
@@ -80,6 +93,18 @@ def register(register_plugin) -> None:
         handler=_paste,
         content_types=(),
         priority=12,
+        requires_editable=True,
+    ))
+    # Paste & Enter: paste the clipboard then submit. The icon is the
+    # standard send / right-arrow glyph so the difference from plain
+    # Paste reads at a glance.
+    register_plugin(Plugin(
+        name="paste-and-enter",
+        icon="mail-send-symbolic",
+        tooltip="Paste & Enter (paste clipboard, then press Return)",
+        handler=_paste_and_enter,
+        content_types=(),
+        priority=15,
         requires_editable=True,
     ))
     # Same handler (xdotool BackSpace key) as the no-selection edit

@@ -9,6 +9,7 @@ import os
 import shutil
 import signal
 import subprocess
+import time
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -263,6 +264,7 @@ class App:
         self.popup = PopupWindow(
             initial_grace_ms=int(self.settings.get("auto_hide_initial_ms")),
             leave_grace_ms=int(self.settings.get("auto_hide_leave_ms")),
+            on_open_plugin_order=lambda: self.open_plugins(tab="order"),
         )
 
         self.min_len = int(self.settings.get("min_selection_length"))
@@ -391,9 +393,28 @@ class App:
                     )
             return _fire
 
+        def _paste_then_enter() -> None:
+            if not shutil.which("xdotool"):
+                return
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+                check=False,
+            )
+            # Brief settle so Electron / React inputs have committed
+            # the paste's text state before Enter is interpreted as
+            # "submit the current contents".
+            time.sleep(0.08)
+            subprocess.run(
+                ["xdotool", "key", "--clearmodifiers", "Return"],
+                check=False,
+            )
+
         items: list[tuple[str, str, "Callable[[], None]"]] = []
         items.append((
             "edit-paste-symbolic", "Paste", _send_keys("ctrl+v"),
+        ))
+        items.append((
+            "mail-send-symbolic", "Paste & Enter", _paste_then_enter,
         ))
         if bool(self.settings.get("clipboard_history_enabled", True)):
             items.append((
@@ -632,7 +653,7 @@ class App:
         except Exception:
             log.exception("settings dialog crashed")
 
-    def open_plugins(self) -> None:
+    def open_plugins(self, tab: str | None = None) -> None:
         log.info("opening plugin manager…")
         if self._plugin_dialog is None:
             try:
@@ -647,6 +668,9 @@ class App:
 
             self._plugin_dialog = PluginManagerDialog(on_changed=on_changed)
         try:
+            self._plugin_dialog.show(tab=tab)
+        except TypeError:
+            # Older PluginManagerDialog signature without the tab arg.
             self._plugin_dialog.show()
         except Exception:
             log.exception("plugin manager dialog crashed")

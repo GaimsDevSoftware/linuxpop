@@ -201,8 +201,13 @@ class PluginManagerDialog:
         self._order_group: Handy.PreferencesGroup | None = None
         self._custom_group: Handy.PreferencesGroup | None = None
 
-    def show(self) -> None:
+    def show(self, tab: str | None = None) -> None:
+        """Open the Plugin Manager. tab may be one of 'available',
+        'installed', 'custom', 'order' to land on a specific page;
+        defaults to 'available'."""
         if self._window is not None and self._window.get_visible():
+            if tab:
+                self._switch_to_tab(tab)
             _force_to_front(self._window)
             return
 
@@ -267,7 +272,31 @@ class PluginManagerDialog:
         # description subtitles wrap rather than getting ellipsised.
         _unwrap_subtitle_labels(win)
         self._window = win
+        # Remember the pages we created so we can switch tabs later.
+        self._pages_by_tab = {
+            "available": catalog_page,
+            "installed": installed_page,
+            "custom": custom_page,
+            "order": order_page,
+        }
+        if tab:
+            self._switch_to_tab(tab)
         _force_to_front(win)
+
+    def _switch_to_tab(self, tab: str) -> None:
+        """Activate one of the PreferencesWindow's tabs by name. Names
+        match the keys of _pages_by_tab. No-op for unknown tabs."""
+        if not hasattr(self, "_pages_by_tab"):
+            return
+        page = self._pages_by_tab.get(tab)
+        if page is None or self._window is None:
+            return
+        try:
+            self._window.set_visible_child(page)
+        except Exception:
+            # libhandy versions differ on the public API for tab switching;
+            # silently degrade rather than crashing the popup overflow.
+            pass
 
     def _on_destroy(self, *_):
         self._window = None

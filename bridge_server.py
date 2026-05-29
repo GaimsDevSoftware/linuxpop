@@ -33,6 +33,10 @@ MAX_QUEUE = 32  # prevent unbounded growth if the userscript never consumes
 # Each entry: uuid -> (text, expires_at, service, submit)
 _queue: dict[str, tuple[str, float, str, bool]] = {}
 _queue_lock = threading.Lock()
+# Monotonic timestamp of the most recent userscript ping. Set by the
+# userscript on first load after install via GET /installed; consumed
+# by Settings to flip the install row to "installed".
+_userscript_installed_at: float | None = None
 
 
 def _gc_queue() -> None:
@@ -111,10 +115,29 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._json(HTTPStatus.OK, {"ok": True, "version": 1})
             return
-        if self.path == "/userscript.js":
+        # Tampermonkey / Violentmonkey only intercept URLs ending in
+        # `.user.js` (with the literal dot before "user"). Serve the
+        # canonical path at /linuxpop.user.js so the install prompt
+        # actually fires. The old /userscript.js path remains as a
+        # convenience-redirect for anyone copy-pasting from older docs.
+        if self.path == "/linuxpop.user.js" or self.path == "/userscript.js":
             body = _build_userscript(self.server.server_address[1])
             self._text(HTTPStatus.OK, body,
-                       content_type="application/javascript; charset=utf-8")
+                       content_type="text/javascript; charset=utf-8")
+            return
+        if self.path == "/installed":
+            # Userscript pings this once on first run after install so
+            # Settings can flip from "Install userscript" -> ✓.
+            global _userscript_installed_at
+            _userscript_installed_at = time.monotonic()
+            self._json(HTTPStatus.OK, {"ok": True})
+            return
+        if self.path == "/installed/status":
+            ts = _userscript_installed_at
+            self._json(HTTPStatus.OK, {
+                "installed": ts is not None,
+                "seconds_ago": (time.monotonic() - ts) if ts else None,
+            })
             return
         if self.path.startswith("/prompt/"):
             token = self.path[len("/prompt/"):]
