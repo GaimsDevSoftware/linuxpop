@@ -106,9 +106,27 @@ def _cfg(key: str, default):
     return val if val is not None else default
 
 
-HISTORY_SIZE = max(1, int(_cfg("clipboard_history_size", 25)))
-CAPTURE_IMAGES = bool(_cfg("clipboard_history_images", True))
-POLL_INTERVAL = max(0.1, float(_cfg("clipboard_poll_interval", 0.6)))
+# Live setters - read on each call so slider changes / settings.json
+# edits take effect without a daemon restart. The old module-level
+# snapshot froze these at import time.
+def _history_size() -> int:
+    return max(1, int(_cfg("clipboard_history_size", 25)))
+
+
+def _capture_images() -> bool:
+    return bool(_cfg("clipboard_history_images", True))
+
+
+def _poll_interval() -> float:
+    return max(0.1, float(_cfg("clipboard_poll_interval", 0.5)))
+
+
+# Kept for backwards compat with the startup log line. These constants
+# only reflect the value at import; treat them as informational, not
+# authoritative.
+HISTORY_SIZE = _history_size()
+CAPTURE_IMAGES = _capture_images()
+POLL_INTERVAL = _poll_interval()
 
 CACHE_DIR = Path(os.path.expanduser("~/.cache/linuxpop/clipboard"))
 HISTORY_FILE = CACHE_DIR / "history.json"
@@ -227,7 +245,7 @@ def _add_entry(entry: Entry) -> None:
             if entry.kind == "image" and _history[0].image_path == entry.image_path:
                 return
         _history.insert(0, entry)
-        while len(_history) > HISTORY_SIZE:
+        while len(_history) > _history_size():
             old = _history.pop()
             if old.kind == "image" and old.image_path:
                 try:
@@ -901,7 +919,7 @@ def _sweep_orphan_images() -> None:
 def _capture_current_clipboard() -> None:
     try:
         targets = _read_clipboard_targets()
-        has_image = CAPTURE_IMAGES and any(t.startswith("image/") for t in targets)
+        has_image = _capture_images() and any(t.startswith("image/") for t in targets)
         has_text = any(t in ("UTF8_STRING", "TEXT", "STRING", "text/plain",
                               "text/plain;charset=utf-8") for t in targets)
         if has_image:
@@ -984,7 +1002,7 @@ def _watcher_loop() -> None:
 def _poll_only_loop() -> None:
     while not _watcher_stop.is_set():
         _capture_current_clipboard()
-        time.sleep(POLL_INTERVAL)
+        time.sleep(_poll_interval())
 
 
 def _start_watcher_once() -> None:

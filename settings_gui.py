@@ -621,6 +621,40 @@ class SettingsDialog:
         hk_row.add(clear)
         group.add(hk_row)
 
+        # OCR hotkey row - sits next to the popup hotkey so the two
+        # "summon something with a key chord" rows cluster together.
+        # The status subtitle changes based on whether the OCR backend
+        # is reachable (maim + tesseract), so the user knows whether
+        # the hotkey will actually do anything when pressed.
+        ocr_row = Handy.ActionRow()
+        ocr_row.set_title("Screen OCR hotkey")
+        try:
+            from screen_ocr import is_supported as _ocr_supported
+            ocr_ok, ocr_reason = _ocr_supported()
+        except Exception:
+            ocr_ok, ocr_reason = False, "screen_ocr module not available"
+        if ocr_ok:
+            ocr_row.set_subtitle(
+                "Press this anywhere to draw a rectangle on screen. "
+                "Text inside the rectangle is OCR'd by tesseract and "
+                "lands on the clipboard.")
+        else:
+            ocr_row.set_subtitle(
+                f"Setup needed - {ocr_reason}. The hotkey is saved "
+                "but won't fire until the missing tools are installed.")
+        ocr_recorder = HotkeyRecorder(
+            self._settings.get("ocr_hotkey") or "",
+            on_changed=lambda v: self._save_key("ocr_hotkey", v),
+        )
+        ocr_row.add(ocr_recorder)
+        ocr_clear = Gtk.Button.new_from_icon_name(
+            "edit-clear-symbolic", Gtk.IconSize.BUTTON)
+        ocr_clear.set_valign(Gtk.Align.CENTER)
+        ocr_clear.set_tooltip_text("Disable hotkey")
+        ocr_clear.connect("clicked", lambda *_: ocr_recorder.set_value(""))
+        ocr_row.add(ocr_clear)
+        group.add(ocr_row)
+
         # Auto-popup on selection (switch row)
         sel_row = Handy.ActionRow()
         sel_row.set_title("Auto-popup on selection")
@@ -1755,6 +1789,59 @@ class SettingsDialog:
         atspi_row.add(atspi_switch)
         atspi_row.set_activatable_widget(atspi_switch)
         group.add(atspi_row)
+
+        # ---- MCP server -----------------------------------------------
+        # Power users wiring LinuxPop into Claude Desktop / Cursor /
+        # any other MCP-aware client need the JSON snippet that points
+        # at the linuxpop-mcp launcher. One-click copy to clipboard is
+        # the friendly version of "go read the source".
+        mcp_row = Handy.ActionRow()
+        mcp_row.set_title("MCP server (advanced)")
+        # Resolve the actual on-disk path so the snippet works when
+        # LinuxPop is run from a non-standard location (e.g. a dev
+        # checkout in ~/Dokumenter/Kode-prosjekter/).
+        try:
+            import sys as _sys
+            from pathlib import Path as _P
+            _here = _P(_sys.modules["__main__"].__file__).parent.resolve()
+            _launcher = _here / "linuxpop-mcp"
+        except Exception:
+            _launcher = None
+        if _launcher and _launcher.exists():
+            mcp_row.set_subtitle(
+                f"LinuxPop ships an MCP stdio server at {_launcher}. "
+                "Copy the Claude Desktop config snippet below and paste "
+                "it into ~/.config/Claude/claude_desktop_config.json, "
+                "then restart Claude Desktop.")
+        else:
+            mcp_row.set_subtitle(
+                "LinuxPop ships an MCP stdio server. Copy the Claude "
+                "Desktop config snippet below into "
+                "~/.config/Claude/claude_desktop_config.json.")
+
+        def _on_copy_mcp_snippet(_b):
+            import json as _json
+            launcher_str = str(_launcher) if _launcher else "/path/to/linuxpop-mcp"
+            snippet = _json.dumps(
+                {"mcpServers": {"linuxpop": {"command": launcher_str}}},
+                indent=2)
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=snippet.encode("utf-8"), check=False, timeout=2.0,
+            )
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                 "-i", "edit-paste-symbolic", "LinuxPop MCP",
+                 "Snippet on clipboard. Paste into Claude Desktop's "
+                 "config and restart it."],
+                check=False,
+            )
+
+        mcp_btn = Gtk.Button(label="Copy snippet")
+        mcp_btn.set_valign(Gtk.Align.CENTER)
+        mcp_btn.connect("clicked", _on_copy_mcp_snippet)
+        mcp_row.add(mcp_btn)
+        group.add(mcp_row)
 
         # ---- Reset settings -------------------------------------------
         # Destructive: clears every key in settings.json that has a

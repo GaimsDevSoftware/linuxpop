@@ -9,8 +9,9 @@ import os
 import shutil
 import signal
 import subprocess
-import time
 import sys
+import threading
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -273,6 +274,7 @@ class App:
         self.watcher: SelectionWatcher | None = None
         self.hotkey = None
         self.clipboard_hotkey = None
+        self.ocr_hotkey = None
         # Optional global double-click watcher. Created lazily when the
         # double_click_popup_enabled setting is on - PopClip-style
         # click-in-text-field popup.
@@ -303,6 +305,7 @@ class App:
 
         self._start_hotkey()
         self._start_clipboard_hotkey()
+        self._start_ocr_hotkey()
         self._maybe_start_dblclick_watcher()
         if enable_tray:
             self._start_tray()
@@ -521,6 +524,36 @@ class App:
         self.hotkey.start()
         self._bound_hotkey = hotkey_str
         self._bound_use_polling = use_polling
+
+    def _start_ocr_hotkey(self) -> None:
+        hotkey_str = (self.settings.get("ocr_hotkey") or "").strip()
+        if not hotkey_str:
+            return
+        try:
+            from screen_ocr import is_supported
+            ok, reason = is_supported()
+            if not ok:
+                log.info("ocr hotkey not bound: %s", reason)
+                return
+        except Exception:
+            log.exception("ocr support probe failed")
+            return
+        from hotkey import Hotkey
+        use_polling = bool(self.settings.get("hotkey_use_polling", False))
+        self.ocr_hotkey = Hotkey(hotkey_str, self._on_ocr_hotkey,
+                                 use_polling=use_polling)
+        self.ocr_hotkey.start()
+        log.info("[ocr] hotkey '%s' bound (polling=%s)",
+                 hotkey_str, use_polling)
+
+    def _on_ocr_hotkey(self) -> None:
+        from screen_ocr import run_ocr_to_clipboard
+        # Capture runs on a worker thread - the daemon's main loop must
+        # stay responsive while the user is dragging the region.
+        threading.Thread(
+            target=run_ocr_to_clipboard,
+            daemon=True, name="ocr-capture",
+        ).start()
 
     def _start_clipboard_hotkey(self) -> None:
         if not bool(self.settings.get("clipboard_history_enabled", True)):

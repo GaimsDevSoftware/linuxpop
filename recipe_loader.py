@@ -22,6 +22,7 @@ import json
 import os
 import random as _random
 import shlex
+import shutil
 import subprocess
 import urllib.parse
 from pathlib import Path
@@ -40,7 +41,14 @@ _CTYPE_BY_NAME = {
     "command":    ContentType.COMMAND,
 }
 
-VALID_ACTION_TYPES = ("open_url", "run_command", "notify", "copy_transformed")
+VALID_ACTION_TYPES = (
+    "open_url", "run_command", "notify", "copy_transformed",
+    # Chain runs N sub-actions in sequence, piping the rendered output
+    # of each transform step into the next as the {text} variable.
+    # Terminal step actions (copy, paste, open_url, notify, run_command)
+    # consume the current value and stop the chain.
+    "chain",
+)
 
 
 def _mock_case(text: str) -> str:
@@ -82,16 +90,61 @@ def _apply_snippet_placeholders(text: str) -> str:
         return text
 
 
+def _safe_b64_decode(text: str) -> str:
+    """Best-effort base64 decode. Returns the original text on any
+    parse failure, so a chain step that hands it non-b64 still produces
+    a usable value."""
+    import base64 as _b64
+    try:
+        cleaned = text.strip()
+        padded = cleaned + "=" * (-len(cleaned) % 4)
+        return _b64.b64decode(padded, validate=False).decode("utf-8", "replace")
+    except Exception:
+        return text
+
+
+def _try_json_format(text: str) -> str:
+    """Pretty-print text if it parses as JSON; return original otherwise.
+    Used by the {text_json} transform - never raises so a chain step
+    that hands it non-JSON still produces a usable value."""
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return text
+    try:
+        return json.dumps(parsed, indent=2, ensure_ascii=False)
+    except Exception:
+        return text
+
+
+def _try_json_minify(text: str) -> str:
+    try:
+        parsed = json.loads(text)
+        return json.dumps(parsed, separators=(",", ":"), ensure_ascii=False)
+    except Exception:
+        return text
+
+
 def _render(template: str, text: str) -> str:
     """Substitute template variables. Unknown placeholders are left as-is."""
+    import base64 as _b64
     safe = {
-        "text":       text,
-        "text_url":   urllib.parse.quote(text, safe=""),
-        "text_shell": shlex.quote(text),
-        "text_upper": text.upper(),
-        "text_lower": text.lower(),
-        "text_strip": text.strip(),
-        "text_mock":  _mock_case(text),  # jEg eR sJeFeN - for mocking quotes
+        "text":          text,
+        "text_url":      urllib.parse.quote(text, safe=""),
+        "text_shell":    shlex.quote(text),
+        "text_upper":    text.upper(),
+        "text_lower":    text.lower(),
+        "text_strip":    text.strip(),
+        "text_mock":     _mock_case(text),  # jEg eR sJeFeN - for mocking quotes
+        # Workflow-chain transforms - safe to use anywhere a template
+        # is rendered, since each renders the current value.
+        "text_json":     _try_json_format(text),
+        "text_json_min": _try_json_minify(text),
+        "text_b64":      _b64.b64encode(text.encode("utf-8")).decode("ascii"),
+        "text_url_decode": urllib.parse.unquote(text),
+        # text_b64_decode is bytes-correct only if input was valid b64;
+        # falls back to the input if not, mirroring the json helpers.
+        "text_b64_decode": _safe_b64_decode(text),
     }
     try:
         first = template.format_map(_DefaultMissing(safe))
@@ -193,6 +246,99 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
             )
         return handler
 
+    if atype == "chain":
+        # Workflow: pipe the selection through a list of transforms,
+        # then run the last step as a terminator (copy / paste / notify /
+        # open_url / run_command). Each transform step renders its
+        # template against the *current* value (initially the selection,
+        # afterwards the previous transform's output) and re-binds the
+        # result as {text} for the next step.
+        steps = action.get("steps") or []
+        if not steps:
+            def handler(_text: str) -> None:
+                subprocess.run(
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                     "-i", "dialog-warning", "LinuxPop chain",
+                     f"{recipe.get('name', 'chain')}: no steps defined"],
+                    check=False,
+                )
+            return handler
+
+        def handler(text: str) -> None:
+            current = text
+            import logging as _logging
+            log = _logging.getLogger("linuxpop")
+            for i, step in enumerate(steps):
+                stype = (step.get("type") or "transform").strip()
+                stemplate = step.get("template", "{text}")
+                if stype == "transform":
+                    current = _render(stemplate, current)
+                    log.info("[chain] %s step %d transform -> %d chars",
+                             recipe.get("name"), i, len(current))
+                    continue
+                # Terminal steps: consume `current`, then stop.
+                rendered = _render(stemplate, current) if stemplate else current
+                if stype == "copy":
+                    subprocess.run(
+                        ["xclip", "-selection", "clipboard"],
+                        input=current.encode("utf-8"), check=False, timeout=2.0,
+                    )
+                    subprocess.run(
+                        ["notify-send", "--hint=byte:transient:1", "-t", "2500",
+                         "-i", icon, title or "Copied", current[:200]],
+                        check=False,
+                    )
+                elif stype == "paste":
+                    # Put text on clipboard, then send Ctrl+V to whichever
+                    # window currently holds focus. Same pattern the
+                    # editing_actions plugin uses.
+                    subprocess.run(
+                        ["xclip", "-selection", "clipboard"],
+                        input=current.encode("utf-8"), check=False, timeout=2.0,
+                    )
+                    import time as _t
+                    _t.sleep(0.05)
+                    if shutil.which("xdotool"):
+                        subprocess.run(
+                            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
+                            check=False,
+                        )
+                elif stype == "notify":
+                    subprocess.run(
+                        ["notify-send", "--hint=byte:transient:1", "-t", "4000",
+                         "-i", icon, title or "Chain", (rendered or current)[:600]],
+                        check=False,
+                    )
+                elif stype == "open_url":
+                    url = (rendered or current).strip()
+                    try:
+                        subprocess.Popen(["xdg-open", url], start_new_session=True)
+                    except FileNotFoundError:
+                        log.warning("[chain] xdg-open missing for step %d", i)
+                elif stype == "run_command":
+                    cmd = rendered or current
+                    try:
+                        subprocess.Popen(["bash", "-c", cmd], start_new_session=True)
+                    except OSError as exc:
+                        log.warning("[chain] run_command failed: %s", exc)
+                else:
+                    log.warning("[chain] unknown step type %r in %s",
+                                stype, recipe.get("name"))
+                # Any terminal step ends the chain.
+                return
+            # If we fell off the loop with only transforms, push the
+            # final value onto the clipboard as a sensible default.
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=current.encode("utf-8"), check=False, timeout=2.0,
+            )
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "2500",
+                 "-i", icon, title or "Chain", current[:200]],
+                check=False,
+            )
+        return handler
+
     # Unknown type - visible no-op so the popup button still appears
     def handler(text: str) -> None:
         print(f"[recipe] unknown action type for {recipe.get('name')!r}: {atype!r}")
@@ -220,9 +366,32 @@ def validate(recipe: dict) -> list[str]:
     atype = action.get("type")
     if atype not in VALID_ACTION_TYPES:
         errors.append(f"action.type must be one of {VALID_ACTION_TYPES}")
-    template = action.get("template", "")
-    if not template:
-        errors.append("action.template is required")
+    # Chain actions use `steps` instead of `template`; every other
+    # action type still needs a top-level template to render.
+    if atype == "chain":
+        steps = action.get("steps")
+        if not isinstance(steps, list) or not steps:
+            errors.append("chain.steps must be a non-empty list")
+        else:
+            valid_step_types = {
+                "transform", "copy", "paste", "notify",
+                "open_url", "run_command",
+            }
+            for i, step in enumerate(steps):
+                if not isinstance(step, dict):
+                    errors.append(f"chain.steps[{i}] must be an object")
+                    continue
+                stype = step.get("type", "transform")
+                if stype not in valid_step_types:
+                    errors.append(
+                        f"chain.steps[{i}].type {stype!r} not in "
+                        f"{sorted(valid_step_types)}")
+                if stype == "transform" and not step.get("template"):
+                    errors.append(
+                        f"chain.steps[{i}] (transform) needs a template")
+    else:
+        if not action.get("template", ""):
+            errors.append("action.template is required")
     return errors
 
 
