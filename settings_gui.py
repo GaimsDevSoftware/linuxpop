@@ -445,7 +445,7 @@ class SettingsDialog:
         win = Handy.PreferencesWindow()
         win.set_title("LinuxPop")
         win.set_search_enabled(False)
-        win.set_default_size(560, 600)
+        win.set_default_size(720, 640)
         win.set_position(Gtk.WindowPosition.CENTER)
         win.set_icon_name("linuxpop")
         win.set_modal(False)
@@ -1187,12 +1187,23 @@ class SettingsDialog:
         #              own key. Most reliable for those who already pay
         #              per call. Falls back to browser per service
         #              without a key.
+        # "How to send" picker. ActionRow puts the combo on the right of
+        # the title in a fixed-width column - long combo labels (e.g.
+        # "Browser + userscript bridge (reliable on Claude/Gemini)")
+        # ate into the title's space and wrapped "How to send the text"
+        # onto two lines at any reasonable window width. Switching to a
+        # vertical layout where the combo gets the full row width fixes
+        # both: title and subtitle stack at top, combo spans below.
         method_row = Handy.ActionRow()
         method_row.set_title("How to send the text")
         method_row.set_subtitle(
             "Where AI buttons deliver your selection.")
+        method_row.set_selectable(False)
+        method_row.set_activatable(False)
         method_combo = Gtk.ComboBoxText()
-        method_combo.set_valign(Gtk.Align.CENTER)
+        method_combo.set_hexpand(True)
+        method_combo.set_margin_top(2)
+        method_combo.set_margin_bottom(2)
         for key, label in [
             ("browser",    "Browser - open chat website (no setup)"),
             ("userscript", "Browser + userscript bridge (reliable on Claude/Gemini)"),
@@ -1208,9 +1219,15 @@ class SettingsDialog:
                 _refresh_method_visibility(),
             ),
         )
-        method_row.add(method_combo)
-        method_row.set_activatable_widget(method_combo)
         group.add(method_row)
+        # Combo lives in its own ActionRow underneath so it spans full
+        # width. set_activatable_widget on this row lets clicks open the
+        # dropdown directly.
+        method_combo_row = Handy.ActionRow()
+        method_combo_row.set_selectable(False)
+        method_combo_row.add(method_combo)
+        method_combo_row.set_activatable_widget(method_combo)
+        group.add(method_combo_row)
 
         # Longer explanation as its own row underneath. Handy.ActionRow
         # crushes long subtitles into a narrow column when there's a
