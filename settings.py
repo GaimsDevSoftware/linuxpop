@@ -253,14 +253,16 @@ DEFAULTS: dict[str, Any] = {
     # X selection events for accidental clicks. The hotkey always
     # ignores this filter; see main.py _start_watcher.
     "min_selection_length_enabled": False,
-    # AT-SPI focus-event listener (commit 516a70d). Lets us tell apart
-    # 'cursor in chat input' from 'cursor in chat history' inside
-    # Electron apps where the synchronous AT-SPI tree-walk dead-ends.
-    # Off by default since the long-lived listener registration was
-    # correlated with a Cinnamon segfault on 2026-05-25 - xapp-sn-watcher
-    # threw ATK_IS_STATE_SET assertions immediately after we registered,
-    # then cinnamon dereferenced a freed GObject and crashed the panel.
-    # See knowledge/linuxpop.md for the crash log + timeline.
+    # AT-SPI focus-event listener. Lets us tell apart 'cursor in chat
+    # input' from 'cursor in chat history' inside Electron apps where
+    # the synchronous AT-SPI tree-walk dead-ends. Removed from the
+    # Settings UI 2026-05-29 because the modifier+double-click path
+    # covers the main use case and AT-SPI was correlated with a
+    # Cinnamon panel segfault on 2026-05-25 (xapp-sn-watcher threw
+    # ATK_IS_STATE_SET assertions, cinnamon dereferenced a freed
+    # GObject and crashed the panel - see knowledge/linuxpop.md).
+    # Stays here as a hidden settings.json knob for the rare user who
+    # explicitly wants AT-SPI back on. Default off.
     "editable_atspi_listener_enabled": False,
     # If True, show the one-time welcome dialog on first run. Set to False
     # to skip it (mostly useful for screencasts / CI testing).
