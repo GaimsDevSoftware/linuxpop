@@ -974,11 +974,7 @@ class SettingsDialog:
         method_row = Handy.ActionRow()
         method_row.set_title("How to send the text")
         method_row.set_subtitle(
-            "Pick the method that fits how you use AI services. You "
-            "can switch any time - changes take effect on the next "
-            "click. Methods that need extra setup (CLI install, API "
-            "key) fall back to the browser per-service if the setup "
-            "isn't done.")
+            "Where AI buttons deliver your selection.")
         method_combo = Gtk.ComboBoxText()
         method_combo.set_valign(Gtk.Align.CENTER)
         for key, label in [
@@ -1001,27 +997,60 @@ class SettingsDialog:
         method_row.set_activatable_widget(method_combo)
         group.add(method_row)
 
+        # Longer explanation as its own row underneath. Handy.ActionRow
+        # crushes long subtitles into a narrow column when there's a
+        # widget on the right; pulling the paragraph out of the subtitle
+        # lets it span the full row width.
+        method_hint_row = Handy.ActionRow()
+        method_hint_row.set_selectable(False)
+        method_hint_row.set_activatable(False)
+        method_hint_label = Gtk.Label(
+            label=(
+                "Switch any time - changes apply on the next click. "
+                "Methods that need extra setup (CLI install, API key) "
+                "fall back to the browser per-service when the setup "
+                "isn't there yet."),
+            xalign=0)
+        method_hint_label.set_line_wrap(True)
+        method_hint_label.set_max_width_chars(64)
+        method_hint_label.get_style_context().add_class("dim-label")
+        method_hint_label.set_margin_top(2)
+        method_hint_label.set_margin_bottom(2)
+        method_hint_row.add(method_hint_label)
+        group.add(method_hint_row)
+
         # ---- CLI status / install panel (visible in cli mode) ----------
         cli_status_row = Handy.ActionRow()
         cli_status_row.set_title("Desktop CLI status")
 
+        # spec: (label, binary_names, install_url, login_cmd, blurb, icon)
+        # binary_names is a tuple checked in order - detection succeeds
+        # on the first that resolves on PATH. Lets us handle CLI rebrands
+        # (Google: agy -> antigravity -> gemini) without false negatives
+        # for users still on an older name.
+        # login_cmd is what we run in a terminal when the user clicks
+        # "Sign in" - each CLI has slightly different login conventions.
         cli_specs = [
-            ("Claude",  "claude",
+            ("Claude",  ("claude",),
              "https://claude.ai/install.sh",
+             "claude /login",
              "Anthropic Claude Code. Uses your Claude.ai login (Pro/Max).",
              "linuxpop-claude"),
-            ("ChatGPT", "codex",
+            ("ChatGPT", ("codex",),
              "https://chatgpt.com/codex/install.sh",
+             "codex login",
              "OpenAI Codex CLI. Needs ChatGPT Plus or higher.",
              "linuxpop-chatgpt"),
-            ("Gemini",  "antigravity",
-             None,
-             "Google Antigravity. Install from "
-             "codelabs.developers.google.com/getting-started-google-antigravity",
+            ("Gemini",  ("agy", "antigravity", "gemini"),
+             "https://antigravity.google/cli/install.sh",
+             "agy",
+             "Google Antigravity (binary 'agy', formerly 'antigravity' / "
+             "'gemini'). Free quota with any Google account; Pro/Ultra "
+             "gets higher rate-limits.",
              "linuxpop-gemini"),
         ]
         cli_install_rows: list[Handy.ActionRow] = []
-        for label, cmd, install_url, blurb, icon_name in cli_specs:
+        for label, cmd_names, install_url, login_cmd, blurb, icon_name in cli_specs:
             row = Handy.ActionRow()
             row.set_title(f"{label} CLI")
             try:
@@ -1031,24 +1060,45 @@ class SettingsDialog:
                 row.add_prefix(img)
             except Exception:
                 pass
-            installed = shutil.which(cmd) is not None
+            installed_path = None
+            for name in cmd_names:
+                p = shutil.which(name)
+                if p:
+                    installed_path = p
+                    break
+            installed = installed_path is not None
+            primary_cmd = cmd_names[0]
             if installed:
-                row.set_subtitle(f"Installed at {shutil.which(cmd)}. {blurb}")
+                row.set_subtitle(f"Installed at {installed_path}. {blurb}")
             else:
                 row.set_subtitle(f"Not installed. {blurb}")
+            # Buttons cluster: [Install] [Sign in] [check]. The buttons
+            # we add depend on state: not-installed shows Install (when
+            # there's an install URL); installed always shows Sign in
+            # plus a green check.
+            btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            btn_box.set_valign(Gtk.Align.CENTER)
             if install_url and not installed:
-                btn = Gtk.Button(label="Install in background")
-                btn.set_valign(Gtk.Align.CENTER)
-                btn.connect(
+                install_btn = Gtk.Button(label="Install in background")
+                install_btn.connect(
                     "clicked",
-                    lambda _b, lab=label, url=install_url, r=row, c=cmd:
+                    lambda _b, lab=label, url=install_url, r=row, c=primary_cmd:
                         self._on_install_cli(lab, url, r, c))
-                row.add(btn)
-            elif installed:
+                btn_box.pack_start(install_btn, False, False, 0)
+            if installed:
+                signin_btn = Gtk.Button(label="Sign in")
+                signin_btn.set_tooltip_text(
+                    f"Open a terminal and run `{login_cmd}`. "
+                    "Finish the login flow in the browser, then come back.")
+                signin_btn.connect(
+                    "clicked",
+                    lambda _b, lab=label, lc=login_cmd:
+                        self._on_signin_cli(lab, lc))
+                btn_box.pack_start(signin_btn, False, False, 0)
                 check = Gtk.Image.new_from_icon_name(
                     "emblem-ok-symbolic", Gtk.IconSize.BUTTON)
-                check.set_valign(Gtk.Align.CENTER)
-                row.add(check)
+                btn_box.pack_start(check, False, False, 0)
+            row.add(btn_box)
             cli_install_rows.append(row)
             group.add(row)
 
@@ -1214,6 +1264,48 @@ class SettingsDialog:
             row.set_activatable_widget(sw)
             group.add(row)
 
+        # ---- Per-service overrides (advanced, collapsed by default) ----
+        # Most users pick one global method and stick with it. Power users
+        # want Claude on CLI (their Pro sub) while keeping Gemini on the
+        # userscript bridge (Google has no free CLI tier). Hidden behind
+        # an expander so the casual UI stays clean.
+        override_expander = Handy.ExpanderRow()
+        override_expander.set_title("Per-service method (advanced)")
+        override_expander.set_subtitle(
+            "Override the global send method for individual services. "
+            "Useful when you have a CLI installed for one but not others.")
+        override_options = [
+            ("",           "Use default (global method)"),
+            ("browser",    "Browser - open chat website"),
+            ("userscript", "Browser + userscript bridge"),
+            ("cli",        "Desktop CLI"),
+            ("api",        "API key"),
+        ]
+        for key, label, icon_name, _host in services:
+            sub_row = Handy.ActionRow()
+            sub_row.set_title(label)
+            try:
+                img = Gtk.Image.new_from_icon_name(
+                    icon_name, Gtk.IconSize.LARGE_TOOLBAR)
+                img.set_pixel_size(22)
+                sub_row.add_prefix(img)
+            except Exception:
+                pass
+            combo = Gtk.ComboBoxText()
+            combo.set_valign(Gtk.Align.CENTER)
+            for opt_key, opt_label in override_options:
+                combo.append(opt_key or "default", opt_label)
+            saved = (self._settings.get(f"ai_{key}_mode") or "").lower()
+            combo.set_active_id(saved if saved else "default")
+            combo.connect(
+                "changed",
+                lambda c, k=key: self._on_ai_mode_override(c, k),
+            )
+            sub_row.add(combo)
+            sub_row.set_activatable_widget(combo)
+            override_expander.add(sub_row)
+        group.add(override_expander)
+
         # ---- Auto-submit (browser mode only) ----------------------------
         submit_row = Handy.ActionRow()
         submit_row.set_title("Auto-submit after paste")
@@ -1252,6 +1344,52 @@ class SettingsDialog:
         GLib.idle_add(_refresh_method_visibility)
 
         return group
+
+    def _on_signin_cli(self, label: str, login_cmd: str) -> None:
+        """Open a terminal and run the CLI's login command. We can't run
+        the OAuth flow inside the daemon - claude / codex / antigravity
+        all spawn a local web-listener and open the user's browser, then
+        block on stdin. Terminal gives them a place to see the URL + a
+        place for the flow to land when they come back."""
+        try:
+            from actions import _find_terminal, _spawn_terminal
+        except Exception as exc:
+            self._notify(
+                "Couldn't open a terminal",
+                f"Internal import error: {exc}")
+            return
+        term = _find_terminal()
+        if term is None:
+            self._notify(
+                f"No terminal emulator found",
+                "Install gnome-terminal, konsole, xfce4-terminal, kitty "
+                "or xterm, then try again.")
+            return
+        _, prefix = term
+        wrapped = (
+            f"echo 'Running: {login_cmd}'; "
+            f"echo 'Finish the login flow in the browser, then close "
+            f"this terminal.'; echo; "
+            f"{login_cmd}; "
+            f"echo; echo 'Done. You can close this terminal.'; "
+            f"exec bash")
+        import logging
+        _log = logging.getLogger("linuxpop")
+        try:
+            _spawn_terminal([*prefix, wrapped], _log)
+        except OSError as exc:
+            self._notify(
+                f"Couldn't launch {label} sign-in",
+                f"Terminal launch failed: {exc}")
+
+    def _notify(self, title: str, body: str) -> None:
+        try:
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "4000",
+                 "-i", "dialog-information", title, body],
+                check=False)
+        except OSError:
+            pass
 
     def _on_install_cli(
         self, label: str, install_url: str,
@@ -1350,6 +1488,49 @@ class SettingsDialog:
         else:
             current = [k for k in current if k != key]
         self._save_key("ai_services", current)
+        # Auto-insert into plugin_order when the user customised one. If
+        # plugin_order is empty (priority-fallback), there's nothing to
+        # do - the AI service registers at its built-in priority. If
+        # plugin_order is set and doesn't include this service, the
+        # listed plugins eat all the popup slots before the new service
+        # ever gets a chance to render. Slot it next to existing
+        # send-to-* entries so it inherits their visual rank instead
+        # of being banished to the tail past max_popup_buttons.
+        if switch.get_active():
+            order = list(self._settings.get("plugin_order") or [])
+            plugin_name = f"send-to-{key.replace('_', '-')}"
+            if order and plugin_name not in order:
+                # Insert after the last existing send-to-* so all AI
+                # services cluster together. No siblings? Tail-append.
+                last_ai = -1
+                for i, name in enumerate(order):
+                    if name.startswith("send-to-"):
+                        last_ai = i
+                if last_ai >= 0:
+                    order.insert(last_ai + 1, plugin_name)
+                else:
+                    order.append(plugin_name)
+                self._save_key("plugin_order", order)
+
+    def _on_ai_mode_override(self, combo: Gtk.ComboBoxText, key: str) -> None:
+        """Per-service override of the global ai_send_method. 'default'
+        clears the override (back to global). Anything else writes
+        ai_<key>_mode which the dispatch in send_to_ai._send() honours."""
+        choice = combo.get_active_id() or "default"
+        setting_key = f"ai_{key}_mode"
+        if choice == "default" or not choice:
+            # Drop the key entirely so the dispatch falls back cleanly.
+            try:
+                data = self._settings._data  # type: ignore[attr-defined]
+                if setting_key in data:
+                    del data[setting_key]
+                    self._settings.save()
+            except Exception:
+                # Save an empty string as a fallback - dispatch checks
+                # for truthy, so "" reads as "no override".
+                self._save_key(setting_key, "")
+        else:
+            self._save_key(setting_key, choice)
 
     def _build_search_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()

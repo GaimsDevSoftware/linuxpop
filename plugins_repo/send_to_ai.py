@@ -440,9 +440,13 @@ _SERVICES = {
         userscript_supported=True,
         window_terms=["Gemini", "gemini.google.com"],
         priority=103,
-        # Google rebrands their CLI - try both names in detection order.
-        cli_cmd="antigravity",
-        cli_fallback_cmd="gemini",
+        # Google's CLI shipped under three names: agy (current, post-
+        # 2026-05-19 rebrand), antigravity (transient name some early
+        # blog posts used), gemini (legacy, sunsets 2026-06-18).
+        # detect_cli() walks primary -> fallback -> tertiary.
+        cli_cmd="agy",
+        cli_fallback_cmd="antigravity",
+        cli_tertiary_cmd="gemini",
         cli_args=["-p"],
         cli_api_key_env="GEMINI_API_KEY",
     ),
@@ -466,11 +470,11 @@ _SERVICES = {
 
 def detect_cli(spec: dict) -> str | None:
     """Return the executable path of the official CLI for this service,
-    or None when no install is detected. Tries the primary cmd first
-    and falls back to a secondary name (Gemini -> antigravity, then gemini)."""
-    primary = spec.get("cli_cmd")
-    fallback = spec.get("cli_fallback_cmd")
-    for name in (primary, fallback):
+    or None when no install is detected. Tries primary -> fallback ->
+    tertiary so Google's CLI (agy -> antigravity -> gemini rebrand
+    chain) keeps working across versions."""
+    for key in ("cli_cmd", "cli_fallback_cmd", "cli_tertiary_cmd"):
+        name = spec.get(key)
         if not name:
             continue
         path = shutil.which(name)
@@ -610,6 +614,47 @@ def _call_openai_api(api_key: str, prompt: str) -> str:
     return (choices[0].get("message") or {}).get("content", "").strip() or "(empty reply)"
 
 
+# Map CLI binary -> the command the user runs to (re-)authenticate.
+# The CLIs all use `<bin> /login` or `<bin> login` style, but they
+# differ slightly. For Google's `agy`, just running the binary opens
+# the auth wizard - there's no separate login subcommand.
+_CLI_LOGIN_HINTS = {
+    "claude":      "claude /login",
+    "codex":       "codex login",
+    "agy":         "agy",
+    "antigravity": "antigravity",
+    "gemini":      "gemini auth login",
+}
+
+
+def _humanize_cli_error(service: str, cli_path: str, raw: str) -> str | None:
+    """If the CLI's output looks like an auth failure (401, 'authenticate',
+    'login required', expired token), return a friendly explanation that
+    tells the user exactly which command to run. Returns None if the
+    output doesn't match a known failure shape, so the caller falls
+    back to the raw reply."""
+    import os
+    needle = raw.lower()
+    auth_signal = any(p in needle for p in (
+        "401", "unauthorized", "invalid authentication",
+        "authentication credentials", "expired", "please login",
+        "please log in", "not logged in", "login required",
+        "credentials are invalid", "auth failed",
+    ))
+    if not auth_signal:
+        return None
+    bin_name = os.path.basename(cli_path)
+    login_cmd = _CLI_LOGIN_HINTS.get(bin_name, f"{bin_name} login")
+    return (
+        f"{service} can't sign in.\n\n"
+        f"Your {bin_name} CLI session has expired or never logged in. "
+        f"Run this in a terminal once, finish the login flow, then try "
+        f"the LinuxPop button again:\n\n"
+        f"    {login_cmd}\n\n"
+        f"-- raw error from {bin_name} --\n{raw}"
+    )
+
+
 def _show_response_dialog_async(service: str, args: list[str]) -> None:
     """Run the CLI in a worker thread and stream output into a dialog.
     The dialog opens immediately with a spinner so the user sees that
@@ -678,7 +723,10 @@ def _show_response_dialog_async(service: str, args: list[str]) -> None:
                 result = subprocess.run(
                     args, capture_output=True, text=True, timeout=180,
                 )
-                reply = (result.stdout or "").rstrip()
+                raw = ((result.stdout or "") + "\n"
+                       + (result.stderr or "")).rstrip()
+                reply = _humanize_cli_error(service, args[0], raw) \
+                    or (result.stdout or "").rstrip()
                 if not reply and result.stderr:
                     reply = f"[CLI error]\n{result.stderr.rstrip()}"
                 if not reply:
@@ -973,6 +1021,39 @@ def register(register_plugin) -> None:
         enabled = get_settings().get("ai_services", list(_SERVICES.keys())) or []
     except Exception:
         enabled = list(_SERVICES.keys())
+
+    # Backfill plugin_order with currently-enabled AI services that the
+    # user toggled on AFTER customising their order. Without this, those
+    # services land past max_popup_buttons and the user wonders why their
+    # ChatGPT/Gemini/Perplexity button never shows up. Idempotent: only
+    # touches services missing from the order.
+    try:
+        from settings import get_settings as _gs
+        s = _gs()
+        order = list(s.get("plugin_order") or [])
+        if order:
+            last_ai = -1
+            for i, n in enumerate(order):
+                if n.startswith("send-to-"):
+                    last_ai = i
+            changed = False
+            for k in enabled:
+                spec = _SERVICES.get(k)
+                if not spec:
+                    continue
+                if spec["name"] not in order:
+                    if last_ai >= 0:
+                        last_ai += 1
+                        order.insert(last_ai, spec["name"])
+                    else:
+                        order.append(spec["name"])
+                        last_ai = len(order) - 1
+                    changed = True
+            if changed:
+                s.set("plugin_order", order)
+                s.save()
+    except Exception:
+        pass
 
     for key in enabled:
         spec = _SERVICES.get(key)
