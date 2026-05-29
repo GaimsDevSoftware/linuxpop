@@ -53,17 +53,65 @@ def _paste(_text: str) -> None:
     _send_keys("ctrl+v")
 
 
+# WM_CLASS substrings of apps where pressing plain Return inserts a
+# newline instead of submitting. For those, Paste & Enter sends
+# Ctrl+Return (or Ctrl+Shift+Return for Discord's "send" binding).
+_NEWLINE_ENTER_CLASSES = (
+    "slack",         # Slack desktop and web client (chrome-app)
+    "discord",       # Discord desktop
+    "ms-teams",      # Microsoft Teams
+    "teams-for-linux",
+    "element",       # Element (Matrix client) - shift+enter newline
+    "thunderbird",   # Compose window
+)
+
+
+def _submit_keystroke_for_focus() -> str:
+    """Probe the focused window's WM_CLASS and decide whether plain
+    Return submits, or whether we need Ctrl+Return. Default is plain
+    Return - it's the right answer for terminals, search bars,
+    address bars, Claude/ChatGPT/Gemini web, single-line chat boxes."""
+    if not shutil.which("xdotool"):
+        return "Return"
+    try:
+        out = subprocess.run(
+            ["xdotool", "getactivewindow"],
+            capture_output=True, text=True, timeout=0.5,
+        )
+        wid = (out.stdout or "").strip()
+        if not wid:
+            return "Return"
+    except (OSError, subprocess.SubprocessError):
+        return "Return"
+    if not shutil.which("xprop"):
+        return "Return"
+    try:
+        out = subprocess.run(
+            ["xprop", "-id", wid, "WM_CLASS"],
+            capture_output=True, text=True, timeout=0.5,
+        )
+        wm_class = (out.stdout or "").lower()
+    except (OSError, subprocess.SubprocessError):
+        return "Return"
+    for needle in _NEWLINE_ENTER_CLASSES:
+        if needle in wm_class:
+            return "ctrl+Return"
+    return "Return"
+
+
 def _paste_and_enter(_text: str) -> None:
-    """Paste clipboard, settle, then press Return. One-button submit for
-    chat boxes, search bars, and terminal prompts where the user already
-    has the next thing they want to run on the clipboard. The settle
-    pause matters - some Electron apps (Discord, Slack, Claude desktop)
-    debounce input events; without it the Enter beats the paste's
-    committed-text state and the field submits empty."""
+    """Paste clipboard, settle, then submit. Picks Ctrl+Return for apps
+    where Return inserts a newline (Slack, Discord, Teams, Element,
+    Thunderbird compose) and plain Return everywhere else (terminals,
+    search bars, single-line chat boxes, Claude/ChatGPT/Gemini web).
+    The settle pause matters - Electron apps debounce input events;
+    without it Enter beats the paste's committed-text state and the
+    field submits empty."""
     import time as _t
+    submit_key = _submit_keystroke_for_focus()
     _send_keys("ctrl+v")
     _t.sleep(0.08)
-    _send_keys("Return")
+    _send_keys(submit_key)
 
 
 def _backspace(_text: str) -> None:

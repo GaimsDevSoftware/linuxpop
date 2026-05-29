@@ -209,6 +209,11 @@ DEFAULTS: dict[str, Any] = {
     # listed here appear first in this order; unlisted plugins fall back
     # to their built-in priority. Edit via Plugin Manager → Order tab.
     "plugin_order": [],
+    # Plugin names (Plugin.name) the user has switched off inside a
+    # bundled .py file. The plugin_loader silently drops these at
+    # register time. Lets users keep "Paste" but hide "Paste & Enter"
+    # without removing the editing_actions bundle, etc.
+    "disabled_plugins": [],
     # Which chat-AI services the send_to_ai plugin should expose as buttons.
     # Recognised: "google_ai", "claude", "chatgpt", "gemini", "perplexity".
     # Default is Google AI Search alone - it works without login or any
