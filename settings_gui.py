@@ -1828,26 +1828,13 @@ class SettingsDialog:
         poll_row.set_activatable_widget(poll_switch)
         group.add(poll_row)
 
-        atspi_row = Handy.ActionRow()
-        atspi_row.set_title("Smarter editable detection (experimental)")
-        atspi_row.set_subtitle(
-            "Listens on the system accessibility bus so the popup can "
-            "tell apart 'cursor in chat input' from 'cursor in read-only "
-            "history' inside Electron apps like Claude desktop. Off by "
-            "default - it was correlated with a Cinnamon desktop-panel "
-            "crash. The popup still works fine without it; it just "
-            "falls back to a permissive default for unknown Electron "
-            "widgets.")
-        atspi_switch = Gtk.Switch()
-        atspi_switch.set_valign(Gtk.Align.CENTER)
-        atspi_switch.set_active(
-            bool(self._settings.get("editable_atspi_listener_enabled")))
-        atspi_switch.connect(
-            "notify::active", self._on_switch,
-            "editable_atspi_listener_enabled")
-        atspi_row.add(atspi_switch)
-        atspi_row.set_activatable_widget(atspi_switch)
-        group.add(atspi_row)
+        # The "Smarter editable detection (experimental)" AT-SPI toggle
+        # used to live here. It was removed 2026-05-29 because the
+        # modifier+double-click path now covers its main use case
+        # (explicit popup-in-text-field) and AT-SPI was correlated with
+        # a Cinnamon desktop-panel crash. The `editable_atspi_listener_
+        # enabled` setting still exists in settings.py DEFAULTS for the
+        # rare power user who wants to opt back in via settings.json.
 
         # ---- MCP server -----------------------------------------------
         # Power users wiring LinuxPop into Claude Desktop / Cursor /
