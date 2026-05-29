@@ -174,12 +174,46 @@ def _sync_user_icons() -> None:
         print(f"[plugin_loader] synced user icons from {user_icons_dir}")
 
 
+# Map plugin.name -> source file basename (e.g. "editing_actions.py").
+# Populated by the file-loader so the Plugin Manager can show "which
+# bundle does this come from", and so users can disable sub-plugins
+# without removing the whole .py file.
+_SOURCE_BY_NAME: dict[str, str] = {}
+
+
 def register(plugin: Plugin) -> None:
+    """Register a plugin. Silently drops it if its name appears in the
+    `disabled_plugins` setting - lets users hide one sub-plugin from a
+    bundled .py file (e.g. "select-all" from editing_actions) without
+    deleting the whole bundle."""
+    try:
+        from settings import get_settings
+        disabled = set(get_settings().get("disabled_plugins") or [])
+    except Exception:
+        disabled = set()
+    if plugin.name in disabled:
+        return
     _PLUGINS.append(plugin)
 
 
 def all_plugins() -> List[Plugin]:
     return list(_PLUGINS)
+
+
+def source_for(name: str) -> str | None:
+    """Return the .py file that registered the plugin named `name`,
+    or None for built-ins / unknown."""
+    return _SOURCE_BY_NAME.get(name)
+
+
+def plugins_by_source() -> dict[str, list[str]]:
+    """Mapping of source-file basename to the list of plugin names it
+    registered. Used by Plugin Manager → Installed to show a bundle as
+    expandable with its sub-plugins listed underneath."""
+    out: dict[str, list[str]] = {}
+    for plugin_name, source in _SOURCE_BY_NAME.items():
+        out.setdefault(source, []).append(plugin_name)
+    return out
 
 
 def for_content_type(content_type: ContentType, text: str | None = None) -> List[Plugin]:
@@ -355,7 +389,17 @@ def _load_user_plugins() -> None:
             sys.modules[mod_name] = module
             spec.loader.exec_module(module)
             if hasattr(module, "register"):
-                module.register(register)
+                # Wrap register so we can track which source file each
+                # plugin came from - the Plugin Manager uses this to
+                # show a bundle as expandable with its sub-plugins
+                # underneath, and per-action enable/disable.
+                source_basename = path.name
+
+                def tracked_register(p, src=source_basename):
+                    _SOURCE_BY_NAME[p.name] = src
+                    return register(p)
+
+                module.register(tracked_register)
                 print(f"[plugin_loader] loaded user plugin: {path.name}")
         except Exception:
             # Roll back the half-initialised module so main.py's
@@ -370,6 +414,7 @@ def _load_user_plugins() -> None:
 def load_all() -> None:
     """Idempotent: clears existing registry and reloads everything."""
     _PLUGINS.clear()
+    _SOURCE_BY_NAME.clear()
     _install_all_icons()
     _register_builtins()
     _load_user_plugins()

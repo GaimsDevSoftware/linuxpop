@@ -444,18 +444,43 @@ class PluginManagerDialog:
             group.add(empty)
             return
         manifest_by_file = {e["file"]: e for e in _load_manifest()}
+
+        # Map source-file -> list of plugin names that file registered.
+        # When a bundle exposes more than one action (editing_actions
+        # registers cut/paste/paste-and-enter/backspace/select-all), we
+        # render the file as an expander with one switch per sub-plugin
+        # so the user can keep what they want and silence the rest.
+        try:
+            import plugin_loader as _pl
+            by_source = _pl.plugins_by_source()
+            all_plugins = {p.name: p for p in _pl.all_plugins()}
+        except Exception:
+            by_source = {}
+            all_plugins = {}
+        try:
+            from settings import get_settings as _gs
+            settings_obj = _gs()
+            disabled_names = set(settings_obj.get("disabled_plugins") or [])
+        except Exception:
+            settings_obj = None
+            disabled_names = set()
+
         for path in files:
             entry = manifest_by_file.get(path.name)
-            row = Handy.ActionRow()
+            sub_names = sorted(by_source.get(path.name, []))
+            # Two layouts: single-action bundles render as ActionRow with
+            # a Remove button on the right; multi-action bundles render
+            # as ExpanderRow with sub-rows per sub-plugin, plus Remove.
+            if len(sub_names) > 1:
+                row = Handy.ExpanderRow()
+                row.set_enable_expansion(True)
+                row.set_show_enable_switch(False)
+            else:
+                row = Handy.ActionRow()
             if entry is not None:
                 row.set_title(entry.get("title", path.name))
-                # Just the human description - the .py filename is
-                # implementation detail the user shouldn't need to see.
                 row.set_subtitle(entry.get("description", ""))
             else:
-                # User-dropped file that isn't in the catalogue: we only
-                # have the filename to identify it by, so it does appear
-                # as the title here. Strip the .py for readability.
                 row.set_title(path.stem.replace("_", " ").title())
                 row.set_subtitle("Installed by hand (not in the catalogue)")
 
@@ -464,7 +489,47 @@ class PluginManagerDialog:
             remove_btn.get_style_context().add_class("destructive-action")
             remove_btn.connect("clicked", self._on_remove_clicked, path)
             row.add(remove_btn)
+
+            if isinstance(row, Handy.ExpanderRow):
+                for sub_name in sub_names:
+                    sub_plugin = all_plugins.get(sub_name)
+                    sub_row = Handy.ActionRow()
+                    sub_row.set_title(
+                        (sub_plugin.tooltip if sub_plugin else sub_name) or sub_name)
+                    sub_row.set_subtitle(f"action: {sub_name}")
+                    sw = Gtk.Switch()
+                    sw.set_valign(Gtk.Align.CENTER)
+                    sw.set_active(sub_name not in disabled_names)
+                    sw.connect(
+                        "notify::active",
+                        self._on_subplugin_toggle, sub_name,
+                    )
+                    sub_row.add(sw)
+                    sub_row.set_activatable_widget(sw)
+                    row.add(sub_row)
             group.add(row)
+
+    def _on_subplugin_toggle(self, switch: Gtk.Switch, _param, sub_name: str) -> None:
+        try:
+            from settings import get_settings as _gs
+            settings_obj = _gs()
+            disabled = list(settings_obj.get("disabled_plugins") or [])
+        except Exception:
+            return
+        if switch.get_active():
+            disabled = [d for d in disabled if d != sub_name]
+        else:
+            if sub_name not in disabled:
+                disabled.append(sub_name)
+        settings_obj.set("disabled_plugins", disabled)
+        settings_obj.save()
+        # Trigger the on_changed callback so the daemon reloads plugins
+        # and the filter takes effect immediately.
+        if self._on_changed:
+            try:
+                self._on_changed()
+            except Exception:
+                pass
 
     def _refresh_installed_group(self) -> None:
         if self._installed_group is None:

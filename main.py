@@ -399,16 +399,29 @@ class App:
         def _paste_then_enter() -> None:
             if not shutil.which("xdotool"):
                 return
+            # Borrow the editing_actions submit-key heuristic so this
+            # entry follows the same rule as the regular Paste & Enter
+            # plugin: plain Return for terminals / search bars / chat
+            # web; Ctrl+Return for Slack / Discord / Teams / Element /
+            # Thunderbird where Return inserts a newline.
+            try:
+                import importlib
+                ea = (importlib.import_module(
+                          "linuxpop_user_editing_actions")
+                      if "linuxpop_user_editing_actions" in sys.modules
+                      else importlib.import_module("editing_actions"))
+                submit_key = ea._submit_keystroke_for_focus()
+            except Exception:
+                submit_key = "Return"
             subprocess.run(
                 ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
                 check=False,
             )
-            # Brief settle so Electron / React inputs have committed
-            # the paste's text state before Enter is interpreted as
-            # "submit the current contents".
+            # Brief settle so Electron / React inputs commit the paste's
+            # text state before the submit key is interpreted.
             time.sleep(0.08)
             subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", "Return"],
+                ["xdotool", "key", "--clearmodifiers", submit_key],
                 check=False,
             )
 
