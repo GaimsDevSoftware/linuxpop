@@ -74,28 +74,29 @@ DEFAULTS: dict[str, Any] = {
     # auto-submit (Google AI, Perplexity, ChatGPT URL mode).
     "ai_paste_auto_submit": False,
     # How the Send-to-AI buttons deliver the selection to the chat AI.
-    # "browser"    : open the chat website in your browser (URL prefill
-    #                where supported, paste-via-xdotool otherwise). No
-    #                setup needed, works without any subscription. This
-    #                is the historic default - kept as default for new
-    #                users so the buttons just work.
-    # "userscript" : same as browser, but use a Tampermonkey/Violentmonkey
-    #                userscript that talks to a local HTTP bridge
-    #                (127.0.0.1:ai_userscript_bridge_port) and fills the
-    #                editor via document.execCommand("insertText").
-    #                Reliable on Claude / Gemini / ChatGPT where
-    #                paste-via-xdotool fights React contentEditable.
-    #                Requires one-time userscript install in the browser.
-    # "cli"        : send through the official Anthropic / OpenAI / Google
-    #                CLI binary (claude, codex, antigravity). Uses your
-    #                Pro / Plus subscription. Reply appears in a LinuxPop
-    #                dialog. No browser tabs, no paste race. Requires
-    #                the CLI app installed; falls back to browser mode
-    #                per-service when it isn't.
+    # "userscript" : DEFAULT. Open the chat website in your browser; a
+    #                Tampermonkey / Violentmonkey userscript talking to
+    #                a local HTTP bridge (127.0.0.1:ai_userscript_bridge_
+    #                port) fills the editor via document.execCommand(
+    #                "insertText"). Reliable on Claude / Gemini / ChatGPT
+    #                where paste-via-xdotool fights React contentEditable.
+    #                Auto-falls-back to plain "browser" mode per-service
+    #                when the userscript isn't installed yet, so the
+    #                buttons still do something useful on first launch.
+    # "browser"    : open the chat website with the prompt prefilled in
+    #                the URL where supported (ChatGPT / Perplexity /
+    #                Google AI Search), or paste-via-xdotool otherwise
+    #                (Claude / Gemini - fragile against Electron / React).
+    #                No setup needed but unreliable on the paste path.
     # "api"        : send via REST with your own API key. Most reliable
     #                but pay-as-you-go pricing. Requires the key set
     #                below; falls back to browser mode without it.
-    "ai_send_method": "browser",
+    # CLI mode was dropped 2026-05-29: it routed to vendor coding agents
+    # (Claude Code, Codex, Antigravity) rather than the chat assistants
+    # users expected from "Ask Claude". Anthropic banned OAuth-token
+    # reuse for subscription chat in Jan 2026, closing the only viable
+    # workaround.
+    "ai_send_method": "userscript",
     # Per-service API keys for "api" send method. Stored as plain
     # text in settings.json - the user is told this in the GUI; the
     # alternative would be a system-keyring dependency we don't want
@@ -170,7 +171,12 @@ DEFAULTS: dict[str, Any] = {
     # the cap is silently dropped (NOT moved to an overflow menu -
     # raise this if you want everything visible). Stops the popup from
     # being a 25-icon bar when many plugins are installed.
-    "max_popup_buttons": 10,
+    # Cap before the popup either wraps to two rows or appends a "+N"
+    # overflow chip. Default sized to fit the typical engaged-user
+    # plugin set (12-20) across two rows without truncation. Bump it
+    # if you want every action visible regardless of how many you
+    # enable; drop it for a tighter single-row look.
+    "max_popup_buttons": 24,
     # If True (default): after the command, drop into an interactive shell so
     #   output stays visible. Close with exit/Ctrl-D/X.
     # If False: terminal closes immediately after the command exits (output lost).

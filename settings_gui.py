@@ -238,6 +238,124 @@ _MODIFIER_KEYVALS = {
 }
 
 
+def _detect_userscript_manager() -> tuple[str, str] | None:
+    """Look for a Tampermonkey / Violentmonkey / Greasemonkey install
+    in any of the common Firefox / Chrome family browser profiles on
+    Linux. Returns (manager_name, browser_label) or None when nothing
+    is found. We can't poke the browser sandbox directly, but extension
+    IDs in the profile-on-disk are stable across versions."""
+    import json
+    from pathlib import Path
+    home = Path.home()
+
+    # Firefox-family profile roots. The .config/ path is what Mint's
+    # system Firefox uses; .mozilla/ is the upstream default; the
+    # snap/flatpak paths cover sandboxed installs; Zen / LibreWolf are
+    # popular Firefox forks LinuxPop users might have.
+    firefox_roots = [
+        (home / ".config" / "mozilla" / "firefox", "Firefox"),
+        (home / ".mozilla" / "firefox", "Firefox"),
+        (home / "snap" / "firefox" / "common" / ".mozilla" / "firefox", "Firefox (Snap)"),
+        (home / ".var" / "app" / "org.mozilla.firefox" / ".mozilla" / "firefox", "Firefox (Flatpak)"),
+        (home / ".var" / "app" / "app.zen_browser.zen" / ".zen", "Zen Browser"),
+        (home / ".librewolf", "LibreWolf"),
+    ]
+    firefox_ids = {
+        "{aecec67f-0d10-4fa7-b7c7-609a2db280cf}": "Violentmonkey",
+        "firefox@tampermonkey.net":               "Tampermonkey",
+        "{e4a8a97b-f2ed-450b-b12d-ee082ba24781}": "Greasemonkey",
+    }
+    for root, label in firefox_roots:
+        if not root.is_dir():
+            continue
+        # Each profile dir contains extensions.json. Brute-force scan
+        # all immediate subdirs - typically 1-2 profiles per user.
+        for prof in root.iterdir():
+            ext_json = prof / "extensions.json"
+            if not ext_json.is_file():
+                continue
+            try:
+                data = json.loads(ext_json.read_text())
+            except Exception:
+                continue
+            for addon in data.get("addons", []):
+                aid = addon.get("id") or ""
+                if not addon.get("active", False):
+                    continue
+                name = firefox_ids.get(aid)
+                if name:
+                    return name, label
+
+    # Chrome family: each extension is a subdirectory whose name is
+    # the extension ID. We don't need to parse anything, just check
+    # that the directory exists.
+    chrome_roots = [
+        (home / ".config" / "google-chrome", "Chrome"),
+        (home / ".config" / "chromium", "Chromium"),
+        (home / ".config" / "BraveSoftware" / "Brave-Browser", "Brave"),
+        (home / ".config" / "microsoft-edge", "Edge"),
+        (home / ".config" / "vivaldi", "Vivaldi"),
+        (home / ".config" / "opera", "Opera"),
+    ]
+    chrome_ids = {
+        "dhdgffkkebhmkfjojejmpbldmpobfkfo": "Tampermonkey",
+        "jinjaccalgkegednnccohejagnlnfdag": "Violentmonkey",
+        # Tampermonkey on Edge uses the same Chromium ID generally,
+        # but its store ID differs - cover both.
+        "iikmkjmpaadaobahmlepeloendndfphd": "Tampermonkey",
+    }
+    for root, label in chrome_roots:
+        if not root.is_dir():
+            continue
+        # Profiles: "Default", "Profile 1", "Profile 2", ...
+        for profile in root.iterdir():
+            ext_root = profile / "Extensions"
+            if not ext_root.is_dir():
+                continue
+            for ext_dir in ext_root.iterdir():
+                name = chrome_ids.get(ext_dir.name)
+                if name and ext_dir.is_dir():
+                    return name, label
+
+    return None
+
+
+def _detect_default_browser_family() -> str | None:
+    """Return a coarse browser family name ('firefox', 'chrome', 'edge',
+    'brave', 'opera', 'vivaldi', 'chromium') so the userscript-manager
+    install button can deep-link to the right add-on store. Returns
+    None when we can't tell - the caller falls back to a two-button
+    chooser."""
+    try:
+        out = subprocess.run(
+            ["xdg-mime", "query", "default", "x-scheme-handler/https"],
+            capture_output=True, text=True, timeout=2.0, check=False,
+        )
+        desktop = (out.stdout or "").strip().lower()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    # Order matters: 'chromium' must check before generic 'chrome' since
+    # the chromium desktop file often contains both substrings.
+    table = [
+        ("firefox",  "firefox"),
+        ("librewolf", "firefox"),
+        ("tor-browser", "firefox"),
+        ("zen", "firefox"),
+        ("brave",    "brave"),
+        ("vivaldi",  "vivaldi"),
+        ("opera",    "opera"),
+        ("microsoft-edge", "edge"),
+        ("edge",     "edge"),
+        ("chromium", "chromium"),
+        ("google-chrome", "chrome"),
+        ("chrome",   "chrome"),
+    ]
+    for needle, family in table:
+        if needle in desktop:
+            return family
+    return None
+
+
 def _format_combo(keyval: int, state: int) -> str:
     parts = []
     if state & Gdk.ModifierType.CONTROL_MASK:
@@ -338,15 +456,20 @@ class SettingsDialog:
         page.set_icon_name("preferences-system-symbolic")
 
         # Snippets & Clipboard first - that's the core of what people use
-        # LinuxPop for. Everything else is supporting infrastructure.
+        # LinuxPop for. Activation comes second because users new to
+        # the app reach for "what's my hotkey" before anything else.
+        # AI services sits at position 3 because that's the most-edited
+        # section after the engagement curve picks up - burying it past
+        # 8 groups (the historic order) hurt discoverability.
         page.add(self._build_snippets_clipboard_group())
-        page.add(self._build_appearance_group())
         page.add(self._build_activation_group())
+        for ai_group in self._build_ai_groups():
+            page.add(ai_group)
+        page.add(self._build_appearance_group())
         page.add(self._build_timing_group())
         page.add(self._build_filter_group())
         page.add(self._build_search_group())
         page.add(self._build_terminal_group())
-        page.add(self._build_ai_group())
         page.add(self._build_advanced_group())
         # Donation entry-points live in the tray menu, the About dialog
         # and the first-run welcome - see welcome.open_support_picker.
@@ -408,16 +531,18 @@ class SettingsDialog:
         group.add(theme_row)
 
         # Popup button size: how big each action chip in the floating
-        # popup is. Clamped to [14, 48] pixels - smaller is unreadable,
-        # bigger eats too much screen.
+        # popup is. Clamped to [16, 32] pixels - under 16 the symbolic
+        # icons go muddy at every common Linux resolution; over 32 is
+        # touch-target territory mouse users don't benefit from, and it
+        # turns the popup into a screen-spanning bar.
         size_row = Handy.ActionRow()
         size_row.set_title("Popup button size")
         size_row.set_subtitle(
             "How big each action button in the popup is, in pixels. "
-            "14 is small and dense; 48 is large and easy to click.")
+            "16 is small and dense; 32 is roomy and easy to click.")
         size_adj = Gtk.Adjustment(
             value=int(self._settings.get("popup_button_size", 22) or 22),
-            lower=14, upper=48, step_increment=1, page_increment=4,
+            lower=16, upper=32, step_increment=1, page_increment=4,
         )
         size_spin = Gtk.SpinButton()
         size_spin.set_valign(Gtk.Align.CENTER)
@@ -437,6 +562,34 @@ class SettingsDialog:
         size_row.add(size_spin)
         size_row.set_activatable_widget(size_spin)
         group.add(size_row)
+
+        # Max buttons per popup: how many actions can show before the
+        # popup wraps to a second row and (past 2 rows) drops to a
+        # "+N" overflow chip. Pairs with popup_button_size to govern
+        # popup density end-to-end. Range starts at 4 (anything less
+        # makes the popup feel broken) and tops out at 40 (point of
+        # diminishing returns; the chip handles the rest).
+        count_row = Handy.ActionRow()
+        count_row.set_title("Maximum buttons in the popup")
+        count_row.set_subtitle(
+            "Cap on how many actions the popup shows. Extras wrap to "
+            "a second row first; beyond that, a '+N' chip lets you open "
+            "Plugin Manager to reorder. Raise this if you have lots of "
+            "plugins enabled and want them all visible.")
+        count_adj = Gtk.Adjustment(
+            value=int(self._settings.get("max_popup_buttons", 24) or 24),
+            lower=4, upper=40, step_increment=1, page_increment=4,
+        )
+        count_spin = Gtk.SpinButton()
+        count_spin.set_valign(Gtk.Align.CENTER)
+        count_spin.set_adjustment(count_adj)
+        count_spin.set_numeric(True)
+        count_spin.connect(
+            "value-changed",
+            lambda spin: self._save_key("max_popup_buttons", int(spin.get_value())))
+        count_row.add(count_spin)
+        count_row.set_activatable_widget(count_spin)
+        group.add(count_row)
 
         return group
 
@@ -945,13 +1098,42 @@ class SettingsDialog:
         group.add(block_row)
         return group
 
-    def _build_ai_group(self) -> Handy.PreferencesGroup:
+    def _build_ai_groups(self) -> list[Handy.PreferencesGroup]:
+        """Build the AI-services section as several PreferencesGroups
+        instead of one long flat list. Each conditional block (browser-
+        only explainer, userscript bridge, API keys) becomes its own
+        group so it reads as a separate card with its own heading; the
+        whole card hides when the matching send method isn't active.
+
+        Returned groups, in order they should be added to the page:
+          1. main      - method picker + service toggles + overrides
+          2. browser   - browser-mode explainer (conditional)
+          3. userscript- bridge status + manager install (conditional)
+          4. api       - API key entries (conditional)
+        """
         group = Handy.PreferencesGroup()
         group.set_title("AI services")
         group.set_description(
             "Which chat-AI buttons the popup shows, and how they "
             "deliver text. Toggle off any service you don't use."
         )
+        # The conditional sub-cards. Each carries its own title so it
+        # reads as a self-contained block rather than free-floating
+        # rows under the main heading.
+        browser_group = Handy.PreferencesGroup()
+        browser_group.set_title("Browser mode")
+        browser_group.set_description(
+            "How the plain Browser option behaves per service.")
+        userscript_group = Handy.PreferencesGroup()
+        userscript_group.set_title("Userscript bridge")
+        userscript_group.set_description(
+            "One-time setup that makes Claude and Gemini as reliable "
+            "as the URL-prefill services.")
+        api_group = Handy.PreferencesGroup()
+        api_group.set_title("API keys")
+        api_group.set_description(
+            "Required for API send mode. Stored as plain text - keep "
+            "the machine to yourself.")
 
         # ---- "How to send" mode picker ----------------------------------
         # Three deliberate choices, plainly worded:
@@ -980,16 +1162,15 @@ class SettingsDialog:
         for key, label in [
             ("browser",    "Browser - open chat website (no setup)"),
             ("userscript", "Browser + userscript bridge (reliable on Claude/Gemini)"),
-            ("cli",        "Desktop CLI - use your Pro/Plus subscription"),
             ("api",        "API key - use pay-as-you-go API"),
         ]:
             method_combo.append(key, label)
-        current_method = (self._settings.get("ai_send_method") or "browser").lower()
+        current_method = (self._settings.get("ai_send_method") or "userscript").lower()
         method_combo.set_active_id(current_method)
         method_combo.connect(
             "changed",
             lambda c: (
-                self._save_key("ai_send_method", c.get_active_id() or "browser"),
+                self._save_key("ai_send_method", c.get_active_id() or "userscript"),
                 _refresh_method_visibility(),
             ),
         )
@@ -1019,88 +1200,52 @@ class SettingsDialog:
         method_hint_row.add(method_hint_label)
         group.add(method_hint_row)
 
-        # ---- CLI status / install panel (visible in cli mode) ----------
-        cli_status_row = Handy.ActionRow()
-        cli_status_row.set_title("Desktop CLI status")
-
-        # spec: (label, binary_names, install_url, login_cmd, blurb, icon)
-        # binary_names is a tuple checked in order - detection succeeds
-        # on the first that resolves on PATH. Lets us handle CLI rebrands
-        # (Google: agy -> antigravity -> gemini) without false negatives
-        # for users still on an older name.
-        # login_cmd is what we run in a terminal when the user clicks
-        # "Sign in" - each CLI has slightly different login conventions.
-        cli_specs = [
-            ("Claude",  ("claude",),
-             "https://claude.ai/install.sh",
-             "claude /login",
-             "Anthropic Claude Code. Uses your Claude.ai login (Pro/Max).",
-             "linuxpop-claude"),
-            ("ChatGPT", ("codex",),
-             "https://chatgpt.com/codex/install.sh",
-             "codex login",
-             "OpenAI Codex CLI. Needs ChatGPT Plus or higher.",
-             "linuxpop-chatgpt"),
-            ("Gemini",  ("agy", "antigravity", "gemini"),
-             "https://antigravity.google/cli/install.sh",
-             "agy",
-             "Google Antigravity (binary 'agy', formerly 'antigravity' / "
-             "'gemini'). Free quota with any Google account; Pro/Ultra "
-             "gets higher rate-limits.",
-             "linuxpop-gemini"),
-        ]
+        # CLI mode was dropped 2026-05-29: it routed to vendor coding
+        # agents (Claude Code, Codex, Antigravity) rather than the
+        # conversational chat users expected from "Ask Claude", and
+        # the OAuth-token-reuse trick that would have made it work for
+        # subscription chat was banned by Anthropic in Jan 2026.
         cli_install_rows: list[Handy.ActionRow] = []
-        for label, cmd_names, install_url, login_cmd, blurb, icon_name in cli_specs:
-            row = Handy.ActionRow()
-            row.set_title(f"{label} CLI")
-            try:
-                img = Gtk.Image.new_from_icon_name(
-                    icon_name, Gtk.IconSize.LARGE_TOOLBAR)
-                img.set_pixel_size(28)
-                row.add_prefix(img)
-            except Exception:
-                pass
-            installed_path = None
-            for name in cmd_names:
-                p = shutil.which(name)
-                if p:
-                    installed_path = p
-                    break
-            installed = installed_path is not None
-            primary_cmd = cmd_names[0]
-            if installed:
-                row.set_subtitle(f"Installed at {installed_path}. {blurb}")
-            else:
-                row.set_subtitle(f"Not installed. {blurb}")
-            # Buttons cluster: [Install] [Sign in] [check]. The buttons
-            # we add depend on state: not-installed shows Install (when
-            # there's an install URL); installed always shows Sign in
-            # plus a green check.
-            btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            btn_box.set_valign(Gtk.Align.CENTER)
-            if install_url and not installed:
-                install_btn = Gtk.Button(label="Install in background")
-                install_btn.connect(
-                    "clicked",
-                    lambda _b, lab=label, url=install_url, r=row, c=primary_cmd:
-                        self._on_install_cli(lab, url, r, c))
-                btn_box.pack_start(install_btn, False, False, 0)
-            if installed:
-                signin_btn = Gtk.Button(label="Sign in")
-                signin_btn.set_tooltip_text(
-                    f"Open a terminal and run `{login_cmd}`. "
-                    "Finish the login flow in the browser, then come back.")
-                signin_btn.connect(
-                    "clicked",
-                    lambda _b, lab=label, lc=login_cmd:
-                        self._on_signin_cli(lab, lc))
-                btn_box.pack_start(signin_btn, False, False, 0)
-                check = Gtk.Image.new_from_icon_name(
-                    "emblem-ok-symbolic", Gtk.IconSize.BUTTON)
-                btn_box.pack_start(check, False, False, 0)
-            row.add(btn_box)
-            cli_install_rows.append(row)
-            group.add(row)
+
+        # ---- Browser-only explainer (visible in plain browser mode) -----
+        # When the user picks "Browser - open chat website" we want them
+        # to know exactly what they're getting: URL prefill on services
+        # that support it, fragile paste-via-xdotool everywhere else. The
+        # userscript bridge fixes both, so the row gently nudges toward
+        # the upgrade without forcing them into it.
+        browser_rows: list[Handy.ActionRow] = []
+        browser_info_row = Handy.ActionRow()
+        browser_info_row.set_selectable(False)
+        browser_info_row.set_activatable(False)
+        try:
+            br_icon = Gtk.Image.new_from_icon_name(
+                "applications-internet", Gtk.IconSize.LARGE_TOOLBAR)
+            br_icon.set_pixel_size(20)
+            browser_info_row.add_prefix(br_icon)
+        except Exception:
+            pass
+        browser_info_label = Gtk.Label(
+            label=(
+                "Plain browser mode opens the chat website with the prompt "
+                "preloaded in the URL where the service supports it - "
+                "ChatGPT, Perplexity, and Google AI Search auto-submit on "
+                "load. For Claude and Gemini there's no URL prefill, so "
+                "LinuxPop falls back to xdotool paste after the page "
+                "settles. That paste path fights React/ProseMirror and "
+                "drops keystrokes intermittently.\n\n"
+                "Switch to 'Browser + userscript bridge' above for a "
+                "one-time setup that makes Claude and Gemini just as "
+                "reliable as the others. Until then, the URL-prefill "
+                "services still work fine here."),
+            xalign=0)
+        browser_info_label.set_line_wrap(True)
+        browser_info_label.set_max_width_chars(72)
+        browser_info_label.get_style_context().add_class("dim-label")
+        browser_info_label.set_margin_top(2)
+        browser_info_label.set_margin_bottom(2)
+        browser_info_row.add(browser_info_label)
+        browser_rows.append(browser_info_row)
+        browser_group.add(browser_info_row)
 
         # ---- Userscript bridge panel (visible in userscript mode) -------
         userscript_rows: list[Handy.ActionRow] = []
@@ -1118,6 +1263,37 @@ class SettingsDialog:
 
         bridge_install_btn = Gtk.Button(label="Install userscript")
         bridge_install_btn.set_valign(Gtk.Align.CENTER)
+        # Poll the bridge's /installed/status endpoint so this label can
+        # flip to "Userscript installed ✓" once the userscript actually
+        # pings us back. The poll runs while the bridge row is visible
+        # and stops when the window closes.
+        userscript_check_ticks = {"n": 0}
+
+        def _userscript_install_poll() -> bool:
+            userscript_check_ticks["n"] += 1
+            # Stop polling after 5 minutes of nothing; user can reopen
+            # Settings to re-arm if they came back later.
+            if userscript_check_ticks["n"] > 100:
+                return False
+            try:
+                import urllib.request
+                import json as _json
+                port = int(self._settings.get(
+                    "ai_userscript_bridge_port", 8766) or 8766)
+                with urllib.request.urlopen(
+                        f"http://127.0.0.1:{port}/installed/status",
+                        timeout=1.0) as r:
+                    data = _json.loads(r.read().decode())
+                if data.get("installed"):
+                    bridge_install_btn.set_label("Userscript installed ✓")
+                    bridge_install_btn.get_style_context().add_class(
+                        "suggested-action")
+                    return False  # stop polling
+            except Exception:
+                pass
+            return True
+        # Kick the first poll immediately; subsequent ones every 3 s.
+        GLib.timeout_add(3000, _userscript_install_poll)
 
         def _bridge_status_text() -> str:
             try:
@@ -1165,7 +1341,7 @@ class SettingsDialog:
                 # uses the same number.
                 if actual_port != port:
                     self._save_key("ai_userscript_bridge_port", actual_port)
-                url = f"http://127.0.0.1:{actual_port}/userscript.js"
+                url = f"http://127.0.0.1:{actual_port}/linuxpop.user.js"
                 subprocess.Popen(
                     ["xdg-open", url],
                     start_new_session=True,
@@ -1180,23 +1356,91 @@ class SettingsDialog:
         bridge_install_btn.connect("clicked", _on_install_userscript)
         bridge_row.add(bridge_install_btn)
         userscript_rows.append(bridge_row)
-        group.add(bridge_row)
+        userscript_group.add(bridge_row)
 
         prereq_row = Handy.ActionRow()
-        prereq_row.set_title("Need a userscript manager?")
-        prereq_row.set_subtitle(
-            "Install Tampermonkey (Chrome/Edge/Brave) or Violentmonkey "
-            "(Firefox) from your browser's add-on store. Then click "
-            "Install userscript above. One-time setup.")
+        existing_manager = _detect_userscript_manager()
+        if existing_manager is not None:
+            mname, mbrowser = existing_manager
+            prereq_row.set_title(f"{mname} detected in {mbrowser}")
+            prereq_row.set_subtitle(
+                "Userscript manager is installed - you're all set. "
+                "Click 'Install userscript' above to install LinuxPop's "
+                "Send-to-AI script into it.")
+        else:
+            prereq_row.set_title("Need a userscript manager?")
+            prereq_row.set_subtitle(
+                "One-time install of Tampermonkey or Violentmonkey. The "
+                "button below opens the right add-on page in your default "
+                "browser - finish the install there, then click Install "
+                "userscript above.")
         try:
+            icon_name = ("emblem-default-symbolic"
+                         if existing_manager is not None
+                         else "system-software-install")
             img = Gtk.Image.new_from_icon_name(
-                "system-software-install", Gtk.IconSize.LARGE_TOOLBAR)
+                icon_name, Gtk.IconSize.LARGE_TOOLBAR)
             img.set_pixel_size(28)
             prereq_row.add_prefix(img)
         except Exception:
             pass
+        prereq_btn_box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        prereq_btn_box.set_valign(Gtk.Align.CENTER)
+        browser_family = _detect_default_browser_family()
+        # Per-family install URL. Firefox gets Violentmonkey because
+        # Tampermonkey's free Firefox build has been a stale fork for
+        # years; Violentmonkey is the actively-maintained option there.
+        family_to_url = {
+            "firefox":  "https://addons.mozilla.org/firefox/addon/violentmonkey/",
+            "chrome":   "https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo",
+            "chromium": "https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo",
+            "brave":    "https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo",
+            "edge":     "https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd",
+            "opera":    "https://addons.opera.com/extensions/details/tampermonkey-beta/",
+            "vivaldi":  "https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo",
+        }
+        family_label = {
+            "firefox":  "Firefox (Violentmonkey)",
+            "chrome":   "Chrome (Tampermonkey)",
+            "chromium": "Chromium (Tampermonkey)",
+            "brave":    "Brave (Tampermonkey)",
+            "edge":     "Edge (Tampermonkey)",
+            "opera":    "Opera (Tampermonkey)",
+            "vivaldi":  "Vivaldi (Tampermonkey)",
+        }
+        if existing_manager is not None:
+            check = Gtk.Image.new_from_icon_name(
+                "emblem-ok-symbolic", Gtk.IconSize.BUTTON)
+            check.set_valign(Gtk.Align.CENTER)
+            prereq_btn_box.pack_start(check, False, False, 0)
+        elif browser_family and browser_family in family_to_url:
+            install_btn = Gtk.Button(label=f"Install for {family_label[browser_family]}")
+            install_btn.set_tooltip_text(
+                f"Opens {family_to_url[browser_family]} in your default browser.")
+            install_btn.connect(
+                "clicked",
+                lambda _b, url=family_to_url[browser_family]:
+                    subprocess.Popen(["xdg-open", url], start_new_session=True))
+            prereq_btn_box.pack_start(install_btn, False, False, 0)
+        else:
+            # No default detected (or unknown family). Show two side-by-
+            # side buttons so the user can pick.
+            chrome_btn = Gtk.Button(label="For Chrome / Edge / Brave")
+            chrome_btn.connect(
+                "clicked",
+                lambda _b, url=family_to_url["chrome"]:
+                    subprocess.Popen(["xdg-open", url], start_new_session=True))
+            firefox_btn = Gtk.Button(label="For Firefox")
+            firefox_btn.connect(
+                "clicked",
+                lambda _b, url=family_to_url["firefox"]:
+                    subprocess.Popen(["xdg-open", url], start_new_session=True))
+            prereq_btn_box.pack_start(chrome_btn, False, False, 0)
+            prereq_btn_box.pack_start(firefox_btn, False, False, 0)
+        prereq_row.add(prereq_btn_box)
         userscript_rows.append(prereq_row)
-        group.add(prereq_row)
+        userscript_group.add(prereq_row)
 
         # ---- API key panel (visible in api mode) ------------------------
         api_rows: list[Handy.ActionRow] = []
@@ -1229,7 +1473,7 @@ class SettingsDialog:
                     self._save_key(k, e.get_text().strip()))
             row.add(entry)
             api_rows.append(row)
-            group.add(row)
+            api_group.add(row)
 
         # ---- Service list -----------------------------------------------
         services = [
@@ -1274,11 +1518,20 @@ class SettingsDialog:
         override_expander.set_subtitle(
             "Override the global send method for individual services. "
             "Useful when you have a CLI installed for one but not others.")
+        # NB: the red "stop-sign" glyph you may see in the right slot
+        # under some icon themes (e.g. WhiteSur) is NOT a libhandy bug.
+        # HdyExpanderRow asks for the icon "hdy-expander-arrow-symbolic"
+        # which some themes don't ship (they ship the libadwaita-prefixed
+        # "adw-expander-arrow-symbolic" instead). GTK then falls back to
+        # "image-missing", which WhiteSur renders in #da4453 red. Fix is
+        # at the theme level: symlink hdy- -> adw- in the icon theme. See
+        # ~/.claude/CLAUDE.md for the script.
+        override_expander.set_enable_expansion(True)
+        override_expander.set_show_enable_switch(False)
         override_options = [
             ("",           "Use default (global method)"),
             ("browser",    "Browser - open chat website"),
             ("userscript", "Browser + userscript bridge"),
-            ("cli",        "Desktop CLI"),
             ("api",        "API key"),
         ]
         for key, label, icon_name, _host in services:
@@ -1325,13 +1578,10 @@ class SettingsDialog:
         group.add(submit_row)
 
         def _refresh_method_visibility() -> None:
-            current = (self._settings.get("ai_send_method") or "browser").lower()
-            for r in cli_install_rows:
-                r.set_visible(current == "cli")
-            for r in api_rows:
-                r.set_visible(current == "api")
-            for r in userscript_rows:
-                r.set_visible(current == "userscript")
+            current = (self._settings.get("ai_send_method") or "userscript").lower()
+            api_group.set_visible(current == "api")
+            userscript_group.set_visible(current == "userscript")
+            browser_group.set_visible(current == "browser")
             # Auto-submit applies to both browser-paste and userscript
             # modes; the userscript respects the `submit` flag we send
             # with the prompt.
@@ -1343,142 +1593,12 @@ class SettingsDialog:
         _refresh_method_visibility()
         GLib.idle_add(_refresh_method_visibility)
 
-        return group
+        # Order matters: main first, then the conditional sub-cards in
+        # the same vertical position they'd occupy as inline rows under
+        # the main card. The browser/userscript/api groups are hidden
+        # via set_visible based on the active send method.
+        return [group, browser_group, userscript_group, api_group]
 
-    def _on_signin_cli(self, label: str, login_cmd: str) -> None:
-        """Open a terminal and run the CLI's login command. We can't run
-        the OAuth flow inside the daemon - claude / codex / antigravity
-        all spawn a local web-listener and open the user's browser, then
-        block on stdin. Terminal gives them a place to see the URL + a
-        place for the flow to land when they come back."""
-        try:
-            from actions import _find_terminal, _spawn_terminal
-        except Exception as exc:
-            self._notify(
-                "Couldn't open a terminal",
-                f"Internal import error: {exc}")
-            return
-        term = _find_terminal()
-        if term is None:
-            self._notify(
-                f"No terminal emulator found",
-                "Install gnome-terminal, konsole, xfce4-terminal, kitty "
-                "or xterm, then try again.")
-            return
-        _, prefix = term
-        wrapped = (
-            f"echo 'Running: {login_cmd}'; "
-            f"echo 'Finish the login flow in the browser, then close "
-            f"this terminal.'; echo; "
-            f"{login_cmd}; "
-            f"echo; echo 'Done. You can close this terminal.'; "
-            f"exec bash")
-        import logging
-        _log = logging.getLogger("linuxpop")
-        try:
-            _spawn_terminal([*prefix, wrapped], _log)
-        except OSError as exc:
-            self._notify(
-                f"Couldn't launch {label} sign-in",
-                f"Terminal launch failed: {exc}")
-
-    def _notify(self, title: str, body: str) -> None:
-        try:
-            subprocess.run(
-                ["notify-send", "--hint=byte:transient:1", "-t", "4000",
-                 "-i", "dialog-information", title, body],
-                check=False)
-        except OSError:
-            pass
-
-    def _on_install_cli(
-        self, label: str, install_url: str,
-        row: Handy.ActionRow, cmd: str,
-    ) -> None:
-        """Confirm + kick off a CLI installer in a background thread.
-        Status is reflected in the row's subtitle. The installer is a
-        curl|bash one-liner from the vendor - we surface the URL in
-        the confirmation dialog so the user can see what they're
-        about to run."""
-        confirm = Gtk.MessageDialog(
-            transient_for=self._window,
-            modal=True,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.NONE,
-            text=f"Install {label} CLI?",
-            secondary_text=(
-                f"LinuxPop will download and run the official installer from:\n\n"
-                f"{install_url}\n\n"
-                "It runs in the background - no terminal needed. You'll be "
-                "asked to sign in with your subscription account in your "
-                "browser the first time you use it. Continue?"
-            ),
-        )
-        confirm.add_buttons(
-            "Cancel", Gtk.ResponseType.CANCEL,
-            "Install", Gtk.ResponseType.OK,
-        )
-        ok_btn = confirm.get_widget_for_response(Gtk.ResponseType.OK)
-        if ok_btn is not None:
-            ok_btn.get_style_context().add_class("suggested-action")
-        resp = confirm.run()
-        confirm.destroy()
-        if resp != Gtk.ResponseType.OK:
-            return
-
-        row.set_subtitle(f"Installing {label} CLI - this can take a minute...")
-        spinner = Gtk.Spinner()
-        spinner.start()
-        spinner.set_valign(Gtk.Align.CENTER)
-        # Clear current buttons + add spinner. Simpler: just add spinner.
-        row.add(spinner)
-        row.show_all()
-
-        def worker() -> None:
-            try:
-                # Equivalent of: curl -fsSL <url> | bash
-                # Run in shell so the pipe works as intended.
-                proc = subprocess.run(
-                    ["bash", "-c",
-                     f"curl -fsSL {shlex.quote(install_url)} | bash"],
-                    capture_output=True, text=True, timeout=600,
-                )
-                ok = proc.returncode == 0
-                tail = (proc.stdout or "")[-400:] + (proc.stderr or "")[-400:]
-            except subprocess.TimeoutExpired:
-                ok = False
-                tail = "Installer took longer than 10 minutes - aborted."
-            except Exception as exc:
-                ok = False
-                tail = f"{exc}"
-            GLib.idle_add(_finish_install, ok, tail)
-
-        def _finish_install(ok: bool, tail: str) -> bool:
-            spinner.stop()
-            try:
-                row.remove(spinner)
-            except Exception:
-                pass
-            new_path = shutil.which(cmd)
-            if ok and new_path:
-                row.set_subtitle(
-                    f"Installed at {new_path}. Sign in by running "
-                    f"`{cmd}` in a terminal once - or just click the "
-                    f"{label} button in the popup; LinuxPop will open "
-                    "the sign-in for you.")
-                check = Gtk.Image.new_from_icon_name(
-                    "emblem-ok-symbolic", Gtk.IconSize.BUTTON)
-                check.set_valign(Gtk.Align.CENTER)
-                row.add(check)
-                row.show_all()
-            else:
-                row.set_subtitle(
-                    f"Install failed. Last output:\n{tail[-300:]}"
-                )
-            return False
-
-        threading.Thread(
-            target=worker, daemon=True, name=f"cli-install-{cmd}").start()
 
     def _on_ai_toggle(self, switch: Gtk.Switch, _param, key: str) -> None:
         current = list(self._settings.get("ai_services") or [])
@@ -1635,7 +1755,84 @@ class SettingsDialog:
         atspi_row.add(atspi_switch)
         atspi_row.set_activatable_widget(atspi_switch)
         group.add(atspi_row)
+
+        # ---- Reset settings -------------------------------------------
+        # Destructive: clears every key in settings.json that has a
+        # built-in default. Plugins, recipes, snippets, and clipboard
+        # history are kept (those are user data, not preferences). A
+        # confirmation dialog stands in the way so this can't be
+        # triggered by an accidental Enter.
+        reset_row = Handy.ActionRow()
+        reset_row.set_title("Reset settings to defaults")
+        reset_row.set_subtitle(
+            "Restores every preference (hotkeys, timing, popup look, "
+            "AI services, etc.) to its factory default. Your snippets, "
+            "clipboard history, installed plugins, and custom buttons "
+            "are kept - this only resets preferences.")
+        reset_btn = Gtk.Button(label="Reset…")
+        reset_btn.set_valign(Gtk.Align.CENTER)
+        reset_btn.get_style_context().add_class("destructive-action")
+        reset_btn.connect("clicked", self._on_reset_to_defaults)
+        reset_row.add(reset_btn)
+        group.add(reset_row)
         return group
+
+    def _on_reset_to_defaults(self, _btn: Gtk.Button) -> None:
+        from settings import DEFAULTS
+        confirm = Gtk.MessageDialog(
+            transient_for=self._window,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text="Reset all preferences to defaults?",
+            secondary_text=(
+                "Every setting in this window will go back to how "
+                "LinuxPop ships out of the box.\n\n"
+                "Kept: your snippets, clipboard history, installed "
+                "plugins, custom buttons.\n"
+                "Reset: hotkeys, timing, popup look, AI services, "
+                "blocklists, search engine, terminal behaviour.\n\n"
+                "There's no undo."
+            ),
+        )
+        confirm.add_buttons(
+            "Cancel", Gtk.ResponseType.CANCEL,
+            "Reset", Gtk.ResponseType.OK,
+        )
+        ok_btn = confirm.get_widget_for_response(Gtk.ResponseType.OK)
+        if ok_btn is not None:
+            ok_btn.get_style_context().add_class("destructive-action")
+        resp = confirm.run()
+        confirm.destroy()
+        if resp != Gtk.ResponseType.OK:
+            return
+        # Replace the singleton's data with the canonical defaults and
+        # persist. Use a fresh copy so the dict isn't aliased with the
+        # module-level DEFAULTS.
+        try:
+            self._settings._data = {**DEFAULTS}  # type: ignore[attr-defined]
+            self._settings.save()
+        except Exception as exc:
+            err = Gtk.MessageDialog(
+                transient_for=self._window, modal=True,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.CLOSE,
+                text="Couldn't reset settings",
+                secondary_text=f"{exc}")
+            err.run()
+            err.destroy()
+            return
+        # Trigger the daemon-side reload so hotkeys / watchers / etc.
+        # pick up the new state without restart, then rebuild this
+        # window so its widgets reflect what's on disk.
+        if self._on_changed is not None:
+            try:
+                self._on_changed()
+            except Exception:
+                pass
+        if self._window is not None:
+            self._window.destroy()
+        self.show()
 
     def _build_terminal_group(self) -> Handy.PreferencesGroup:
         group = Handy.PreferencesGroup()

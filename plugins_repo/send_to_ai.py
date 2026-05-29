@@ -402,11 +402,7 @@ _SERVICES = {
         paste_key="ctrl+v",      # ProseMirror-style editor; Ctrl+V is what it expects
         settle_extra=0.8,        # Claude's input mounts noticeably slower than Gemini's
         priority=101,
-        # CLI binary name to delegate to when ai_send_method="cli".
-        # `claude -p "..."` runs in non-interactive print mode.
-        cli_cmd="claude",
-        cli_args=["-p"],
-        cli_api_key_env="ANTHROPIC_API_KEY",
+        api_key_env="ANTHROPIC_API_KEY",
     ),
     "chatgpt": dict(
         name="send-to-chatgpt",
@@ -424,10 +420,7 @@ _SERVICES = {
         window_terms=["ChatGPT", "chat.openai.com", "chatgpt.com"],
         auto_submits=False,
         priority=102,
-        cli_cmd="codex",
-        # codex exec runs non-interactive with prompt as positional arg.
-        cli_args=["exec"],
-        cli_api_key_env="OPENAI_API_KEY",
+        api_key_env="OPENAI_API_KEY",
     ),
     "gemini": dict(
         name="send-to-gemini",
@@ -440,15 +433,7 @@ _SERVICES = {
         userscript_supported=True,
         window_terms=["Gemini", "gemini.google.com"],
         priority=103,
-        # Google's CLI shipped under three names: agy (current, post-
-        # 2026-05-19 rebrand), antigravity (transient name some early
-        # blog posts used), gemini (legacy, sunsets 2026-06-18).
-        # detect_cli() walks primary -> fallback -> tertiary.
-        cli_cmd="agy",
-        cli_fallback_cmd="antigravity",
-        cli_tertiary_cmd="gemini",
-        cli_args=["-p"],
-        cli_api_key_env="GEMINI_API_KEY",
+        api_key_env="GEMINI_API_KEY",
     ),
     "perplexity": dict(
         name="send-to-perplexity",
@@ -465,52 +450,6 @@ _SERVICES = {
     ),
 }
 
-
-# ---- cli mode -----------------------------------------------------------
-
-def detect_cli(spec: dict) -> str | None:
-    """Return the executable path of the official CLI for this service,
-    or None when no install is detected. Tries primary -> fallback ->
-    tertiary so Google's CLI (agy -> antigravity -> gemini rebrand
-    chain) keeps working across versions."""
-    for key in ("cli_cmd", "cli_fallback_cmd", "cli_tertiary_cmd"):
-        name = spec.get(key)
-        if not name:
-            continue
-        path = shutil.which(name)
-        if path:
-            return path
-    return None
-
-
-def _send_via_cli(service: str, spec: dict, text: str) -> None:
-    """Delegate the prompt to the service's official CLI binary (claude
-    / codex / antigravity) in print mode, then surface the reply in a
-    LinuxPop response dialog. The CLI owns auth (OAuth via the user's
-    Pro/Plus subscription), so we don't touch credentials."""
-    cli_path = detect_cli(spec)
-    if cli_path is None:
-        subprocess.run(
-            ["notify-send", "--hint=byte:transient:1", "-t", "3500",
-             "-i", "dialog-warning", f"{service}: CLI not installed",
-             "Falling back to browser. Install the CLI from "
-             "Settings > AI services for richer integration."],
-            check=False,
-        )
-        # Fall through to URL mode if available, else paste.
-        if "url_template" in spec:
-            _send_via_url(service, spec["url_template"], text,
-                          auto_submits=spec.get("auto_submits", True))
-        else:
-            _send_via_paste(
-                service, spec["url"], spec.get("window_terms", []), text,
-                paste_key=spec.get("paste_key", "ctrl+v"),
-                settle_extra=spec.get("settle_extra", 0.0),
-            )
-        return
-
-    args = [cli_path] + list(spec.get("cli_args", [])) + [text]
-    _show_response_dialog_async(service, args)
 
 
 def _send_via_api(service: str, spec: dict, text: str) -> None:
@@ -612,152 +551,6 @@ def _call_openai_api(api_key: str, prompt: str) -> str:
     if not choices:
         return "(empty reply)"
     return (choices[0].get("message") or {}).get("content", "").strip() or "(empty reply)"
-
-
-# Map CLI binary -> the command the user runs to (re-)authenticate.
-# The CLIs all use `<bin> /login` or `<bin> login` style, but they
-# differ slightly. For Google's `agy`, just running the binary opens
-# the auth wizard - there's no separate login subcommand.
-_CLI_LOGIN_HINTS = {
-    "claude":      "claude /login",
-    "codex":       "codex login",
-    "agy":         "agy",
-    "antigravity": "antigravity",
-    "gemini":      "gemini auth login",
-}
-
-
-def _humanize_cli_error(service: str, cli_path: str, raw: str) -> str | None:
-    """If the CLI's output looks like an auth failure (401, 'authenticate',
-    'login required', expired token), return a friendly explanation that
-    tells the user exactly which command to run. Returns None if the
-    output doesn't match a known failure shape, so the caller falls
-    back to the raw reply."""
-    import os
-    needle = raw.lower()
-    auth_signal = any(p in needle for p in (
-        "401", "unauthorized", "invalid authentication",
-        "authentication credentials", "expired", "please login",
-        "please log in", "not logged in", "login required",
-        "credentials are invalid", "auth failed",
-    ))
-    if not auth_signal:
-        return None
-    bin_name = os.path.basename(cli_path)
-    login_cmd = _CLI_LOGIN_HINTS.get(bin_name, f"{bin_name} login")
-    return (
-        f"{service} can't sign in.\n\n"
-        f"Your {bin_name} CLI session has expired or never logged in. "
-        f"Run this in a terminal once, finish the login flow, then try "
-        f"the LinuxPop button again:\n\n"
-        f"    {login_cmd}\n\n"
-        f"-- raw error from {bin_name} --\n{raw}"
-    )
-
-
-def _show_response_dialog_async(service: str, args: list[str]) -> None:
-    """Run the CLI in a worker thread and stream output into a dialog.
-    The dialog opens immediately with a spinner so the user sees that
-    something's happening; the reply replaces the spinner when it's
-    ready."""
-    import gi
-    gi.require_version("Gtk", "3.0")
-    from gi.repository import GLib, Gtk
-
-    def _open_dialog() -> None:
-        dlg = Gtk.Dialog(title=f"{service} - reply", flags=0)
-        dlg.set_default_size(640, 480)
-        dlg.set_icon_name("linuxpop")
-        dlg.add_button("Close", Gtk.ResponseType.CLOSE)
-        dlg.set_default_response(Gtk.ResponseType.CLOSE)
-        content = dlg.get_content_area()
-        content.set_spacing(8)
-        content.set_margin_top(10)
-        content.set_margin_bottom(10)
-        content.set_margin_start(12)
-        content.set_margin_end(12)
-
-        spinner = Gtk.Spinner()
-        spinner.start()
-        spinner_row = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        spinner_row.pack_start(spinner, False, False, 0)
-        wait_lbl = Gtk.Label(
-            label=f"Waiting for {service}...", xalign=0)
-        wait_lbl.get_style_context().add_class("dim-label")
-        spinner_row.pack_start(wait_lbl, True, True, 0)
-        content.add(spinner_row)
-
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_shadow_type(Gtk.ShadowType.IN)
-        scroll.set_hexpand(True)
-        scroll.set_vexpand(True)
-        view = Gtk.TextView()
-        view.set_editable(False)
-        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        view.get_style_context().add_class("lp-cmd-edit")
-        buf = view.get_buffer()
-        scroll.add(view)
-        content.pack_start(scroll, True, True, 0)
-
-        copy_btn = Gtk.Button(label="Copy reply")
-        copy_btn.connect(
-            "clicked",
-            lambda _b: subprocess.run(
-                ["xclip", "-selection", "clipboard"],
-                input=buf.get_text(buf.get_start_iter(),
-                                    buf.get_end_iter(),
-                                    True).encode("utf-8"),
-                check=False, timeout=2.0,
-            ),
-        )
-        copy_btn.set_sensitive(False)
-        dlg.get_action_area().pack_start(copy_btn, False, False, 0)
-        dlg.get_action_area().reorder_child(copy_btn, 0)
-
-        dlg.show_all()
-
-        def worker() -> None:
-            try:
-                result = subprocess.run(
-                    args, capture_output=True, text=True, timeout=180,
-                )
-                raw = ((result.stdout or "") + "\n"
-                       + (result.stderr or "")).rstrip()
-                reply = _humanize_cli_error(service, args[0], raw) \
-                    or (result.stdout or "").rstrip()
-                if not reply and result.stderr:
-                    reply = f"[CLI error]\n{result.stderr.rstrip()}"
-                if not reply:
-                    reply = ("(no reply)\n\nThe CLI returned empty output. "
-                             "It may need a one-time login - try running "
-                             f"`{args[0]}` in a terminal first.")
-            except subprocess.TimeoutExpired:
-                reply = f"[Timed out after 180 s waiting for {service}]"
-            except Exception as exc:
-                reply = f"[Failed to call CLI: {exc}]"
-            GLib.idle_add(_set_reply, reply)
-
-        def _set_reply(reply: str) -> bool:
-            try:
-                spinner.stop()
-                spinner_row.hide()
-                buf.set_text(reply)
-                copy_btn.set_sensitive(True)
-            except Exception:
-                pass
-            return False
-
-        threading.Thread(
-            target=worker, daemon=True, name=f"ai-cli-{service}").start()
-
-        dlg.run()
-        dlg.destroy()
-
-    GLib.idle_add(_open_dialog)
-
-
 def _show_api_response_dialog_async(
     service: str, api_key: str, prompt: str, api_call,
 ) -> None:
@@ -960,17 +753,17 @@ def _send(spec: dict):
         try:
             from settings import get_settings
             settings_obj = get_settings()
-            send_method = (settings_obj.get("ai_send_method") or "browser").lower()
+            send_method = (settings_obj.get("ai_send_method") or "userscript").lower()
             mode_override = settings_obj.get(f"ai_{service_key}_mode", None)
         except Exception:
             send_method = "browser"
             mode_override = None
 
-        # Per-service override still wins (legacy setting).
-        if mode_override:
+        # Per-service override still wins (legacy setting). The "cli"
+        # mode was dropped 2026-05-29 - if a stale override is on disk
+        # we silently fall through to the spec's native mode.
+        if mode_override and mode_override != "cli":
             mode = mode_override
-        elif send_method == "cli":
-            mode = "cli"
         elif send_method == "api":
             mode = "api"
         elif send_method == "userscript":
@@ -990,9 +783,7 @@ def _send(spec: dict):
         if mode == "userscript" and not spec.get("userscript_supported"):
             mode = spec.get("mode", "paste")
 
-        if mode == "cli":
-            _send_via_cli(spec["service"], spec, text)
-        elif mode == "api":
+        if mode == "api":
             _send_via_api(spec["service"], spec, text)
         elif mode == "userscript":
             _send_via_userscript(spec["service"], spec, text)
