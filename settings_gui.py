@@ -1223,47 +1223,94 @@ class SettingsDialog:
         #              own key. Most reliable for those who already pay
         #              per call. Falls back to browser per service
         #              without a key.
-        # "How to send" picker. ActionRow puts the combo on the right of
-        # the title in a fixed-width column - long combo labels (e.g.
-        # "Browser + userscript bridge (reliable on Claude/Gemini)")
-        # ate into the title's space and wrapped "How to send the text"
-        # onto two lines at any reasonable window width. Switching to a
-        # vertical layout where the combo gets the full row width fixes
-        # both: title and subtitle stack at top, combo spans below.
+        # "How to send" picker with explicit Apply. Without Apply the
+        # combo would auto-save on every change, which surprised the
+        # user: open Settings, scroll past, accidentally bump the
+        # combo, the daemon silently switches to a half-configured
+        # method. Apply makes the switch deliberate and a "Saved as:"
+        # line in suggested-action green confirms what's currently
+        # live - so even if the combo reads "API key" on next open
+        # (libhandy ActionRow combos sometimes default to the first
+        # entry when re-rendered), the green line tells the truth.
+        method_options = [
+            ("browser",    "Browser - open chat website (no setup)"),
+            ("userscript", "Browser + userscript bridge (reliable on Claude/Gemini)"),
+            ("api",        "API key - use pay-as-you-go API"),
+        ]
+        method_label_by_key = {k: lbl for k, lbl in method_options}
+        saved_method = (self._settings.get("ai_send_method")
+                        or "userscript").lower()
+
         method_row = Handy.ActionRow()
         method_row.set_title("How to send the text")
-        method_row.set_subtitle(
-            "Where AI buttons deliver your selection.")
+        method_row.set_subtitle("Where AI buttons deliver your selection.")
         method_row.set_selectable(False)
         method_row.set_activatable(False)
+        group.add(method_row)
+
         method_combo = Gtk.ComboBoxText()
         method_combo.set_hexpand(True)
         method_combo.set_margin_top(2)
         method_combo.set_margin_bottom(2)
-        for key, label in [
-            ("browser",    "Browser - open chat website (no setup)"),
-            ("userscript", "Browser + userscript bridge (reliable on Claude/Gemini)"),
-            ("api",        "API key - use pay-as-you-go API"),
-        ]:
+        for key, label in method_options:
             method_combo.append(key, label)
-        current_method = (self._settings.get("ai_send_method") or "userscript").lower()
-        method_combo.set_active_id(current_method)
-        method_combo.connect(
-            "changed",
-            lambda c: (
-                self._save_key("ai_send_method", c.get_active_id() or "userscript"),
-                _refresh_method_visibility(),
-            ),
-        )
-        group.add(method_row)
-        # Combo lives in its own ActionRow underneath so it spans full
-        # width. set_activatable_widget on this row lets clicks open the
-        # dropdown directly.
+        method_combo.set_active_id(saved_method)
+        # ComboBoxText sometimes lands on index 0 if set_active_id is
+        # called on a still-being-built widget; do it again on idle to
+        # ensure the persisted value wins after the row is realized.
+        GLib.idle_add(lambda: method_combo.set_active_id(saved_method))
+
         method_combo_row = Handy.ActionRow()
         method_combo_row.set_selectable(False)
         method_combo_row.add(method_combo)
         method_combo_row.set_activatable_widget(method_combo)
         group.add(method_combo_row)
+
+        # Apply / saved-state row. The label tracks the persisted value
+        # in green so the user can always see what's live; Apply only
+        # lights up when the combo is on a different value.
+        apply_row = Handy.ActionRow()
+        apply_row.set_selectable(False)
+        apply_row.set_activatable(False)
+        saved_label = Gtk.Label(xalign=0)
+        saved_label.set_line_wrap(True)
+        saved_label.set_hexpand(True)
+
+        def _saved_text(key: str) -> str:
+            label = method_label_by_key.get(key, key)
+            return f"Saved as: {label}"
+        saved_label.set_markup(
+            f"<span foreground='#22c55e'><b>{_saved_text(saved_method)}</b></span>")
+        apply_row.add(saved_label)
+
+        apply_btn = Gtk.Button(label="Apply")
+        apply_btn.set_valign(Gtk.Align.CENTER)
+        apply_btn.get_style_context().add_class("suggested-action")
+        apply_btn.set_sensitive(False)  # nothing to apply until combo changes
+        apply_row.add(apply_btn)
+        group.add(apply_row)
+
+        # Live state - track what's saved separately from what's in
+        # the combo, so Apply can compare. Closure-captured via list
+        # so the inner callbacks can mutate it.
+        saved_state = [saved_method]
+
+        def _on_combo_changed(c):
+            chosen = c.get_active_id() or saved_state[0]
+            apply_btn.set_sensitive(chosen != saved_state[0])
+
+        method_combo.connect("changed", _on_combo_changed)
+
+        def _on_apply(_b):
+            chosen = method_combo.get_active_id() or "userscript"
+            self._save_key("ai_send_method", chosen)
+            saved_state[0] = chosen
+            saved_label.set_markup(
+                f"<span foreground='#22c55e'><b>{_saved_text(chosen)}</b></span>")
+            apply_btn.set_sensitive(False)
+            _refresh_method_visibility()
+
+        apply_btn.connect("clicked", _on_apply)
 
         # Longer explanation as its own row underneath. Handy.ActionRow
         # crushes long subtitles into a narrow column when there's a
