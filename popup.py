@@ -330,6 +330,42 @@ class PopupWindow:
             # Once anything lands in row 2, allow it to show.
             self._row2.set_no_show_all(False)
 
+    def _force_all_held(self) -> bool:
+        """True if the popup_force_all_modifier setting names a modifier
+        that's currently pressed. Read at the moment show_for runs - the
+        user must hold the key from before the selection finishes until
+        the popup renders (so the modifier survives the 150 ms debounce).
+        Returning False is the safe default; misreads just give the
+        normal filtered popup."""
+        try:
+            from settings import get_settings as _gs
+            mod_name = (_gs().get("popup_force_all_modifier") or "").strip().lower()
+        except Exception:
+            return False
+        if not mod_name:
+            return False
+        if self._xdpy is None:
+            return False
+        try:
+            root = self._xdpy.screen().root
+            mask = root.query_pointer().mask
+        except Exception:
+            return False
+        # X11 mod bitmasks. Mod1Mask is Alt on essentially every modern
+        # X11 desktop; Mod4Mask is Super/Win on Cinnamon, GNOME, KDE,
+        # XFCE, MATE. The rare exception (some i3/sway setups remap)
+        # rarely runs LinuxPop anyway.
+        mod_bits = {
+            "shift":   1 << 0,    # ShiftMask
+            "ctrl":    1 << 2,    # ControlMask
+            "alt":     1 << 3,    # Mod1Mask
+            "super":   1 << 6,    # Mod4Mask
+        }
+        bit = mod_bits.get(mod_name)
+        if bit is None:
+            return False
+        return bool(mask & bit)
+
     def _max_per_row(self) -> int:
         """How many buttons fit in a single row before we wrap.
 
@@ -374,7 +410,36 @@ class PopupWindow:
         self._current_text = text
         self._clear_buttons()
 
-        plugins = plugin_loader.for_content_type(content_type, text)
+        # Force-all escape hatch: when the user is holding the configured
+        # modifier (default Alt) at the moment we render the popup, skip
+        # the classifier's content-type filter and surface every plugin
+        # that matches the text - lets the user override a misclassified
+        # selection ("Channel | Title" wrongly tagged as COMMAND, etc.)
+        # without changing settings. Editable filter still applies so
+        # Cut/Paste don't appear in read-only contexts.
+        force_all = self._force_all_held()
+        if force_all:
+            plugins = plugin_loader.all_plugins()
+            # Still keep only plugins that match this text via their
+            # matches() method - e.g. calculator filters out non-math
+            # selections by content. That's intent-preserving, not
+            # classifier-based, so it's fine to leave.
+            plugins = [p for p in plugins if p.matches(text)]
+            # Sort the same way for_content_type does so plugin_order
+            # is honoured in the expanded view too.
+            try:
+                from settings import get_settings as _gs
+                order = list(_gs().get("plugin_order") or [])
+            except Exception:
+                order = []
+            order_index = {n: i for i, n in enumerate(order)}
+            big = len(order) + 1_000_000
+            plugins.sort(key=lambda p: (
+                (0, order_index[p.name], p.priority)
+                if p.name in order_index
+                else (1, big, p.priority)))
+        else:
+            plugins = plugin_loader.for_content_type(content_type, text)
         # Strip out plugins that only make sense in editable widgets
         # (Cut/Paste/Backspace/Bold/Italic/Underline) when the focused
         # context is read-only. Callers pass editable=False after probing

@@ -759,6 +759,40 @@ class SettingsDialog:
             lambda s, _p: mod_row.set_sensitive(s.get_active()))
         group.add(mod_row)
 
+        # Force-all-plugins modifier. Held while making a selection,
+        # the popup skips the classifier's content-type filter and
+        # shows every installed plugin. Useful when a selection is
+        # misclassified (e.g. "Channel | Title" tagged as command,
+        # hiding the Send-to-AI buttons).
+        force_row = Handy.ActionRow()
+        force_row.set_title("Force all plugins modifier")
+        force_row.set_subtitle(
+            "Hold this key while making a selection to bypass the "
+            "content-type filter and surface every installed action. "
+            "Pick \"None\" to disable.")
+        force_combo = Gtk.ComboBoxText()
+        force_combo.set_valign(Gtk.Align.CENTER)
+        for key, label in [
+            ("",      "None"),
+            ("alt",   "Alt"),
+            ("super", "Super"),
+            ("ctrl",  "Ctrl"),
+            ("shift", "Shift (can clash with text selection)"),
+        ]:
+            force_combo.append(key, label)
+        current_force = (
+            self._settings.get("popup_force_all_modifier") or "alt").lower()
+        # ComboBoxText uses empty-string id for "None"; map None/empty
+        # back to the literal "" id.
+        force_combo.set_active_id(current_force if current_force else "")
+        force_combo.connect(
+            "changed",
+            lambda c: self._save_key(
+                "popup_force_all_modifier", c.get_active_id() or ""))
+        force_row.add(force_combo)
+        force_row.set_activatable_widget(force_combo)
+        group.add(force_row)
+
         # Autostart at login (switch row) - driven by ~/.config/autostart
         # rather than a settings.json key, since the .desktop file is what
         # the DE actually reads. We just toggle the file from here.
