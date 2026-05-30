@@ -646,6 +646,42 @@ class SettingsDialog:
             self._settings.get("ocr_hotkey") or "",
             on_changed=lambda v: self._save_key("ocr_hotkey", v),
         )
+        # When OCR backends aren't available, surface a "Copy install
+        # command" button that puts the right apt/dnf/pacman/zypper
+        # command on the clipboard. Same one-step pattern we use for
+        # the MCP server snippet and the userscript-manager store link
+        # - we don't run privileged commands ourselves but we make the
+        # next manual step trivial.
+        if not ocr_ok:
+            try:
+                from screen_ocr import install_command as _ocr_install_cmd
+                cmd = _ocr_install_cmd()
+            except Exception:
+                cmd = ""
+            if cmd:
+                ocr_copy_btn = Gtk.Button(label="Copy install command")
+                ocr_copy_btn.set_valign(Gtk.Align.CENTER)
+                ocr_copy_btn.set_tooltip_text(
+                    "Puts the right install command for your distro "
+                    "on the clipboard. Paste into a terminal and run.")
+
+                def _on_ocr_copy(_b, cmd=cmd):
+                    subprocess.run(
+                        ["xclip", "-selection", "clipboard"],
+                        input=cmd.encode("utf-8"),
+                        check=False, timeout=2.0,
+                    )
+                    subprocess.run(
+                        ["notify-send", "--hint=byte:transient:1",
+                         "-t", "3500", "-i", "edit-paste-symbolic",
+                         "LinuxPop OCR",
+                         "Install command on clipboard. Paste into a "
+                         "terminal, run it, then restart LinuxPop."],
+                        check=False,
+                    )
+
+                ocr_copy_btn.connect("clicked", _on_ocr_copy)
+                ocr_row.add(ocr_copy_btn)
         ocr_row.add(ocr_recorder)
         ocr_clear = Gtk.Button.new_from_icon_name(
             "edit-clear-symbolic", Gtk.IconSize.BUTTON)

@@ -25,6 +25,47 @@ from pathlib import Path
 log = logging.getLogger("linuxpop")
 
 
+def _distro_id() -> str:
+    """Read /etc/os-release ID + ID_LIKE so we can pick the right
+    package manager. ID_LIKE is the fallback distro family (e.g.
+    Pop_OS has ID=pop, ID_LIKE=ubuntu debian) so we don't need to
+    enumerate every derivative."""
+    try:
+        text = Path("/etc/os-release").read_text()
+    except OSError:
+        return ""
+    info: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        info[k.strip()] = v.strip().strip('"').strip("'")
+    return f"{info.get('ID', '')} {info.get('ID_LIKE', '')}".lower()
+
+
+def install_command() -> str:
+    """Best-effort install command for the user's distro. Always covers
+    tesseract, maim, and at least an English language pack so the
+    feature is usable end-to-end after running it."""
+    ids = _distro_id()
+
+    def has(needles: tuple[str, ...]) -> bool:
+        return any(n in ids for n in needles)
+
+    if has(("fedora", "rhel", "centos", "rocky", "alma")):
+        return "sudo dnf install -y tesseract tesseract-langpack-eng maim"
+    if has(("arch", "manjaro", "endeavouros")):
+        return ("sudo pacman -S --noconfirm tesseract tesseract-data-eng "
+                "maim")
+    if has(("opensuse", "suse")):
+        return ("sudo zypper --non-interactive install tesseract-ocr "
+                "tesseract-ocr-traineddata-english maim")
+    # Default to apt: Debian, Ubuntu, Mint, Pop_OS, elementary,
+    # Zorin, Kubuntu, Xubuntu, MX, Deepin, KDE Neon, ...
+    return ("sudo apt install -y tesseract-ocr tesseract-ocr-eng "
+            "tesseract-ocr-nor maim")
+
+
 def is_supported() -> tuple[bool, str]:
     """Return (ok, reason). ok=False means we can't run OCR right now;
     the reason names which dependency is missing so the user can fix
