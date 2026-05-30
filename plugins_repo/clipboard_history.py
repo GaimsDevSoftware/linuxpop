@@ -1170,17 +1170,22 @@ def _paste_to_window(
                 check=False, timeout=1.0,
             )
             time.sleep(0.12)
-        # Terminals + short single-line text: type the characters directly
-        # instead of triggering the terminal's paste accelerator. Bypasses
-        # bracketed-paste markers entirely, so it works even in shell
-        # sessions where the terminal's bracketed-paste state is out of
-        # sync with readline. Multi-line and large text still go through
-        # ctrl+shift+v because xdotool type would press Enter on each
-        # newline (executing each command line as it types) and is slow
-        # for big payloads.
+        # Type the text directly instead of sending a paste accelerator
+        # for short single-line text. Two wins:
+        #  1. Terminals - bypasses bracketed-paste markers that get out
+        #     of sync with readline (the original reason this branch
+        #     existed).
+        #  2. Electron + React editors (Claude desktop, Slack, Discord,
+        #     ChatGPT desktop, Cursor, Notion desktop, etc.). Synthetic
+        #     `ctrl+v` lands as isTrusted=false and ProseMirror/Lexical/
+        #     Slate reject it silently - paste ends up on the clipboard
+        #     but not in the editor. Individual keypresses via xdotool
+        #     type are real-enough that the editor accepts them.
+        # Multi-line / long text still uses the paste accelerator
+        # because typing N newlines would execute N commands in a
+        # shell, and typing kilobytes char-by-char is too slow.
         use_type = (
-            is_terminal
-            and entry.kind == "text"
+            entry.kind == "text"
             and "\n" not in entry.text
             and len(entry.text) <= 2048
         )
