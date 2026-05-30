@@ -117,7 +117,7 @@ _COMMAND_TOKENS = {
 # and didn't catch executable paths or heredoc syntax.
 _COMMAND_HINTS = re.compile(
     r"(?:"
-    r"&&|\|\||(?<!\|)\|(?!\|)|"   # logical and/or, pipe (but not || alone twice)
+    r"&&|\|\||"                   # logical and/or - shell-only operators
     r"\s>+\s|\s>>\s|"             # redirection with surrounding space
     r"\$\(|\$\{|"                 # command substitution / brace expansion
     r"`[^`]+`|"                    # backtick expansion
@@ -131,6 +131,13 @@ _COMMAND_HINTS = re.compile(
     r"(?:^|\n)\s*[a-z]+(?:-[a-z][\w-]*)+\s+\S"
     r")"
 )
+# Bare single ' | ' (pipe with whitespace on either side) WAS in
+# _COMMAND_HINTS but produced too many false positives - any human-
+# readable title with a separator pipe (YouTube "Channel Name |
+# Category", song titles, breadcrumbs) would suppress the Send-to-AI
+# buttons. Real shell pipes are caught by _looks_like_command()
+# checking the first token of each line against _COMMAND_TOKENS, so
+# `cat foo | grep bar` still classifies correctly.
 
 
 def _line_first_token(line: str) -> str:
