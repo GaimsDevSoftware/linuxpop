@@ -37,6 +37,15 @@ DEFAULTS: dict[str, Any] = {
     # One of "ctrl", "shift", "alt", "super". Read fresh each click
     # so a setting change takes effect without restarting the daemon.
     "double_click_modifier": "ctrl",
+    # Modifier the user holds while making a selection to force the
+    # popup to show EVERY installed plugin, bypassing the classifier's
+    # content-type filter. Useful when the classifier got it wrong and
+    # the action you actually want isn't in the filtered set (e.g. the
+    # selection was misclassified as 'command' so Send-to-AI buttons
+    # disappeared). One of "alt", "ctrl", "shift", "super", or empty
+    # to disable. Default Alt - least likely to collide with extending
+    # a selection (Shift) or word-by-word selection (Ctrl).
+    "popup_force_all_modifier": "alt",
     # Hotkey to summon the popup with the current PRIMARY selection at the cursor.
     # Format: "<modifiers>+<key>", e.g. "super+shift+y", "ctrl+alt+y", "super+space".
     # Set to null/empty to disable. Use the recorder in Innstillinger to capture
