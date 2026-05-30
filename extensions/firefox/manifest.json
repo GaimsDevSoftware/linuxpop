@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "LinuxPop Send-to-AI bridge",
+  "version": "0.1.0",
+  "description": "Receives prompts from the LinuxPop Linux desktop daemon and inserts them into the focused AI chat editor. Talks only to your own LinuxPop on 127.0.0.1 - no external network traffic.",
+  "author": "LinuxPop project",
+  "homepage_url": "https://github.com/GaimsDevSoftware/linuxpop",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "linuxpop-send-to-ai@gaimsdevsoftware.github.io",
+      "strict_min_version": "115.0"
+    }
+  },
+
+  "icons": {
+    "16":  "icons/linuxpop-16.png",
+    "32":  "icons/linuxpop-32.png",
+    "48":  "icons/linuxpop-48.png",
+    "96":  "icons/linuxpop-96.png",
+    "128": "icons/linuxpop-128.png"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "host_permissions": [
+    "http://127.0.0.1:8766/*",
+    "http://127.0.0.1:8767/*",
+    "http://127.0.0.1:8768/*"
+  ]
+}

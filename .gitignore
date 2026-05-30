@@ -29,3 +29,9 @@ dist/
 var/
 *.sqlite3
 *.sqlite
+
+# Browser extension build artifacts
+extensions/firefox/build/
+extensions/firefox/dist/
+extensions/chrome/build/
+extensions/chrome/dist/
