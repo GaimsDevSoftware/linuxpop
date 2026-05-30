@@ -1,14 +1,46 @@
 // LinuxPop browser extension - content script.
 //
-// Runs on the matched AI chat sites and injects prompts queued by the
-// LinuxPop daemon over its local HTTP bridge (127.0.0.1:8766 by
-// default). Mirrors what userscript/linuxpop-send-to-ai.user.js does,
-// just without the GM_* APIs - extensions have host_permissions so
-// `fetch()` works directly.
+// =====================================================================
+//  PRIVACY GUARANTEES (audit me)
+// =====================================================================
+//  This script does FOUR things, in order, and nothing else:
 //
-// The bridge port is fixed at build time. If/when the daemon's
-// auto-bumped port falls outside the manifest's host_permissions, the
-// extension scans a small range.
+//    1. READS  : window.location.hash + location.search to find a UUID
+//                placed there by the LinuxPop daemon when the user
+//                clicked one of LinuxPop's AI buttons.
+//    2. FETCHES: GET http://127.0.0.1:PORT/prompt/<uuid> to retrieve
+//                the prompt the user themselves typed/selected.
+//                127.0.0.1 is the user's own machine; the daemon
+//                listens only on the loopback interface.
+//    3. WRITES : the prompt into the focused chat composer via
+//                document.execCommand("insertText"). It does NOT
+//                read existing composer content. It does NOT read
+//                chat history, sidebar, prior messages, account info,
+//                cookies, localStorage, IndexedDB or any other
+//                page-level state.
+//    4. PINGS  : GET http://127.0.0.1:PORT/installed once per page
+//                load so the LinuxPop Settings UI can show "the
+//                extension is installed and reachable". This is a
+//                liveness probe; no data is sent in the request body.
+//
+//  Network destinations this script can reach (enforced by the
+//  manifest's host_permissions, which is auditable line-by-line):
+//    - http://127.0.0.1:8766 / 8767 / 8768  (LinuxPop daemon, your PC)
+//
+//  Network destinations this script can NOT reach:
+//    - Everything else. No fetch() to claude.ai, no fetch() to
+//      anthropic.com, no fetch() to any analytics/telemetry endpoint.
+//      Both the browser sandbox and CSP enforce this.
+//
+//  Storage this script uses: NONE. No chrome.storage, no
+//  localStorage, no IndexedDB, no cookies. The UUID lives in the
+//  URL hash for a few milliseconds and is then cleared via
+//  history.replaceState.
+//
+//  The extension requests zero special browser APIs - no tabs, no
+//  scripting, no history, no cookies, no webRequest. Read the
+//  manifest.json next to this file to verify.
+// =====================================================================
 
 (function () {
   "use strict";
@@ -37,6 +69,10 @@
   ];
 
   function findToken() {
+    // PRIVACY: reads ONLY the URL hash and search string, both of
+    // which the user themselves caused to exist (LinuxPop appended
+    // #linuxpop=<uuid> when they clicked the AI button). We don't
+    // read anything else from the location object.
     const m = (location.hash + location.search).match(
       /[#&?]linuxpop=([0-9a-fA-F]{8,})/);
     return m ? m[1] : null;
@@ -65,6 +101,12 @@
   }
 
   function findEditor() {
+    // PRIVACY: walks the DOM to find the chat composer (a textarea or
+    // contenteditable div). We check element TAG and rect dimensions
+    // - we never read the editor's existing text content, never read
+    // any sibling/parent element, and never serialise any part of the
+    // DOM tree. The only DOM property read here is BoundingClientRect
+    // and computedStyle, both purely visual checks.
     for (const sel of SELECTORS) {
       for (const el of document.querySelectorAll(sel)) {
         if (isVisible(el)) return el;
@@ -87,10 +129,11 @@
   }
 
   async function tryPorts(pathFn) {
-    // Walk PORTS in order, returning the first port whose response is
-    // OK. Used both for prompt fetch and the install-ping. Saves a
-    // round-trip when the bridge is on the canonical port (the common
-    // case) and survives auto-bumped ports too.
+    // PRIVACY: the ONLY fetch() target this script ever uses is
+    // 127.0.0.1 on the LinuxPop daemon's ports. The browser sandbox
+    // and the manifest's host_permissions both enforce this - any
+    // attempt to fetch a non-127.0.0.1 URL would throw or be blocked.
+    // GET method only, never POST. No request body.
     for (const port of PORTS) {
       try {
         const res = await fetch(`http://127.0.0.1:${port}${pathFn(port)}`, {

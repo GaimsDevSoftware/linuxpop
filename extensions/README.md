@@ -6,6 +6,37 @@ local HTTP bridge and inject them into the focused AI chat editor —
 but installed via the browser's own add-on store, so users don't need
 a third-party userscript manager.
 
+## Privacy stance
+
+Linux users have a hard-won scepticism of "AI integration" extensions,
+and they are right to. This extension is built to be **provably**
+side-effect free:
+
+- **Nothing leaves your computer.** Outbound network is restricted to
+  `http://127.0.0.1:876{6,7,8}` (your own LinuxPop daemon on
+  loopback) by the manifest's `host_permissions`. The browser
+  enforces this — any `fetch()` to elsewhere is blocked.
+- **Zero `permissions`.** No `tabs`, no `scripting`, no `history`,
+  no `cookies`, no `storage`, no `webRequest`. Open
+  `about:debugging` (Firefox) or `chrome://extensions` (Chrome) and
+  confirm the `permissions` array is `[]`.
+- **No telemetry, no analytics, no third-party SDKs.** The bundled
+  code is ~150 lines of plain JavaScript with no build step. What
+  you read in `shared/content.js` is exactly what runs.
+- **Doesn't read conversation history.** The script writes the
+  user-supplied prompt into the composer via
+  `document.execCommand("insertText")`. It never reads existing
+  composer content or prior messages.
+- **Dormant outside the four chat sites.** Manifest
+  `content_scripts.matches` lists only `claude.ai`, `chatgpt.com`,
+  `gemini.google.com` and `perplexity.ai`. The extension is not
+  loaded on any other domain.
+
+Full audit in [`PRIVACY.md`](PRIVACY.md). The top of
+[`shared/content.js`](shared/content.js) re-states the same guarantees
+as inline comments. Both are written so a reader who knows JavaScript
+can verify them in under five minutes.
+
 ## Layout
 
 ```

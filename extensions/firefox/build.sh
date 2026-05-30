@@ -22,11 +22,20 @@ mkdir -p "$BUILD" "$DIST"
 
 cp "$HERE/manifest.json" "$BUILD/"
 cp "$SHARED/content.js"  "$BUILD/"
+# Ship PRIVACY.md inside the package so the install-time review and
+# the unpacked extension both surface the same text.
+cp "$HERE/../PRIVACY.md" "$BUILD/" 2>/dev/null || \
+    echo "WARN: ../PRIVACY.md not found - extension will ship without it"
 if [ -d "$HERE/icons" ] && [ "$(ls -A "$HERE/icons" 2>/dev/null)" ]; then
     cp -r "$HERE/icons" "$BUILD/"
 else
     echo "WARN: icons/ is empty - AMO will reject the upload"
 fi
+
+# Run the privacy audit before producing the zip. Any regression that
+# adds a permission or a non-loopback fetch fails the build.
+"$HERE/privacy-audit.sh"
+echo
 
 rm -f "$ZIP"
 (cd "$BUILD" && zip -qr "$ZIP" .)
