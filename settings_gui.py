@@ -769,19 +769,24 @@ class SettingsDialog:
         force_row.set_subtitle(
             "Hold this key while making a selection to bypass the "
             "content-type filter and surface every installed action. "
-            "Pick \"None\" to disable.")
+            "Every option conflicts with something - pick what hurts "
+            "least. Alt and Super are usually bound to the window-"
+            "manager's move gesture (Alt+drag = move window in Cinnamon "
+            "by default). Ctrl breaks word-by-word text selection in "
+            "many editors. Shift extends a selection. Pick \"None\" to "
+            "leave the feature off.")
         force_combo = Gtk.ComboBoxText()
         force_combo.set_valign(Gtk.Align.CENTER)
         for key, label in [
-            ("",      "None"),
-            ("alt",   "Alt"),
-            ("super", "Super"),
-            ("ctrl",  "Ctrl"),
-            ("shift", "Shift (can clash with text selection)"),
+            ("",      "None (off)"),
+            ("ctrl",  "Ctrl (may break word-by-word selection)"),
+            ("alt",   "Alt (conflicts with Alt+drag move-window)"),
+            ("super", "Super (conflicts with most WMs' window gesture)"),
+            ("shift", "Shift (extends existing selection)"),
         ]:
             force_combo.append(key, label)
         current_force = (
-            self._settings.get("popup_force_all_modifier") or "alt").lower()
+            self._settings.get("popup_force_all_modifier") or "").lower()
         # ComboBoxText uses empty-string id for "None"; map None/empty
         # back to the literal "" id.
         force_combo.set_active_id(current_force if current_force else "")

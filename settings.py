@@ -43,9 +43,17 @@ DEFAULTS: dict[str, Any] = {
     # the action you actually want isn't in the filtered set (e.g. the
     # selection was misclassified as 'command' so Send-to-AI buttons
     # disappeared). One of "alt", "ctrl", "shift", "super", or empty
-    # to disable. Default Alt - least likely to collide with extending
-    # a selection (Shift) or word-by-word selection (Ctrl).
-    "popup_force_all_modifier": "alt",
+    # to disable.
+    #
+    # Off by default because every option conflicts with something:
+    #   alt   - Cinnamon/GNOME mouse-button-modifier (Alt+drag moves
+    #           windows on default installs)
+    #   super - Same on some setups; often the WM's primary modifier
+    #   ctrl  - Text editors / browsers use Ctrl+drag for word-by-word
+    #           selection or multi-cursor
+    #   shift - Extends an existing selection in every text widget
+    # The user picks the lesser evil in Settings > Activation.
+    "popup_force_all_modifier": "",
     # Hotkey to summon the popup with the current PRIMARY selection at the cursor.
     # Format: "<modifiers>+<key>", e.g. "super+shift+y", "ctrl+alt+y", "super+space".
     # Set to null/empty to disable. Use the recorder in Innstillinger to capture
