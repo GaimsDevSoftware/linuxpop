@@ -2793,6 +2793,23 @@ class _PickerDialog:
 
     # ---- keyboard ----
 
+    def _current_listbox(self) -> Optional[Gtk.ListBox]:
+        if self.notebook is None:
+            return None
+        page = self.notebook.get_current_page()
+        return self.recent_listbox if page == 0 else self.snippets_listbox
+
+    def _first_visible_row(self, listbox: Gtk.ListBox):
+        """Return the first row that survives the current filter, or
+        None if the listbox is empty or fully filtered out."""
+        for row in listbox.get_children():
+            if row.get_visible() and (row.get_mapped() or self._filter_text == ""):
+                # Re-check the filter explicitly because get_visible()
+                # lags behind invalidate_filter() by a tick.
+                if self._row_filter(row):
+                    return row
+        return None
+
     def _on_key_press(self, _widget, event) -> bool:
         if event.keyval == Gdk.KEY_Escape:
             if self.dialog is not None:
@@ -2806,6 +2823,50 @@ class _PickerDialog:
                 cur = self.notebook.get_current_page()
                 self.notebook.set_current_page(1 - cur)
             return True
+        # Down / Up → jump straight into the listbox the first time
+        # (skipping search-entry + tab-labels), then let GTK's native
+        # ListBox navigation drive subsequent presses.
+        if event.keyval in (Gdk.KEY_Down, Gdk.KEY_Up):
+            listbox = self._current_listbox()
+            if listbox is None:
+                return False
+            # Already-in-listbox check: walk the focus chain up from
+            # whichever widget currently has focus. Both Gtk.ListBox
+            # itself and its individual rows count as "in" - we want
+            # subsequent arrow presses to fall through to GTK's
+            # built-in row navigation in either case.
+            if self.dialog is not None:
+                focused = self.dialog.get_focus()
+                while focused is not None:
+                    if focused is listbox:
+                        return False  # let GTK move the selection
+                    focused = focused.get_parent()
+            # First press from outside: focus the right-edge row and
+            # let it own focus. With a row focused, GtkListBox's
+            # built-in Down/Up handling moves to the adjacent row.
+            if event.keyval == Gdk.KEY_Down:
+                target = self._first_visible_row(listbox)
+            else:
+                target = None
+                for row in listbox.get_children():
+                    if self._row_filter(row):
+                        target = row
+            if target is not None:
+                listbox.select_row(target)
+                target.grab_focus()
+            else:
+                listbox.grab_focus()
+            return True
+        # Enter → if focus is on a list row, paste it. Lets the user
+        # arrow-down + Enter without ever touching the mouse.
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            listbox = self._current_listbox()
+            if listbox is not None:
+                selected = listbox.get_selected_row()
+                if selected is not None:
+                    listbox.emit("row-activated", selected)
+                    return True
+            return False
         # Ctrl+P → pin currently selected (if in Recent)
         if (event.state & Gdk.ModifierType.CONTROL_MASK
                 and event.keyval == Gdk.KEY_p):
@@ -2816,6 +2877,28 @@ class _PickerDialog:
                 and event.keyval == Gdk.KEY_r):
             self._action_on_selected("rename")
             return True
+        # Printable character with no Ctrl/Alt → start typing into the
+        # search entry, regardless of where focus currently is. Lets
+        # the user arrow-down to browse, then immediately type to
+        # filter without explicitly clicking the search box.
+        modifiers = (Gdk.ModifierType.CONTROL_MASK
+                     | Gdk.ModifierType.MOD1_MASK
+                     | Gdk.ModifierType.SUPER_MASK)
+        if not (event.state & modifiers):
+            unicode_val = Gdk.keyval_to_unicode(event.keyval)
+            if unicode_val and 0x20 <= unicode_val < 0x10FFFF:
+                ch = chr(unicode_val)
+                if ch.isprintable() and self.search_entry is not None:
+                    if not self.search_entry.has_focus():
+                        self.search_entry.grab_focus()
+                        # Append the typed character ourselves - the
+                        # original event has already been consumed by
+                        # our handler, so falling through wouldn't
+                        # reach the entry.
+                        current = self.search_entry.get_text()
+                        self.search_entry.set_text(current + ch)
+                        self.search_entry.set_position(-1)
+                        return True
         return False
 
     def _action_on_selected(self, action: str) -> None:
