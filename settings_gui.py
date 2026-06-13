@@ -431,6 +431,43 @@ class HotkeyRecorder(Gtk.Button):
         return True
 
 
+#: Per-row leading icon for the Settings rows, so each gets a coloured tile in
+#: the same style as the Plugin Manager. Titles must match set_title() exactly;
+#: anything unmapped falls back to a generic gear (never a broken glyph).
+_SETTING_ICONS = {
+    "Theme": "applications-graphics-symbolic",
+    "Popup button size": "view-fullscreen-symbolic",
+    "Maximum buttons in the popup": "view-grid-symbolic",
+    "When actions overflow": "view-more-symbolic",
+    "Popup hotkey": "preferences-desktop-keyboard-shortcuts-symbolic",
+    "Screen OCR hotkey": "camera-photo-symbolic",
+    "Auto-popup on selection": "edit-select-all-symbolic",
+    "Modifier+double-click for the edit menu": "input-mouse-symbolic",
+    "Modifier key": "input-keyboard-symbolic",
+    "Force all plugins modifier": "view-grid-symbolic",
+    "Start at login": "system-run-symbolic",
+    "Clipboard history": "edit-copy-symbolic",
+    "Optional clipboard shortcut": "edit-paste-symbolic",
+    "Snippet triggers (text expansion)": "document-edit-symbolic",
+    "Don't expand triggers in these apps or sites": "security-high-symbolic",
+    "Snippet variables": "view-list-symbolic",
+    "Shell expansion in snippets": "utilities-terminal-symbolic",
+    "Skip short auto-popup selections": "format-justify-left-symbolic",
+    "Don't show in these apps or pages": "security-medium-symbolic",
+    "How to send the text": "mail-send-symbolic",
+    "Browser bridge": "network-server-symbolic",
+    "Per-service method (advanced)": "applications-system-symbolic",
+    "Auto-submit after paste": "go-next-symbolic",
+    "Search engine": "edit-find-symbolic",
+    "Custom search URL": "insert-link-symbolic",
+    "Trigger hotkey on first press": "media-playback-start-symbolic",
+    "MCP server (advanced)": "network-server-symbolic",
+    "Reset settings to defaults": "view-refresh-symbolic",
+    "Keep terminal open after running": "utilities-terminal-symbolic",
+    "Need a userscript manager?": "help-about-symbolic",
+}
+
+
 class SettingsDialog:
     def __init__(self, on_changed: Callable[[], None] | None = None) -> None:
         self._on_changed = on_changed
@@ -476,6 +513,7 @@ class SettingsDialog:
         # Settings stays focused on configuration.
 
         win.add(page)
+        self._decorate_badges(page)
         win.show_all()
         # Subtitle wrap must be patched AFTER show_all() so the realised
         # label widgets exist to flip.
@@ -485,6 +523,47 @@ class SettingsDialog:
 
     def _on_destroy(self, *_):
         self._window = None
+
+    # ---- coloured icon badges (matches the Plugin Manager) -------------------
+    def _badge(self, icon_name: str | None, color_index: int) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box.set_size_request(32, 32)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_margin_end(8)
+        ctx = box.get_style_context()
+        ctx.add_class("lp-badge")
+        ctx.add_class(f"lp-badge-{color_index % 4}")
+        it = Gtk.IconTheme.get_default()
+        name = icon_name if (icon_name and it.has_icon(icon_name)) \
+            else "emblem-system-symbolic"
+        img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.BUTTON)
+        img.set_pixel_size(17)
+        img.get_style_context().add_class("lp-badge-glyph")
+        box.pack_start(img, True, True, 0)
+        box.show_all()
+        return box
+
+    def _decorate_badges(self, root: Gtk.Widget) -> None:
+        """Give each settings row a coloured icon tile so Settings reads as the
+        same family as the Plugin Manager. Walks the realised row tree, skipping
+        the inside of each row (so expander sub-rows aren't decorated)."""
+        rows: list[Gtk.Widget] = []
+
+        def walk(w):
+            if isinstance(w, (Handy.ActionRow, Handy.ExpanderRow)):
+                rows.append(w)
+                return
+            if isinstance(w, Gtk.Container):
+                w.forall(lambda c, *_a: walk(c), None)
+
+        walk(root)
+        for i, r in enumerate(rows):
+            icon = _SETTING_ICONS.get(r.get_title() or "")
+            try:
+                r.add_prefix(self._badge(icon, i))
+            except Exception:
+                pass
 
     # ---- groups --------------------------------------------------------------
 
@@ -539,7 +618,10 @@ class SettingsDialog:
         size_row.set_title("Popup button size")
         size_row.set_subtitle(
             "How big each action button in the popup is, in pixels. "
-            "16 is small and dense; 32 is roomy and easy to click.")
+            "16 is small and dense; 32 is roomy and easy to click. "
+            "Tip: smaller buttons also fit more actions on a single row "
+            "before the popup has to wrap or expand (see ‘When actions "
+            "overflow’ below).")
         size_adj = Gtk.Adjustment(
             value=int(self._settings.get("popup_button_size", 22) or 22),
             lower=16, upper=32, step_increment=1, page_increment=4,
@@ -590,6 +672,33 @@ class SettingsDialog:
         count_row.add(count_spin)
         count_row.set_activatable_widget(count_spin)
         group.add(count_row)
+
+        # Overflow mode: what the popup does when more actions match than fit
+        # on a single line. Bounded by the cap above.
+        ov_row = Handy.ActionRow()
+        ov_row.set_title("When actions overflow")
+        ov_row.set_subtitle(
+            "How the popup handles more actions than fit on one line. "
+            "‘One row + expand arrow’ stays compact and reveals the rest on "
+            "click; ‘Wrap’ uses two rows; ‘One row only’ hides extras behind "
+            "a +N chip.")
+        ov_combo = Gtk.ComboBoxText()
+        ov_combo.set_valign(Gtk.Align.CENTER)
+        for _key, _label in (
+            ("expand", "One row + expand arrow"),
+            ("wrap", "Wrap to two rows"),
+            ("cap", "One row only (+N chip)"),
+        ):
+            ov_combo.append(_key, _label)
+        ov_combo.set_active_id(
+            (self._settings.get("popup_overflow_mode") or "expand"))
+        ov_combo.connect(
+            "changed",
+            lambda c: self._save_key(
+                "popup_overflow_mode", c.get_active_id() or "expand"))
+        ov_row.add(ov_combo)
+        ov_row.set_activatable_widget(ov_combo)
+        group.add(ov_row)
 
         return group
 
@@ -713,8 +822,10 @@ class SettingsDialog:
             "text field to bring up Paste / Select all / Backspace at "
             "the cursor. The modifier is required so it never collides "
             "with the app's own double-click-to-select-a-word gesture. "
-            "Requires LinuxPop to watch mouse clicks globally - "
-            "nothing is logged or sent.")
+            "Requires watching mouse clicks globally (nothing is logged or "
+            "sent). On Wayland this reaches XWayland windows only — for "
+            "native Wayland apps, press the popup hotkey instead; it shows "
+            "the same menu when nothing is selected.")
         dbl_switch = Gtk.Switch()
         dbl_switch.set_valign(Gtk.Align.CENTER)
         dbl_switch.set_active(
