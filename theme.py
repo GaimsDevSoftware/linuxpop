@@ -263,29 +263,52 @@ entry placeholder {
     color: #5a6378;
 }
 
-/* ----- switches ----- */
+/* ----- switches (clean macOS-style pill) -----
+   Solid track (no gradient), a large white knob that nearly fills the height,
+   and a soft drop shadow for the macOS "lozenge" look. */
 switch {
-    background-color: #2a3145;
-    border: 1px solid #353c52;
-    border-radius: 14px;
-    min-width: 44px;
-    min-height: 24px;
+    background-color: #3d4456;          /* off: neutral slate track */
+    background-image: none;
+    border: none;
+    border-radius: 999px;
+    min-width: 48px;
+    min-height: 28px;
+    transition: background-color 200ms ease;
 }
 
 switch:checked {
-    background-image: linear-gradient(to right, #5B7DF5, #7C3AED);
-    background-color: #5B7DF5;
-    border-color: #5B7DF5;
+    background-color: #5B7DF5;          /* on: clean solid brand blue */
+    background-image: none;
+    border: none;
+}
+
+switch:disabled {
+    opacity: 0.45;
 }
 
 switch slider {
-    background-color: #f0f3fa;
-    border-radius: 50%;
+    background-color: #ffffff;
+    background-image: none;
     border: none;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    min-width: 18px;
-    min-height: 18px;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45),
+                0 2px 5px rgba(0, 0, 0, 0.20);
+    min-width: 24px;
+    min-height: 24px;
     margin: 2px;
+}
+
+/* keep the pill clean: GTK 3.24's GtkSwitch has two built-in on/off `image`
+   nodes (they fill most of the track). Collapse them to nothing - opacity alone
+   is not enough; the icon transform + zero size is what actually removes them. */
+switch image {
+    opacity: 0;
+    -gtk-icon-source: none;
+    -gtk-icon-transform: scale(0);
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
 }
 
 /* ----- combobox ----- */
@@ -645,8 +668,7 @@ _LIGHT_REMAP = {
     "#161a24": "#f0f2f7",  # sidebar bg
     "#141823": "#e0e4ee",  # notebook header
     "#14171f": "#ebeef4",  # check/radio bg
-    "#2a3145": "#d4d8e2",  # switch bg
-    "#353c52": "#c0c5d2",  # switch border
+    "#3d4456": "#d4d8e2",  # switch track (off) — light grey in light mode
     "#4a5266": "#a8b0c0",  # disabled text
     "#5a6378": "#7a8090",  # placeholder text
     # Pango-markup greys that several dialogs hard-code for dim/muted
