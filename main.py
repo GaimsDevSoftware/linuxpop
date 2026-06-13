@@ -718,6 +718,18 @@ def main(argv: list[str] | None = None) -> int:
         get_settings().get("theme", "dark") or "dark")
 
     app = App(enable_tray=not args.no_tray)
+
+    # Start the Send-to-AI userscript bridge at launch so its install URL
+    # (http://127.0.0.1:<port>/linuxpop.user.js) is always reachable and prompts
+    # are served the moment a send fires. Best-effort; never fatal.
+    try:
+        import bridge_server
+        _bp = bridge_server.start(
+            int(get_settings().get("ai_userscript_bridge_port", 8766) or 8766))
+        log.info("send-to-ai bridge: http://127.0.0.1:%d/linuxpop.user.js", _bp)
+    except Exception as exc:  # noqa: BLE001
+        log.info("send-to-ai bridge not started: %s", exc)
+
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     log.info("LinuxPop %s running (tray=%s, hotkey=%s, watcher=%s)",
              __version__,

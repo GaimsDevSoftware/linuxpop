@@ -294,9 +294,100 @@ def _diagnose_window(window_id: str) -> str:
         return f"wid={window_id}"
 
 
+def _is_wayland_backend() -> bool:
+    """True on the native Wayland/KDE backend, where xdotool/wmctrl don't work
+    and we must paste via wl-clipboard + wtype + KWin instead."""
+    try:
+        return getattr(
+            __import__("platform_backend").get_backend(), "name", "") == "wayland_kde"
+    except Exception:
+        return False
+
+
+def _send_via_paste_wayland(service: str, url: str, window_terms: list[str],
+                            text: str, paste_key: str = "ctrl+v",
+                            settle_extra: float = 0.0) -> None:
+    """Wayland/KDE paste path (xdotool/wmctrl are X11-only and silently no-op
+    under Wayland, which is why Claude never received the text on Fedora).
+
+    Flow: stash the prompt on the clipboard -> open the chat page (the platform
+    backend force-raises the browser via a KWin script) -> poll KWin's
+    active-window class+title until the *browser* is focused AND showing the
+    service -> inject the paste keystroke with wtype. Focus is confirmed before
+    pasting so we never blindly paste into whatever window happened to be in
+    front (e.g. a terminal); if it can't be confirmed we leave the prompt on the
+    clipboard and ask the user to press Ctrl+V."""
+    backend = __import__("platform_backend").get_backend()
+    saved_clip = backend.read_selection("clipboard")
+
+    def _restore():
+        try:
+            if saved_clip:
+                backend.set_clipboard(saved_clip)
+        except Exception:
+            pass
+
+    backend.set_clipboard(text)
+    try:
+        backend.open_url(url)
+    except FileNotFoundError:
+        _restore()
+        subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                        "-i", "dialog-error", f"Could not open {service}",
+                        "xdg-open is missing"], check=False)
+        return
+
+    try:
+        browser_kw = (backend._browser_keyword() or "").lower()
+    except Exception:
+        browser_kw = ""
+    service_terms = [t.lower() for t in (window_terms or []) if t] + [service.lower()]
+
+    def worker():
+        window_timeout = max(4.0, _window_timeout())
+        deadline = time.monotonic() + window_timeout
+        ready = False
+        while time.monotonic() < deadline:
+            try:
+                hay = backend.active_window_haystacks()  # [class, title] lowercased
+            except Exception:
+                hay = []
+            if hay:
+                has_browser = (not browser_kw) or any(browser_kw in h for h in hay)
+                has_service = any(term in h for h in hay for term in service_terms)
+                if has_browser and has_service:
+                    ready = True
+                    break
+            time.sleep(0.25)
+
+        # Keystroke injection (wtype/ydotool) cannot deliver Ctrl+V on this KWin
+        # Wayland session — the compositor doesn't pass injected modifier chords
+        # to clients (verified: even Ctrl+A doesn't register). So we never fake a
+        # paste (which could land in the wrong window). The prompt is on the
+        # clipboard and the chat is focused; the user presses Ctrl+V — their real
+        # keyboard works fine. (Install the browser userscript for hands-free
+        # insertion; this path is the no-setup fallback.)
+        print(f"[send_to_ai] wl-paste {service}: ready={ready} "
+              f"active={hay if ready else '?'}; prompt on clipboard for Ctrl+V",
+              flush=True)
+        subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "6000",
+                        "-i", "applications-internet", f"{service}: press Ctrl+V",
+                        "Your selection is on the clipboard — press Ctrl+V in the "
+                        "chat box, then Enter to send."], check=False)
+        time.sleep(45.0)   # keep the prompt on the clipboard while they paste
+        _restore()
+
+    threading.Thread(target=worker, daemon=True,
+                     name=f"ai-wlpaste-{service}").start()
+
+
 def _send_via_paste(service: str, url: str, window_terms: list[str],
                     text: str, paste_key: str = "ctrl+v",
                     settle_extra: float = 0.0) -> None:
+    if _is_wayland_backend():
+        _send_via_paste_wayland(service, url, window_terms, text,
+                                paste_key=paste_key, settle_extra=settle_extra)
+        return
     # Snapshot the user's clipboard + primary BEFORE we clobber them,
     # so we can restore once paste lands. Without this, asking Claude
     # silently overwrites whatever was on the clipboard with the
@@ -695,6 +786,19 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
         _send_via_paste(
             service, spec["url"], spec.get("window_terms", []), text,
             paste_key=spec.get("paste_key", "ctrl+v"),
+            settle_extra=spec.get("settle_extra", 0.0),
+        )
+        return
+
+    # If the browser userscript has never registered (no install marker), the
+    # chat page would open but nothing would inject the text — exactly the
+    # "nothing reaches Claude's box" symptom. Fall back to the paste path, which
+    # needs no browser extension. Auto-upgrades to true userscript injection the
+    # moment the user installs it and loads a matched site (which sets the marker).
+    if not bridge_server.userscript_marker_exists():
+        _send_via_paste(
+            service, spec.get("url") or base_url, spec.get("window_terms", []),
+            text, paste_key=spec.get("paste_key", "ctrl+v"),
             settle_extra=spec.get("settle_extra", 0.0),
         )
         return
