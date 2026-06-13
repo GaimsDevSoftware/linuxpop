@@ -10,8 +10,8 @@ import json, os, socket, sys, struct, shutil
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMenu
-from PySide6.QtGui import QAction
-from PySide6.QtCore import QObject, QTimer, Signal, Slot, Property
+from PySide6.QtGui import QAction, QCursor
+from PySide6.QtCore import QObject, QTimer, Signal, Slot, Property, QPoint, ClassInfo
 from PySide6 import QtDBus
 
 ICON_DIR = str(Path(__file__).resolve().parent / "icons")
@@ -45,8 +45,17 @@ def _send_message(sock: socket.socket, msg: dict) -> None:
 
 # ─── Manual D-Bus StatusNotifierItem ────────────────────────────────
 
+@ClassInfo({"D-Bus Interface": "org.kde.StatusNotifierItem"})
 class StatusNotifierItemDBus(QObject):
-    """Manual SNI via D-Bus — no KStatusNotifierItem dependency."""
+    """Manual SNI via D-Bus — no KStatusNotifierItem dependency.
+
+    ClassInfo("D-Bus Interface", ...) is REQUIRED: without it QtDBus exports
+    these slots/properties/signals under a class-derived interface name
+    (local.linuxpop_tray.StatusNotifierItemDBus), so plasmashell — which reads
+    properties and calls ContextMenu()/Activate() on org.kde.StatusNotifierItem
+    — cannot read the icon or deliver clicks. With it, the item is published on
+    the spec interface and the tray actually responds.
+    """
 
     NewTitle = Signal()
     NewIcon = Signal()
@@ -73,6 +82,7 @@ class StatusNotifierItemDBus(QObject):
         self._dbus_svc: str | None = None
         self._registered = False
         self._callback = None
+        self._menu_cb = None
 
     # ─── D-Bus Properties ───
 
@@ -106,11 +116,20 @@ class StatusNotifierItemDBus(QObject):
     # ─── D-Bus Slots ───
 
     @Slot(int, int)
-    def ContextMenu(self, x, y): pass  # menu shown via Qt, not dbusmenu
+    def ContextMenu(self, x, y):
+        # plasmashell calls this when the item exposes no DBusMenu (our case).
+        # Show our own Qt menu so Settings/Plugins/Quit are reachable.
+        if self._menu_cb:
+            self._menu_cb(x, y)
 
     @Slot(int, int)
     def Activate(self, x, y):
-        if self._callback:
+        # Left-click: open the same menu. There is no useful primary action
+        # without a current selection, and the menu holds everything
+        # (Show popup now, Settings, Plugins, Quit, ...).
+        if self._menu_cb:
+            self._menu_cb(x, y)
+        elif self._callback:
             self._callback("show_popup", None)
 
     @Slot(int, int)
@@ -121,6 +140,9 @@ class StatusNotifierItemDBus(QObject):
 
     def set_callback(self, cb):
         self._callback = cb
+
+    def set_menu_callback(self, cb):
+        self._menu_cb = cb
 
     def register_on_dbus(self) -> bool:
         session = QtDBus.QDBusConnection.sessionBus()
@@ -175,13 +197,15 @@ class TrayQt:
         self._app.setQuitOnLastWindowClosed(False)
         self._app.setApplicationName("linuxpop-tray")
 
+        # Qt context menu — shown when plasmashell calls ContextMenu()/Activate()
+        # on our SNI (we expose no DBusMenu, so plasmashell delegates to us).
+        self._menu = QMenu()
+        self._setup_menu()
+
         # Manual D-Bus SNI
         self._sni = StatusNotifierItemDBus()
         self._sni.set_callback(self._on_sni_event)
-
-        # Qt context menu (shown on right-click via xembed fallback)
-        self._menu = QMenu()
-        self._setup_menu()
+        self._sni.set_menu_callback(self._show_menu)
 
         self._install_icon()
 
@@ -203,6 +227,18 @@ class TrayQt:
 
     def _on_sni_event(self, event: str, value: object):
         self._emit(event, value)
+
+    def _show_menu(self, x: int, y: int) -> None:
+        # Called from the SNI D-Bus slot (Qt main thread). plasmashell passes
+        # the tray-icon screen coords; if they are absent (0,0) fall back to the
+        # pointer. popup() is non-blocking, so the D-Bus slot returns promptly.
+        try:
+            pt = QPoint(int(x), int(y))
+            if int(x) == 0 and int(y) == 0:
+                pt = QCursor.pos()
+            self._menu.popup(pt)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[tray-qt] menu popup failed: {exc}", flush=True)
 
     def _install_icon(self) -> None:
         user_dir = Path.home() / ".local/share/icons/hicolor/scalable/apps"

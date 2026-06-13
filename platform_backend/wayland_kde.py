@@ -249,7 +249,14 @@ class WaylandKdeHotkey:
         # made kwin_wayland SIGABRT inside libdbus ("type invalid 0 not a basic
         # type") on every LinuxPop startup, taking the entire Plasma session down
         # with it. Plain `ai` is type-trivial and cannot trigger that abort.
-        flags = dbus.UInt32(4)  # NoAutoloading: honour the keys we pass
+        # flags = SetPresent(2) | NoAutoloading(4) = 6. SetPresent is ESSENTIAL
+        # on Plasma 6 Wayland: without it the key is recorded but the component
+        # stays INACTIVE (isActive()==False), so KWin never installs the physical
+        # key grab and presses do nothing (only DBus invokeShortcut fires). With
+        # SetPresent the component goes active and KWin grabs the key. Verified
+        # live: flag 4 -> isActive False, key not grabbed; flag 6 -> isActive
+        # True, key grabbed. NoAutoloading keeps the keys we pass (not stored config).
+        flags = dbus.UInt32(6)
         assigned = kga.setShortcut(
             action_id, dbus.Array([dbus.Int32(keycode)], signature="i"), flags)
         if not list(assigned):
