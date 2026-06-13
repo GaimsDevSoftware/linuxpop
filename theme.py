@@ -171,7 +171,6 @@ list > row:selected {
     border-radius: 50%;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22),
                 0 1px 0 rgba(255, 255, 255, 0.20) inset;
-    margin: 2px 12px 2px 2px;
 }
 .lp-badge-0 { background-image: linear-gradient(135deg, #5B7DF5, #4A6CE3); }
 .lp-badge-1 { background-image: linear-gradient(135deg, #7C3AED, #6929DB); }
@@ -269,6 +268,58 @@ button.flat:hover,
 button.image-button:hover {
     background-color: rgba(91, 125, 245, 0.12);
     border-color: transparent;
+}
+
+/* ----- window controls (close / minimize / maximize) -----
+   These are GtkButtons living in the CSD titlebar, so the generic `button`
+   rule above turned them into dark, 16px-padded rounded pills - the X glyph
+   got lost inside, so the close button read as a blank rectangle. On KDE the
+   decoration layout puts them top-left, where they are the first thing the
+   eye lands on. Reset them to compact circular controls; give close an
+   unmistakable red treatment so its purpose is obvious at a glance. */
+.titlebutton {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 0 3px;
+    border-radius: 50%;
+    background-image: none;
+    background-color: rgba(127, 140, 170, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: none;
+    color: #f0f3fa;
+    -gtk-icon-shadow: none;
+    -gtk-icon-transform: scale(0.92);
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.titlebutton:hover {
+    background-color: rgba(127, 140, 170, 0.30);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.titlebutton:active {
+    background-color: rgba(127, 140, 170, 0.42);
+}
+
+.titlebutton.close {
+    background-image: linear-gradient(to bottom, #ff5f57, #ed4c5c);
+    background-color: #ed4c5c;
+    border: 1px solid rgba(150, 20, 36, 0.55);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(214, 60, 76, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.titlebutton.close:hover {
+    background-image: linear-gradient(to bottom, #ff726b, #f5586a);
+    box-shadow: 0 2px 7px rgba(214, 60, 76, 0.55),
+                inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+.titlebutton.close:active {
+    background-image: linear-gradient(to bottom, #e84b54, #d63c4c);
+    box-shadow: inset 0 1px 3px rgba(120, 16, 28, 0.5);
 }
 
 /* ----- entries / search ----- */

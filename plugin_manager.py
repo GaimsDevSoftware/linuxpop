@@ -385,6 +385,7 @@ class PluginManagerDialog:
         box.set_size_request(34, 34)
         box.set_valign(Gtk.Align.CENTER)
         box.set_halign(Gtk.Align.CENTER)
+        box.set_margin_end(10)
         ctx = box.get_style_context()
         ctx.add_class("lp-badge")
         has = bool(icon_name) and Gtk.IconTheme.get_default().has_icon(icon_name)

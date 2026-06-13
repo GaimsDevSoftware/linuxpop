@@ -530,6 +530,7 @@ class SettingsDialog:
         box.set_size_request(32, 32)
         box.set_valign(Gtk.Align.CENTER)
         box.set_halign(Gtk.Align.CENTER)
+        box.set_margin_end(8)
         ctx = box.get_style_context()
         ctx.add_class("lp-badge")
         ctx.add_class(f"lp-badge-{color_index % 4}")
