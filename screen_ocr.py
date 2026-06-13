@@ -66,23 +66,94 @@ def install_command() -> str:
             "tesseract-ocr-nor maim")
 
 
+def _has_capture_tool() -> bool:
+    """True if any supported region-capture tool is on PATH. spectacle and
+    grim work natively on Wayland; maim/gnome-screenshot are the X11 path."""
+    return bool(shutil.which("spectacle") or shutil.which("grim")
+                or shutil.which("maim") or shutil.which("gnome-screenshot"))
+
+
 def is_supported() -> tuple[bool, str]:
     """Return (ok, reason). ok=False means we can't run OCR right now;
-    the reason names which dependency is missing so the user can fix
-    it themselves."""
-    if not shutil.which("maim") and not shutil.which("gnome-screenshot"):
-        return False, ("install 'maim' (or 'gnome-screenshot') for "
-                       "region capture: sudo apt install maim")
+    the reason is a SHORT human label of what's missing (the Settings row
+    pairs it with an Install button, so it doesn't need to spell out a
+    command)."""
+    if not _has_capture_tool():
+        return False, "screen-capture tool not installed"
     if not shutil.which("tesseract"):
-        return False, ("install 'tesseract-ocr' for text recognition: "
-                       "sudo apt install tesseract-ocr")
+        return False, "tesseract OCR engine not installed"
     return True, ""
+
+
+def install_argv() -> "list[str] | None":
+    """A pkexec argv that installs the missing OCR dependencies non-
+    interactively (pkexec shows a graphical auth prompt). Returns None when
+    we don't recognise the package manager. A capture tool is only added
+    when none is present - KDE already ships spectacle, so on most Wayland
+    desktops only tesseract is missing."""
+    ids = _distro_id()
+
+    def has(needles: tuple) -> bool:
+        return any(n in ids for n in needles)
+
+    need_capture = not _has_capture_tool()
+    if has(("fedora", "rhel", "centos", "rocky", "alma")):
+        pkgs = ["tesseract", "tesseract-langpack-eng"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "dnf", "install", "-y", *pkgs]
+    if has(("arch", "manjaro", "endeavouros")):
+        pkgs = ["tesseract", "tesseract-data-eng"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "pacman", "-S", "--noconfirm", *pkgs]
+    if has(("opensuse", "suse")):
+        pkgs = ["tesseract-ocr", "tesseract-ocr-traineddata-english"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "zypper", "--non-interactive", "install", *pkgs]
+    if has(("debian", "ubuntu", "mint", "pop", "elementary", "zorin",
+            "neon", "kali", "deepin", "mx")):
+        pkgs = ["tesseract-ocr", "tesseract-ocr-eng", "tesseract-ocr-nor"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "apt-get", "install", "-y", *pkgs]
+    return None
 
 
 def _capture_region(out_path: Path) -> bool:
     """Use whichever region-capture tool is installed to grab a user-
     drawn rectangle and write it as a PNG. Returns False if the user
     cancelled or the tool errored out."""
+    if shutil.which("spectacle"):
+        # KDE's capture tool. Its rectangular-region selector works
+        # natively on Wayland (maim is X11-only and grim needs wlroots),
+        # so it's the right default on KWin. -r region, -b background (no
+        # GUI window), -n no notification, -o write to file.
+        try:
+            subprocess.run(
+                ["spectacle", "-r", "-b", "-n", "-o", str(out_path)],
+                capture_output=True, timeout=120,
+            )
+            return out_path.is_file() and out_path.stat().st_size > 0
+        except subprocess.TimeoutExpired:
+            log.warning("[ocr] spectacle timed out")
+            return False
+    if shutil.which("grim") and shutil.which("slurp"):
+        # wlroots compositors (sway, Hyprland): slurp picks the region,
+        # grim captures it.
+        try:
+            geom = subprocess.run(["slurp"], capture_output=True,
+                                  timeout=60, text=True)
+            if geom.returncode != 0 or not geom.stdout.strip():
+                return False
+            res = subprocess.run(
+                ["grim", "-g", geom.stdout.strip(), str(out_path)],
+                capture_output=True, timeout=30,
+            )
+            return res.returncode == 0 and out_path.is_file()
+        except subprocess.TimeoutExpired:
+            return False
     if shutil.which("maim"):
         # `-s` puts maim in interactive region-select mode; output goes
         # to stdout if we don't pass a filename. We use a filename so
