@@ -373,9 +373,31 @@ class PluginManagerDialog:
         groups = self._build_catalog_groups()
         return groups[0] if groups else Handy.PreferencesGroup()
 
+    def _badge(self, key: str) -> Gtk.Widget:
+        """A small colored circle bearing the plugin's initial — the onboarding
+        store look, used as each row's leading icon in place of generic ones.
+        Colour is stable per plugin (hashed from its name) so it never jumps."""
+        key = (key or "?").strip()
+        idx = (sum(ord(c) for c in key) % 4) if key else 0
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box.set_size_request(34, 34)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+        ctx = box.get_style_context()
+        ctx.add_class("lp-badge")
+        ctx.add_class(f"lp-badge-{idx}")
+        lbl = Gtk.Label(label=(key[:1].upper() if key else "*"))
+        lbl.get_style_context().add_class("lp-badge-letter")
+        lbl.set_halign(Gtk.Align.CENTER)
+        lbl.set_valign(Gtk.Align.CENTER)
+        box.pack_start(lbl, True, True, 0)
+        box.show_all()
+        return box
+
     def _make_catalog_row(self, entry: dict) -> Handy.ActionRow:
         row = Handy.ActionRow()
         row.set_title(entry.get("title", entry["file"]))
+        row.add_prefix(self._badge(entry.get("title", entry["file"])))
         desc = entry.get("description", "")
         tags = entry.get("tags") or []
         if tags:
@@ -483,6 +505,7 @@ class PluginManagerDialog:
             else:
                 row.set_title(path.stem.replace("_", " ").title())
                 row.set_subtitle("Installed by hand (not in the catalogue)")
+            row.add_prefix(self._badge(row.get_title()))
 
             remove_btn = Gtk.Button(label="Remove")
             remove_btn.set_valign(Gtk.Align.CENTER)

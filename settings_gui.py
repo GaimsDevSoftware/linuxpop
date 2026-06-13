@@ -539,7 +539,10 @@ class SettingsDialog:
         size_row.set_title("Popup button size")
         size_row.set_subtitle(
             "How big each action button in the popup is, in pixels. "
-            "16 is small and dense; 32 is roomy and easy to click.")
+            "16 is small and dense; 32 is roomy and easy to click. "
+            "Tip: smaller buttons also fit more actions on a single row "
+            "before the popup has to wrap or expand (see ‘When actions "
+            "overflow’ below).")
         size_adj = Gtk.Adjustment(
             value=int(self._settings.get("popup_button_size", 22) or 22),
             lower=16, upper=32, step_increment=1, page_increment=4,
@@ -740,8 +743,10 @@ class SettingsDialog:
             "text field to bring up Paste / Select all / Backspace at "
             "the cursor. The modifier is required so it never collides "
             "with the app's own double-click-to-select-a-word gesture. "
-            "Requires LinuxPop to watch mouse clicks globally - "
-            "nothing is logged or sent.")
+            "Requires watching mouse clicks globally (nothing is logged or "
+            "sent). On Wayland this reaches XWayland windows only — for "
+            "native Wayland apps, press the popup hotkey instead; it shows "
+            "the same menu when nothing is selected.")
         dbl_switch = Gtk.Switch()
         dbl_switch.set_valign(Gtk.Align.CENTER)
         dbl_switch.set_active(

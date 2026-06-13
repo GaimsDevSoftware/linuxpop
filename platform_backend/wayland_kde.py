@@ -515,9 +515,19 @@ class WaylandKdeBackend(PlatformBackend):
         return WaylandKdeHotkey(hotkey_str, on_trigger)
 
     def make_double_click_watcher(self, on_double_click):
-        # Global pointer-event interception (X11 XRecord) has no Wayland
-        # equivalent for unprivileged clients. Unsupported for now.
-        return None
+        # There is no native-Wayland way to watch global pointer events, but
+        # XRecord still works over XWayland (the same path the snippet-trigger
+        # watcher uses here), so the modifier+double-click gesture works inside
+        # XWayland windows. For native Wayland windows it simply never fires -
+        # the popup hotkey covers those. Best-effort and non-fatal.
+        if not os.environ.get("DISPLAY"):
+            return None
+        try:
+            from mouse_watcher import DoubleClickWatcher
+            return DoubleClickWatcher(on_double_click)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[wayland] double-click watcher unavailable: {exc}")
+            return None
 
     # ---- popup positioning ----------------------------------------------
     def init_popup_window(self, win) -> None:

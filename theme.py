@@ -55,7 +55,13 @@ hdypreferencesgroup {
    shouting. Adds visual depth at the top of every window. */
 headerbar,
 .titlebar {
-    background-image: linear-gradient(to bottom,
+    /* A discreet brand wash (blue -> violet -> magenta) layered over the base,
+       so every window's header reads as the same family as the onboarding. */
+    background-image: linear-gradient(120deg,
+            rgba(91, 125, 245, 0.18) 0%,
+            rgba(124, 58, 237, 0.14) 52%,
+            rgba(236, 72, 153, 0.10) 100%),
+        linear-gradient(to bottom,
         #232a3c 0%,
         #1a1f2e 100%);
     background-color: #1a1f2e;
@@ -158,6 +164,24 @@ list > row:selected {
         rgba(124, 58, 237, 0.18));
     color: #ffffff;
     border-radius: 10px;
+}
+
+/* ----- colored plugin badges (the onboarding-store look) ----- */
+.lp-badge {
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22),
+                0 1px 0 rgba(255, 255, 255, 0.20) inset;
+    margin: 2px 12px 2px 2px;
+}
+.lp-badge-0 { background-image: linear-gradient(135deg, #5B7DF5, #4A6CE3); }
+.lp-badge-1 { background-image: linear-gradient(135deg, #7C3AED, #6929DB); }
+.lp-badge-2 { background-image: linear-gradient(135deg, #EC4899, #DB2777); }
+.lp-badge-3 { background-image: linear-gradient(135deg, #34C759, #16A34A); }
+.lp-badge-letter {
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 15px;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
 }
 
 /* ----- buttons ----- */
