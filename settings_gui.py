@@ -431,6 +431,43 @@ class HotkeyRecorder(Gtk.Button):
         return True
 
 
+#: Per-row leading icon for the Settings rows, so each gets a coloured tile in
+#: the same style as the Plugin Manager. Titles must match set_title() exactly;
+#: anything unmapped falls back to a generic gear (never a broken glyph).
+_SETTING_ICONS = {
+    "Theme": "applications-graphics-symbolic",
+    "Popup button size": "view-fullscreen-symbolic",
+    "Maximum buttons in the popup": "view-grid-symbolic",
+    "When actions overflow": "view-more-symbolic",
+    "Popup hotkey": "preferences-desktop-keyboard-shortcuts-symbolic",
+    "Screen OCR hotkey": "camera-photo-symbolic",
+    "Auto-popup on selection": "edit-select-all-symbolic",
+    "Modifier+double-click for the edit menu": "input-mouse-symbolic",
+    "Modifier key": "input-keyboard-symbolic",
+    "Force all plugins modifier": "view-grid-symbolic",
+    "Start at login": "system-run-symbolic",
+    "Clipboard history": "edit-copy-symbolic",
+    "Optional clipboard shortcut": "edit-paste-symbolic",
+    "Snippet triggers (text expansion)": "document-edit-symbolic",
+    "Don't expand triggers in these apps or sites": "security-high-symbolic",
+    "Snippet variables": "view-list-symbolic",
+    "Shell expansion in snippets": "utilities-terminal-symbolic",
+    "Skip short auto-popup selections": "format-justify-left-symbolic",
+    "Don't show in these apps or pages": "security-medium-symbolic",
+    "How to send the text": "mail-send-symbolic",
+    "Browser bridge": "network-server-symbolic",
+    "Per-service method (advanced)": "applications-system-symbolic",
+    "Auto-submit after paste": "go-next-symbolic",
+    "Search engine": "edit-find-symbolic",
+    "Custom search URL": "insert-link-symbolic",
+    "Trigger hotkey on first press": "media-playback-start-symbolic",
+    "MCP server (advanced)": "network-server-symbolic",
+    "Reset settings to defaults": "view-refresh-symbolic",
+    "Keep terminal open after running": "utilities-terminal-symbolic",
+    "Need a userscript manager?": "help-about-symbolic",
+}
+
+
 class SettingsDialog:
     def __init__(self, on_changed: Callable[[], None] | None = None) -> None:
         self._on_changed = on_changed
@@ -476,6 +513,7 @@ class SettingsDialog:
         # Settings stays focused on configuration.
 
         win.add(page)
+        self._decorate_badges(page)
         win.show_all()
         # Subtitle wrap must be patched AFTER show_all() so the realised
         # label widgets exist to flip.
@@ -485,6 +523,46 @@ class SettingsDialog:
 
     def _on_destroy(self, *_):
         self._window = None
+
+    # ---- coloured icon badges (matches the Plugin Manager) -------------------
+    def _badge(self, icon_name: str | None, color_index: int) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box.set_size_request(32, 32)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+        ctx = box.get_style_context()
+        ctx.add_class("lp-badge")
+        ctx.add_class(f"lp-badge-{color_index % 4}")
+        it = Gtk.IconTheme.get_default()
+        name = icon_name if (icon_name and it.has_icon(icon_name)) \
+            else "emblem-system-symbolic"
+        img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.BUTTON)
+        img.set_pixel_size(17)
+        img.get_style_context().add_class("lp-badge-glyph")
+        box.pack_start(img, True, True, 0)
+        box.show_all()
+        return box
+
+    def _decorate_badges(self, root: Gtk.Widget) -> None:
+        """Give each settings row a coloured icon tile so Settings reads as the
+        same family as the Plugin Manager. Walks the realised row tree, skipping
+        the inside of each row (so expander sub-rows aren't decorated)."""
+        rows: list[Gtk.Widget] = []
+
+        def walk(w):
+            if isinstance(w, (Handy.ActionRow, Handy.ExpanderRow)):
+                rows.append(w)
+                return
+            if isinstance(w, Gtk.Container):
+                w.forall(lambda c, *_a: walk(c), None)
+
+        walk(root)
+        for i, r in enumerate(rows):
+            icon = _SETTING_ICONS.get(r.get_title() or "")
+            try:
+                r.add_prefix(self._badge(icon, i))
+            except Exception:
+                pass
 
     # ---- groups --------------------------------------------------------------
 
