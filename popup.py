@@ -389,12 +389,45 @@ class PopupWindow:
         target_w = min(680, int(monitor_w * 0.5))
         return max(4, target_w // approx_button_width)
 
+    def _device_scale(self) -> int:
+        """The monitor's device-pixel scale (2 on a HiDPI screen). Read it
+        from the monitor directly rather than the popup window: an override
+        popup's own GTK scale factor can report 1 even on a 2x display, which
+        leaves colour logos rasterised at half resolution (12 px upscaled to
+        24 by the compositor = blurry)."""
+        try:
+            display = Gdk.Display.get_default()
+            monitor = None
+            win = self.win.get_window() if self.win is not None else None
+            if win is not None:
+                monitor = display.get_monitor_at_window(win)
+            if monitor is None:
+                monitor = display.get_primary_monitor() or display.get_monitor(0)
+            return monitor.get_scale_factor() if monitor else 1
+        except Exception:
+            return 1
+
     def _make_icon_image(self, icon_name: str) -> Gtk.Image:
-        """Render an icon scaled to ~72% of the configured button size,
-        so it has a comfortable halo of padding inside the button. GTK
-        handles HiDPI natively."""
+        """Render an icon scaled to ~72% of the configured button size, so it
+        has a comfortable halo of padding inside the button.
+
+        Colour logos (non-symbolic) are rasterised straight to a surface at
+        the monitor's device resolution so they stay crisp on HiDPI. Symbolic
+        icons stay on the icon-name path so the popup's CSS can still recolour
+        them to follow the text colour (a surface would freeze their colour)."""
         size = _resolve_button_size()
         icon_px = max(12, int(size * 0.72))
+        if icon_name and not icon_name.endswith("-symbolic"):
+            try:
+                scale = self._device_scale()
+                win = self.win.get_window() if self.win is not None else None
+                surface = Gtk.IconTheme.get_default().load_surface(
+                    icon_name, icon_px, scale, win,
+                    Gtk.IconLookupFlags.FORCE_SIZE)
+                if surface is not None:
+                    return Gtk.Image.new_from_surface(surface)
+            except Exception:
+                pass  # fall through to the classic icon-name path
         image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
         image.set_pixel_size(icon_px)
         return image
