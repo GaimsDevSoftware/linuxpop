@@ -116,17 +116,27 @@ hdyactionrow {
     transition: background-color 120ms ease;
 }
 
-/* HdyExpanderRow ("Per-service method (advanced)") was not covered by the
-   row selectors above. On a non-Adwaita GTK theme (e.g. KDE/Breeze) its
-   header fell back to a light background with near-invisible light text.
-   Force the whole expander - header + nested rows - into the dark palette. */
-hdyexpanderrow,
-hdyexpanderrow > box,
-hdyexpanderrow box,
-hdyexpanderrow list,
-hdyexpanderrow row {
-    background-color: transparent;
+/* HdyExpanderRow's CSS node is `row.expander` (NOT `hdyexpanderrow`, which
+   matched no node at all), with an inner `list` wrapping the header
+   `row.header` and a `list.nested` for sub-rows. Because the old selector
+   matched nothing, those inner nodes were never styled - so on KDE/Breeze they
+   kept a dark surface that the light-mode remap never reached, giving dark,
+   unreadable bundle cards in light mode. Style the REAL nodes with the card
+   surface (#1c2231 -> #ffffff in light) so they remap correctly in both modes. */
+row.expander,
+row.expander > box,
+row.expander > box > list,
+row.expander > box > list > row.header,
+row.expander > box > revealer,
+row.expander list.nested,
+row.expander list.nested > row {
+    background-color: #1c2231;
     color: #f0f3fa;
+}
+
+row.expander > box > list > row.header:hover,
+row.expander list.nested > row:hover {
+    background-color: #262d3f;
 }
 
 list.boxed-list > row:last-child,
