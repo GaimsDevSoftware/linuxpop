@@ -177,6 +177,12 @@ list > row:selected {
 .lp-badge-1 { background-image: linear-gradient(135deg, #7C3AED, #6929DB); }
 .lp-badge-2 { background-image: linear-gradient(135deg, #EC4899, #DB2777); }
 .lp-badge-3 { background-image: linear-gradient(135deg, #34C759, #16A34A); }
+.lp-badge-plain {
+    background-color: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18),
+                0 0 0 1px rgba(0, 0, 0, 0.06) inset;
+}
+.lp-badge-glyph { color: #ffffff; }
 .lp-badge-letter {
     color: #ffffff;
     font-weight: bold;

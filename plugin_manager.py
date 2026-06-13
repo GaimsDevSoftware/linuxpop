@@ -373,10 +373,12 @@ class PluginManagerDialog:
         groups = self._build_catalog_groups()
         return groups[0] if groups else Handy.PreferencesGroup()
 
-    def _badge(self, key: str) -> Gtk.Widget:
-        """A small colored circle bearing the plugin's initial — the onboarding
-        store look, used as each row's leading icon in place of generic ones.
-        Colour is stable per plugin (hashed from its name) so it never jumps."""
+    def _badge(self, icon_name: str | None, key: str) -> Gtk.Widget:
+        """Each row's leading icon, in the onboarding-store style: a rounded
+        tile holding the plugin's REAL popup icon. Symbolic icons render white
+        on a brand-coloured tile (the colour is stable per plugin); a colourful
+        logo (e.g. an AI service) sits on a light tile so it reads. Falls back
+        to a coloured initial only when there's no usable icon."""
         key = (key or "?").strip()
         idx = (sum(ord(c) for c in key) % 4) if key else 0
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -385,19 +387,30 @@ class PluginManagerDialog:
         box.set_halign(Gtk.Align.CENTER)
         ctx = box.get_style_context()
         ctx.add_class("lp-badge")
-        ctx.add_class(f"lp-badge-{idx}")
-        lbl = Gtk.Label(label=(key[:1].upper() if key else "*"))
-        lbl.get_style_context().add_class("lp-badge-letter")
-        lbl.set_halign(Gtk.Align.CENTER)
-        lbl.set_valign(Gtk.Align.CENTER)
-        box.pack_start(lbl, True, True, 0)
+        has = bool(icon_name) and Gtk.IconTheme.get_default().has_icon(icon_name)
+        if has and icon_name.endswith("-symbolic"):
+            ctx.add_class(f"lp-badge-{idx}")
+            img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+            img.set_pixel_size(18)
+            img.get_style_context().add_class("lp-badge-glyph")
+            box.pack_start(img, True, True, 0)
+        elif has:
+            ctx.add_class("lp-badge-plain")
+            img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+            img.set_pixel_size(22)
+            box.pack_start(img, True, True, 0)
+        else:
+            ctx.add_class(f"lp-badge-{idx}")
+            lbl = Gtk.Label(label=(key[:1].upper() if key else "*"))
+            lbl.get_style_context().add_class("lp-badge-letter")
+            box.pack_start(lbl, True, True, 0)
         box.show_all()
         return box
 
     def _make_catalog_row(self, entry: dict) -> Handy.ActionRow:
         row = Handy.ActionRow()
         row.set_title(entry.get("title", entry["file"]))
-        row.add_prefix(self._badge(entry.get("title", entry["file"])))
+        row.add_prefix(self._badge(entry.get("icon"), entry.get("title", entry["file"])))
         desc = entry.get("description", "")
         tags = entry.get("tags") or []
         if tags:
@@ -505,7 +518,11 @@ class PluginManagerDialog:
             else:
                 row.set_title(path.stem.replace("_", " ").title())
                 row.set_subtitle("Installed by hand (not in the catalogue)")
-            row.add_prefix(self._badge(row.get_title()))
+            _icon = (entry.get("icon") if entry else None)
+            if not _icon and sub_names:
+                _p0 = all_plugins.get(sub_names[0])
+                _icon = getattr(_p0, "icon", None) if _p0 else None
+            row.add_prefix(self._badge(_icon, row.get_title()))
 
             remove_btn = Gtk.Button(label="Remove")
             remove_btn.set_valign(Gtk.Align.CENTER)
