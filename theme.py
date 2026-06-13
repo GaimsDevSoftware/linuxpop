@@ -96,14 +96,13 @@ label.dim-label,
 list.boxed-list,
 list.content {
     background-color: #1c2231;
-    border: 1px solid #3a4258;
-    border-radius: 12px;
-    padding: 2px;
-    /* Subtle inner top highlight + slightly stronger bottom border to give
-       cards real lift instead of bleeding into the dark background. */
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
-                0 -1px 0 rgba(0, 0, 0, 0.30) inset,
-                0 6px 14px rgba(0, 0, 0, 0.30);
+    border: 1px solid #2c3346;
+    border-radius: 16px;
+    padding: 5px;
+    /* Soft, onboarding-style elevation: a faint top highlight + a gentle, wide
+       drop shadow, so cards feel lifted and clean rather than heavy. */
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
+                0 10px 26px rgba(0, 0, 0, 0.18);
 }
 
 list.boxed-list > row,
@@ -111,8 +110,8 @@ list.content > row,
 hdyactionrow {
     background-color: transparent;
     color: #f0f3fa;
-    padding: 10px 14px;
-    border-bottom: 1px solid #2c3346;
+    padding: 14px 18px;
+    border-bottom: 1px solid #262d3f;
     transition: background-color 120ms ease;
 }
 
@@ -137,6 +136,7 @@ row.expander list.nested > row {
 row.expander > box > list > row.header:hover,
 row.expander list.nested > row:hover {
     background-color: #262d3f;
+    border-radius: 10px;
 }
 
 list.boxed-list > row:last-child,
@@ -147,6 +147,7 @@ list.content > row:last-child {
 list.boxed-list > row:hover,
 list.content > row:hover {
     background-color: #262d3f;
+    border-radius: 10px;
 }
 
 list.boxed-list > row:selected,
@@ -156,6 +157,7 @@ list > row:selected {
         rgba(91, 125, 245, 0.18),
         rgba(124, 58, 237, 0.18));
     color: #ffffff;
+    border-radius: 10px;
 }
 
 /* ----- buttons ----- */
@@ -164,8 +166,8 @@ button {
     background-color: #262d3f;
     color: #f0f3fa;
     border: 1px solid #2c3346;
-    border-radius: 8px;
-    padding: 6px 14px;
+    border-radius: 10px;
+    padding: 8px 16px;
     font-weight: 500;
     transition: background-color 120ms ease,
                 border-color 120ms ease,
@@ -247,8 +249,8 @@ spinbutton {
     background-color: #181d2a;
     color: #f0f3fa;
     border: 1px solid #3a4258;
-    border-radius: 8px;
-    padding: 6px 10px;
+    border-radius: 10px;
+    padding: 8px 12px;
     caret-color: #5B7DF5;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) inset;
     transition: border-color 120ms ease, box-shadow 120ms ease;
