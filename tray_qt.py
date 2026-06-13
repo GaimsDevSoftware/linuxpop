@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""LinuxPop tray icon — manual D-Bus StatusNotifierItem (no KStatusNotifierItem).
+"""LinuxPop tray icon — Qt QSystemTrayIcon (StatusNotifierItem + DBusMenu).
 
-Pure PySide6 + QtDBus. Works around Fedora 44 KSNI D-Bus registration bug.
-Based on Freedesktop SNI spec + ssokolow's reference implementation.
+Uses QSystemTrayIcon, NOT the KF6 KStatusNotifierItem (which had a Fedora 44
+D-Bus registration bug). Qt's tray registers the SNI *and* exports the context
+menu as a com.canonical.dbusmenu object that plasmashell renders itself — the
+only thing that actually shows a menu on KWin/Wayland (a parentless QMenu.popup
+never maps). Talks to the main LinuxPop process over a small length-prefixed
+JSON socket, unchanged from the previous implementation.
 """
 from __future__ import annotations
 
-import json, os, socket, sys, struct, shutil
+import json, os, socket, sys, struct
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication, QMenu
-from PySide6.QtGui import QAction, QCursor
-from PySide6.QtCore import QObject, QTimer, Signal, Slot, Property, QPoint, ClassInfo
-from PySide6 import QtDBus
+from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PySide6.QtGui import QIcon, QCursor
+from PySide6.QtCore import QTimer
 
 ICON_DIR = str(Path(__file__).resolve().parent / "icons")
 SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
@@ -43,152 +46,6 @@ def _send_message(sock: socket.socket, msg: dict) -> None:
     raw = json.dumps(msg).encode("utf-8")
     sock.sendall(struct.pack("!I", len(raw)) + raw)
 
-# ─── Manual D-Bus StatusNotifierItem ────────────────────────────────
-
-@ClassInfo({"D-Bus Interface": "org.kde.StatusNotifierItem"})
-class StatusNotifierItemDBus(QObject):
-    """Manual SNI via D-Bus — no KStatusNotifierItem dependency.
-
-    ClassInfo("D-Bus Interface", ...) is REQUIRED: without it QtDBus exports
-    these slots/properties/signals under a class-derived interface name
-    (local.linuxpop_tray.StatusNotifierItemDBus), so plasmashell — which reads
-    properties and calls ContextMenu()/Activate() on org.kde.StatusNotifierItem
-    — cannot read the icon or deliver clicks. With it, the item is published on
-    the spec interface and the tray actually responds.
-    """
-
-    NewTitle = Signal()
-    NewIcon = Signal()
-    NewAttentionIcon = Signal()
-    NewOverlayIcon = Signal()
-    NewToolTip = Signal()
-    NewStatus = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._id = f"linuxpop-{os.getpid()}"
-        self._title = "LinuxPop"
-        self._status = "Active"
-        self._category = "ApplicationStatus"
-        self._icon_name = "linuxpop-tray-symbolic"
-        self._attention_icon_name = ""
-        self._overlay_icon_name = ""
-        self._tooltip_title = "LinuxPop"
-        self._tooltip_subtitle = "Clipboard popup assistant"
-        self._tooltip_icon_name = ""
-        self._menu_path = "/NO_DBUS_MENU"
-        self._item_is_menu = False
-        self._window_id = 0
-        self._dbus_svc: str | None = None
-        self._registered = False
-        self._callback = None
-        self._menu_cb = None
-
-    # ─── D-Bus Properties ───
-
-    @Property(str)
-    def Category(self): return self._category
-    @Property(str)
-    def Id(self): return self._id
-    @Property(str)
-    def Title(self): return self._title
-    @Property(str)
-    def Status(self): return self._status
-    @Property(int)
-    def WindowId(self): return self._window_id
-    @Property(str)
-    def IconName(self): return self._icon_name
-    @Property(str)
-    def IconThemePath(self): return ICON_DIR
-    @Property(str)
-    def AttentionIconName(self): return self._attention_icon_name
-    @Property(str)
-    def OverlayIconName(self): return self._overlay_icon_name
-    @Property("QVariant")
-    def ToolTip(self):
-        return (self._tooltip_icon_name or self._icon_name, [],
-                self._tooltip_title, self._tooltip_subtitle)
-    @Property(bool)
-    def ItemIsMenu(self): return self._item_is_menu
-    @Property(str)
-    def Menu(self): return self._menu_path
-
-    # ─── D-Bus Slots ───
-
-    @Slot(int, int)
-    def ContextMenu(self, x, y):
-        # plasmashell calls this when the item exposes no DBusMenu (our case).
-        # Show our own Qt menu so Settings/Plugins/Quit are reachable.
-        if self._menu_cb:
-            self._menu_cb(x, y)
-
-    @Slot(int, int)
-    def Activate(self, x, y):
-        # Left-click: open the same menu. There is no useful primary action
-        # without a current selection, and the menu holds everything
-        # (Show popup now, Settings, Plugins, Quit, ...).
-        if self._menu_cb:
-            self._menu_cb(x, y)
-        elif self._callback:
-            self._callback("show_popup", None)
-
-    @Slot(int, int)
-    def SecondaryActivate(self, x, y): pass
-
-    @Slot(int, int)
-    def Scroll(self, delta, orientation): pass
-
-    def set_callback(self, cb):
-        self._callback = cb
-
-    def set_menu_callback(self, cb):
-        self._menu_cb = cb
-
-    def register_on_dbus(self) -> bool:
-        session = QtDBus.QDBusConnection.sessionBus()
-        if not session.isConnected():
-            print("[tray-qt] D-Bus session not connected", flush=True)
-            return False
-        for i in range(100):
-            svc = f"org.kde.StatusNotifierItem-{os.getpid()}-{i}"
-            if session.registerService(svc):
-                self._dbus_svc = svc
-                break
-        else:
-            print("[tray-qt] Could not register D-Bus service", flush=True)
-            return False
-        flags = (QtDBus.QDBusConnection.ExportAllSlots
-                 | QtDBus.QDBusConnection.ExportAllProperties
-                 | QtDBus.QDBusConnection.ExportAllSignals)
-        if not session.registerObject("/StatusNotifierItem", self, flags):
-            print("[tray-qt] Could not register D-Bus object", flush=True)
-            session.unregisterService(self._dbus_svc)
-            self._dbus_svc = None
-            return False
-        msg = QtDBus.QDBusMessage.createMethodCall(
-            "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
-            "org.kde.StatusNotifierWatcher", "RegisterStatusNotifierItem")
-        msg.setArguments([self._dbus_svc])
-        reply = session.call(msg)
-        if reply.type() == QtDBus.QDBusMessage.ReplyMessage:
-            self._registered = True
-            print(f"[tray-qt] SNI registered: {self._dbus_svc}", flush=True)
-            return True
-        else:
-            print(f"[tray-qt] Watcher rejected: {reply.errorMessage()}", flush=True)
-            session.unregisterObject("/StatusNotifierItem")
-            session.unregisterService(self._dbus_svc)
-            self._dbus_svc = None
-            return False
-
-    def unregister_from_dbus(self):
-        if self._dbus_svc:
-            session = QtDBus.QDBusConnection.sessionBus()
-            session.unregisterObject("/StatusNotifierItem")
-            session.unregisterService(self._dbus_svc)
-            self._dbus_svc = None
-            self._registered = False
-
 # ─── TrayQt ─────────────────────────────────────────────────────────
 
 class TrayQt:
@@ -196,22 +53,22 @@ class TrayQt:
         self._app = QApplication(sys.argv)
         self._app.setQuitOnLastWindowClosed(False)
         self._app.setApplicationName("linuxpop-tray")
-
-        # Qt context menu — shown when plasmashell calls ContextMenu()/Activate()
-        # on our SNI (we expose no DBusMenu, so plasmashell delegates to us).
-        self._menu = QMenu()
-        self._setup_menu()
-
-        # Manual D-Bus SNI
-        self._sni = StatusNotifierItemDBus()
-        self._sni.set_callback(self._on_sni_event)
-        self._sni.set_menu_callback(self._show_menu)
+        self._app.setDesktopFileName("linuxpop")
 
         self._install_icon()
 
-        # D-Bus registration
-        if not self._sni.register_on_dbus():
-            print("[tray-qt] WARNING: SNI D-Bus registration failed", flush=True)
+        self._menu = QMenu()
+        self._setup_menu()
+
+        # QSystemTrayIcon registers the SNI and exports `self._menu` as a
+        # DBusMenu. plasmashell renders that menu on its own surface (correctly
+        # positioned) when the user activates the item — no client-side popup.
+        self._tray = QSystemTrayIcon()
+        self._tray.setIcon(self._load_icon())
+        self._tray.setToolTip("LinuxPop — clipboard popup assistant")
+        self._tray.setContextMenu(self._menu)
+        self._tray.activated.connect(self._on_activated)
+        self._tray.show()
 
         # Socket
         self._sock: socket.socket | None = None
@@ -223,24 +80,24 @@ class TrayQt:
         self._timer.timeout.connect(self._check_socket)
         self._timer.start(100)
 
-        print("[tray-qt] Started (manual D-Bus SNI)", flush=True)
+        avail = QSystemTrayIcon.isSystemTrayAvailable()
+        print(f"[tray-qt] Started (QSystemTrayIcon, tray_available={avail})",
+              flush=True)
 
-    def _on_sni_event(self, event: str, value: object):
-        self._emit(event, value)
-
-    def _show_menu(self, x: int, y: int) -> None:
-        # Called from the SNI D-Bus slot (Qt main thread). plasmashell passes
-        # the tray-icon screen coords; if they are absent (0,0) fall back to the
-        # pointer. popup() is non-blocking, so the D-Bus slot returns promptly.
-        try:
-            pt = QPoint(int(x), int(y))
-            if int(x) == 0 and int(y) == 0:
-                pt = QCursor.pos()
-            self._menu.popup(pt)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[tray-qt] menu popup failed: {exc}", flush=True)
+    # ─── icon ───
+    def _load_icon(self) -> QIcon:
+        for name in ("linuxpop-tray-symbolic", "linuxpop"):
+            p = Path(ICON_DIR) / f"{name}.svg"
+            if p.is_file():
+                ic = QIcon(str(p))
+                if not ic.isNull():
+                    return ic
+        # Fall back to a themed name so we never show a blank item.
+        return (QIcon.fromTheme("linuxpop")
+                or QIcon.fromTheme("applications-internet"))
 
     def _install_icon(self) -> None:
+        import shutil
         user_dir = Path.home() / ".local/share/icons/hicolor/scalable/apps"
         user_dir.mkdir(parents=True, exist_ok=True)
         for name in ("linuxpop-tray-symbolic", "linuxpop"):
@@ -252,6 +109,17 @@ class TrayQt:
                 except OSError:
                     pass
 
+    # ─── activation ───
+    def _on_activated(self, reason) -> None:
+        # Right-click already shows the DBusMenu (plasmashell renders it). On
+        # left-click (Trigger) / middle-click, surface the same menu so the user
+        # always reaches Settings/Plugins however they click. The popup here is
+        # driven by a real input event, so it maps on Wayland.
+        R = QSystemTrayIcon.ActivationReason
+        if reason in (R.Trigger, R.MiddleClick):
+            self._menu.popup(QCursor.pos())
+
+    # ─── menu ───
     def _setup_menu(self) -> None:
         h = self._menu.addAction("LinuxPop")
         h.setEnabled(False)
@@ -259,7 +127,8 @@ class TrayQt:
         self._toggle_action = self._menu.addAction("Auto-popup on selection")
         self._toggle_action.setCheckable(True)
         self._toggle_action.setChecked(True)
-        self._toggle_action.triggered.connect(lambda checked: self._emit("toggle_watcher", checked))
+        self._toggle_action.triggered.connect(
+            lambda checked: self._emit("toggle_watcher", checked))
         a = self._menu.addAction("Show popup now")
         a.triggered.connect(lambda: self._emit("show_popup", None))
         self._menu.addSeparator()
@@ -282,6 +151,7 @@ class TrayQt:
             except OSError:
                 pass
 
+    # ─── socket IPC (unchanged protocol) ───
     def _setup_socket(self) -> None:
         SOCKET_DIR.mkdir(parents=True, exist_ok=True)
         socket_path = str(SOCKET_DIR / "tray.sock")
@@ -340,7 +210,6 @@ class TrayQt:
 
     def run(self) -> None:
         self._app.exec()
-        self._sni.unregister_from_dbus()
         if self._client:
             try:
                 self._client.close()

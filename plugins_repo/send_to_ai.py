@@ -507,6 +507,12 @@ _SERVICES = {
         icon="linuxpop-claude",
         tooltip="Ask Claude",
         service="Claude",
+        # Claude Desktop registers the claude:// scheme and ?q= prefills the
+        # composer directly. (The web https://claude.ai/?q= was disabled, but the
+        # desktop deep link still works.) Preferred over paste/userscript when
+        # the app is installed — no server, no userscript, no keystroke paste.
+        deeplink="claude://claude.ai/new",
+        deeplink_focus_kw="claude",
         mode="paste",
         url="https://claude.ai/new",
         userscript_url="https://claude.ai/new",
@@ -868,6 +874,129 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
     )
 
 
+# ---- desktop deep-link mode (claude:// etc.) ----------------------------
+#
+# The flawless path on KDE when the service ships a desktop app that registers a
+# URL scheme: the deep link prefills the composer via ?q= directly. No bridge,
+# no userscript, and no keystroke injection for the text (impossible on this
+# KWin/Wayland session anyway — injected modifier chords never reach apps).
+# Submitting needs one Enter; Enter is a SINGLE keycode (28), which ydotool can
+# deliver even though Ctrl+V can't. Mirrors our krunner-claude runner.
+
+def _scheme_registered(deeplink: str) -> bool:
+    scheme = deeplink.split("://", 1)[0]
+    if not scheme:
+        return False
+    try:
+        out = subprocess.run(
+            ["xdg-mime", "query", "default", f"x-scheme-handler/{scheme}"],
+            capture_output=True, text=True, timeout=2)
+        return bool(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _ydotool_enter() -> None:
+    """Press Enter in the focused window via ydotool. Enter is a single keycode,
+    so it lands on this compositor even though injected modifier chords don't."""
+    yd = shutil.which("ydotool")
+    sock = os.environ.get("YDOTOOL_SOCKET") or os.path.join(
+        os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"),
+        ".ydotool_socket")
+    if not yd or not os.path.exists(sock):
+        return
+    try:
+        subprocess.run([yd, "key", "28:1", "28:0"],
+                       env=dict(os.environ, YDOTOOL_SOCKET=sock),
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _focus_window_kw(keyword: str) -> None:
+    """Bring a window whose class/caption contains `keyword` to the front.
+    Prefers the persistent KWin shortcut the krunner-claude companion registers
+    (the reliable Wayland pattern); else force-activates via a one-shot script."""
+    kw = keyword.lower()
+    if "claude" in kw:
+        try:
+            import dbus
+            comp = dbus.Interface(
+                dbus.SessionBus().get_object("org.kde.kglobalaccel", "/component/kwin"),
+                "org.kde.kglobalaccel.Component")
+            if "Focus Claude (KRunner)" in [str(n) for n in comp.shortcutNames()]:
+                comp.invokeShortcut("Focus Claude (KRunner)")
+                return
+        except Exception:
+            pass
+    try:
+        import dbus
+        import tempfile
+        js = (
+            'var L=(workspace.windowList?workspace.windowList():workspace.clientList());'
+            'for(var i=0;i<L.length;i++){var w=L[i];try{'
+            'var c=(""+(w.resourceClass||"")).toLowerCase();'
+            'var p=(""+(w.caption||"")).toLowerCase();'
+            'if(c.indexOf("%s")>=0||p.indexOf("%s")>=0){'
+            'if(w.minimized)w.minimized=false;workspace.activeWindow=w;break;}}catch(e){}}'
+        ) % (kw, kw)
+        bus = dbus.SessionBus()
+        fd, path = tempfile.mkstemp(suffix=".js", prefix="linuxpop-focus-")
+        os.write(fd, js.encode("utf-8")); os.close(fd)
+        scripting = dbus.Interface(
+            bus.get_object("org.kde.KWin", "/Scripting"), "org.kde.kwin.Scripting")
+        sid = int(scripting.loadScript(path))
+        dbus.Interface(bus.get_object("org.kde.KWin", f"/Scripting/Script{sid}"),
+                       "org.kde.kwin.Script").run()
+        time.sleep(0.2)
+        try:
+            scripting.unloadScript(path)
+        except Exception:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    except Exception:
+        pass
+
+
+def _send_via_deeplink(service: str, spec: dict, text: str) -> None:
+    """Open the service's desktop app via its URL scheme with the prompt
+    prefilled in ?q=. Focus the window; if auto-submit is on, press Enter."""
+    import urllib.parse
+    base = spec["deeplink"]
+    sep = "&" if "?" in base else "?"
+    url = f"{base}{sep}q={urllib.parse.quote(text)}"
+    try:
+        subprocess.Popen(["xdg-open", url], close_fds=True)
+    except FileNotFoundError:
+        subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                        "-i", "dialog-error", f"Could not open {service}",
+                        "xdg-open is missing"], check=False)
+        return
+    kw = spec.get("deeplink_focus_kw", service.lower())
+    submit = _auto_submit_enabled()
+
+    def worker():
+        time.sleep(0.3)
+        _focus_window_kw(kw)
+        if submit:
+            # Retry a few times — the composer mounts after the deep link opens.
+            for i in range(5):
+                time.sleep(0.7 + i * 0.45)
+                _focus_window_kw(kw)
+                _ydotool_enter()
+
+    threading.Thread(target=worker, daemon=True,
+                     name=f"ai-deeplink-{service}").start()
+    subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "2500",
+                    "-i", spec.get("icon", "applications-internet"),
+                    f"Sent to {service}",
+                    "Opened in the desktop app with your selection."
+                    + ("" if submit else " Press Enter to send.")], check=False)
+
+
 # ---- dispatch -----------------------------------------------------------
 
 def _send(spec: dict):
@@ -910,6 +1039,14 @@ def _send(spec: dict):
         # to their native mode so the button still does something useful.
         if mode == "userscript" and not spec.get("userscript_supported"):
             mode = spec.get("mode", "paste")
+
+        # Desktop deep link is the most reliable path on KDE/Wayland when the
+        # service's app registers a URL scheme (e.g. Claude Desktop's claude://):
+        # ?q= prefills the composer directly — no server, userscript, or paste.
+        # Explicit API mode still wins; everything else defers to the deep link.
+        if mode != "api" and spec.get("deeplink") and _scheme_registered(spec["deeplink"]):
+            _send_via_deeplink(spec["service"], spec, text)
+            return
 
         if mode == "api":
             _send_via_api(spec["service"], spec, text)
