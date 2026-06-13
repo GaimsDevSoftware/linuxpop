@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Binary blocks → arrow → letter A -->
+  <g fill="#f0f0f0" fill-rule="evenodd">
+    <!-- Binary blocks on the left: "0" + "1" stacked -->
+    <path d="M0.8,9.5
+             a 1.2,1.6 0 1,0 0,3.2
+             a 1.2,1.6 0 1,0 0,-3.2
+             Z
+             M0.8,10.6
+             a 0.4,0.7 0 1,0 0,1.4
+             a 0.4,0.7 0 1,0 0,-1.4
+             Z"/>
+    <rect x="2.3" y="9.5" width="1.2" height="3.2" rx="0.2"/>
+    <path d="M0.8,4.5
+             a 1.2,1.6 0 1,0 0,3.2
+             a 1.2,1.6 0 1,0 0,-3.2
+             Z
+             M0.8,5.6
+             a 0.4,0.7 0 1,0 0,1.4
+             a 0.4,0.7 0 1,0 0,-1.4
+             Z"/>
+    <rect x="2.3" y="4.5" width="1.2" height="3.2" rx="0.2"/>
+    <!-- Arrow -->
+    <path d="M5.5,8 L8,8 L8,7 L9.5,8.5 L8,10 L8,9 L5.5,9 Z"/>
+    <!-- Capital A on the right -->
+    <path d="M9.5,13.5 L12,3.5 L13,3.5 L15.5,13.5 L14.2,13.5 L13.8,11.5 L11.2,11.5 L10.8,13.5 Z
+             M11.45,10 L13.55,10 L12.5,6.5 Z"/>
+  </g>
+</svg>

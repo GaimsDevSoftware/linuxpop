@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LinuxPop — PopClip-inspired text actions for Linux</title>
+  <meta name="description" content="A floating popup of context-aware actions on whatever text you highlight. Open URLs, run commands, ask an AI, transform text — without leaving the keyboard.">
+  <link rel="icon" href="assets/icons/linuxpop.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icons/linuxpop.svg" alt="LinuxPop">
+      LinuxPop
+    </a>
+    <div class="nav-links">
+      <a href="plugins.html">Plugins</a>
+      <a href="develop.html">Build your own</a>
+      <a class="nav-cta" href="https://github.com/GaimsDevSoftware/linuxpop">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <img class="hero-logo" src="assets/icons/linuxpop.svg" alt="">
+  <h1>Text actions for Linux,<br>without leaving where you are.</h1>
+  <p class="lead">
+    Highlight anything. A small popup appears with context-aware actions —
+    open URLs, run commands, ask an AI, transform text. Inspired by PopClip
+    on macOS, built native for X11.
+  </p>
+  <div class="hero-buttons">
+    <a class="btn btn-primary" href="#install">Install LinuxPop</a>
+    <a class="btn btn-secondary" href="plugins.html">Browse plugins →</a>
+  </div>
+</header>
+
+<section>
+  <div class="container">
+    <h2 class="section-title">What's in the box</h2>
+    <p class="section-sub">Twelve plugins ship out of the box. Add your own with a no-code wizard or a 20-line Python file.</p>
+    <div class="feature-grid">
+      <div class="feature">
+        <div class="feature-icon">↗</div>
+        <h3>Selection-aware popup</h3>
+        <p>Different buttons for URLs, shell commands, emails, paths and plain text — the classifier figures it out.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">⌘</div>
+        <h3>Global hotkeys</h3>
+        <p>Summon the popup on the current selection, or open the clipboard + snippets picker, from anywhere on your desktop.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📋</div>
+        <h3>Clipboard &amp; snippets</h3>
+        <p>Built-in history (text and images) with pin/name to turn anything into a permanent named snippet.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">✨</div>
+        <h3>AI without lock-in</h3>
+        <p>Send to Claude, ChatGPT, Gemini, Perplexity or Google AI — or run local models via Ollama. No keys, no accounts.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🧩</div>
+        <h3>No-code wizard</h3>
+        <p>Build a custom action in 30 seconds with a GUI form. Pick an icon from 3 800+, write a URL template, done.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🪶</div>
+        <h3>Lightweight</h3>
+        <p>Event-driven via XFixes — 55 MB resident, 0 % CPU at idle. Doesn't fight your laptop.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="tight">
+  <div class="container-narrow">
+    <h2 class="section-title">Install</h2>
+    <p class="section-sub">X11 desktop required. Tested on Linux Mint Cinnamon; works on Ubuntu, Fedora, Arch.</p>
+
+    <h3>1. System dependencies</h3>
+    <pre><code># Ubuntu / Linux Mint / Debian
+sudo apt-get install -y python3 python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
+    gir1.2-handy-1 gir1.2-ayatanaappindicator3-0.1 \
+    xclip xdotool xdg-utils python3-xlib</code></pre>
+
+    <h3>2. Clone &amp; install</h3>
+    <pre><code>git clone https://github.com/GaimsDevSoftware/linuxpop.git ~/linuxpop
+cd ~/linuxpop
+bash install.sh
+python3 ~/linuxpop/main.py    # start now without logging out</code></pre>
+
+    <h3>3. Use it</h3>
+    <ul>
+      <li>Highlight any text on screen → popup appears with actions</li>
+      <li>Press <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> → popup on current selection at cursor</li>
+      <li>Press <kbd>Super</kbd>+<kbd>V</kbd> → clipboard &amp; snippets picker</li>
+      <li>Right-click the tray icon → Settings, Plugins, About</li>
+    </ul>
+
+    <div class="callout">
+      <strong>Tip:</strong> the first time you open <em>Plugins</em>, browse the catalogue.
+      Most of LinuxPop's power lives in plugins — install only what you'll use.
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="container-narrow">
+    <h2 class="section-title">Three ways to extend it</h2>
+    <p class="section-sub">From zero-code to full-Python.</p>
+
+    <div class="feature-grid">
+      <div class="feature">
+        <h3>1 · Install from catalogue</h3>
+        <p>Twelve built-in plugins. Click <em>Install</em> in the Plugin Manager → it's in the popup immediately.</p>
+        <p><a href="plugins.html">Browse the store →</a></p>
+      </div>
+      <div class="feature">
+        <h3>2 · Build with the wizard</h3>
+        <p>No Python required. Open <em>Plugins → Custom → New action</em>. Fill out name, icon, URL or shell template. Done.</p>
+        <p><a href="develop.html#wizard">Wizard guide →</a></p>
+      </div>
+      <div class="feature">
+        <h3>3 · Write a Python plugin</h3>
+        <p>20-line skeleton. Drop your <code>.py</code> in <code>~/.config/linuxpop/plugins/</code>. Full access to the API.</p>
+        <p><a href="develop.html#python">Python guide →</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    LinuxPop is MIT-licensed. No telemetry. No accounts. <br>
+    <a href="https://github.com/GaimsDevSoftware/linuxpop">Source on GitHub</a> ·
+    <a href="https://github.com/GaimsDevSoftware/linuxpop/issues">Issues</a> ·
+    <a href="develop.html">Plugin API</a>
+  </div>
+</footer>
+
+</body>
+</html>

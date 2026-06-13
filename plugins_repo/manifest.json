@@ -1,0 +1,219 @@
+[
+  {
+    "file": "editing_actions.py",
+    "title": "Editing - Cut, Paste, Backspace, Select All",
+    "description": "PopClip's bread-and-butter buttons. Cut/Paste/Delete operate on the selection; Select All expands it. Sends Ctrl+X / Ctrl+V / Backspace / Ctrl+A via xdotool.",
+    "category": "Productivity",
+    "tags": ["editing", "essentials"]
+  },
+  {
+    "file": "formatting.py",
+    "title": "Formatting - Bold, Italic, Underline",
+    "description": "Rich-text formatting via Ctrl+B / Ctrl+I / Ctrl+U. Works in Google Docs, Word, LibreOffice, Notion, Obsidian and most webmail composers.",
+    "category": "Productivity",
+    "tags": ["editing", "rich-text"]
+  },
+  {
+    "file": "large_type.py",
+    "title": "Large type",
+    "description": "Show the selection in giant fullscreen text. Useful for reading a number aloud, showing a code across the room, or enlarging tiny menu items.",
+    "category": "Productivity",
+    "tags": ["accessibility", "display"]
+  },
+  {
+    "file": "clipboard_history.py",
+    "title": "Clipboard history & snippets",
+    "description": "Recent clipboard entries (text + images) plus saved snippets with triggers, placeholders, and variables. The picker is the home of both.",
+    "category": "Snippets & Clipboard",
+    "tags": ["clipboard", "snippets", "essentials"]
+  },
+  {
+    "file": "wordcount.py",
+    "title": "Word and character count",
+    "description": "Shows word, character and line counts as a desktop notification",
+    "category": "Productivity",
+    "tags": ["text", "utility"]
+  },
+  {
+    "file": "calculator.py",
+    "title": "Calculator",
+    "description": "Evaluates math expressions in the selection (sqrt, sin, pi, ...)",
+    "category": "Productivity",
+    "tags": ["math", "utility"]
+  },
+  {
+    "file": "case_convert.py",
+    "title": "Case converter",
+    "description": "UPPERCASE, lowercase, Title Case and slugify",
+    "category": "Productivity",
+    "tags": ["text", "case"]
+  },
+  {
+    "file": "speak.py",
+    "title": "Speak aloud",
+    "description": "Reads the selection out loud via spd-say or espeak",
+    "category": "Productivity",
+    "tags": ["utility", "accessibility"]
+  },
+  {
+    "file": "text_transformations.py",
+    "title": "Text transformations bundle",
+    "description": "Reverse, sort lines, deduplicate, trim, strip HTML, remove diacritics, ASCII-only, swap case - 8 buttons in one plugin",
+    "category": "Productivity",
+    "tags": ["text", "utility"]
+  },
+  {
+    "file": "qr_code.py",
+    "title": "QR code",
+    "description": "Generates a QR code from text or a URL (requires qrencode)",
+    "category": "Productivity",
+    "tags": ["url", "qr"]
+  },
+
+  {
+    "kind": "recipe",
+    "file": "google-search.json",
+    "title": "Search Google",
+    "description": "Opens Google with the selection pre-filled - auto-submits",
+    "category": "Web shortcuts",
+    "tags": ["web", "search"]
+  },
+  {
+    "kind": "recipe",
+    "file": "define.json",
+    "title": "Define this word",
+    "description": "Looks up a dictionary definition via Google's 'define' search - the fastest way to clarify an unfamiliar word",
+    "category": "Web shortcuts",
+    "tags": ["web", "dictionary", "essentials"]
+  },
+  {
+    "kind": "recipe",
+    "file": "wikipedia.json",
+    "title": "Search Wikipedia",
+    "description": "English Wikipedia full-text search",
+    "category": "Web shortcuts",
+    "tags": ["web"]
+  },
+  {
+    "kind": "recipe",
+    "file": "google-translate.json",
+    "title": "Google Translate to English",
+    "description": "Auto-detect source language → translate to English",
+    "category": "Web shortcuts",
+    "tags": ["web", "text"]
+  },
+  {
+    "kind": "recipe",
+    "file": "google-maps.json",
+    "title": "Look up in Google Maps",
+    "description": "Address, place name or coordinates → Maps search",
+    "category": "Web shortcuts",
+    "tags": ["web"]
+  },
+  {
+    "kind": "recipe",
+    "file": "youtube-search.json",
+    "title": "Search YouTube",
+    "description": "Quick YouTube search for the selection",
+    "category": "Web shortcuts",
+    "tags": ["web"]
+  },
+  {
+    "kind": "recipe",
+    "file": "stack-overflow.json",
+    "title": "Search Stack Overflow",
+    "description": "Looks up the selection on Stack Overflow",
+    "category": "Web shortcuts",
+    "tags": ["web", "developer"]
+  },
+  {
+    "kind": "recipe",
+    "file": "mdn-docs.json",
+    "title": "Search MDN web docs",
+    "description": "Mozilla Developer Network - HTML/CSS/JS reference",
+    "category": "Web shortcuts",
+    "tags": ["web", "developer"]
+  },
+  {
+    "kind": "recipe",
+    "file": "github-search.json",
+    "title": "Search GitHub",
+    "description": "Code search across GitHub",
+    "category": "Web shortcuts",
+    "tags": ["web", "developer"]
+  },
+  {
+    "kind": "recipe",
+    "file": "pypi-lookup.json",
+    "title": "PyPI package lookup",
+    "description": "Opens https://pypi.org/project/<your-selection>/",
+    "category": "Web shortcuts",
+    "tags": ["web", "developer"]
+  },
+  {
+    "kind": "recipe",
+    "file": "npm-lookup.json",
+    "title": "npm package lookup",
+    "description": "Opens https://www.npmjs.com/package/<your-selection>",
+    "category": "Web shortcuts",
+    "tags": ["web", "developer"]
+  },
+
+  {
+    "file": "send_to_ai.py",
+    "title": "Send to chat AI",
+    "description": "Copies text and opens Claude/ChatGPT/Gemini/Perplexity/Google AI - no setup, no API keys",
+    "category": "AI",
+    "tags": ["ai", "web"]
+  },
+  {
+    "file": "ollama_ai.py",
+    "title": "Local AI (Ollama)",
+    "description": "Explain, summarize, translate, rewrite - runs locally via Ollama (free, offline). Requires Ollama with a model installed.",
+    "category": "AI",
+    "tags": ["ai", "local", "offline"]
+  },
+
+  {
+    "file": "base64_codec.py",
+    "title": "Base64 encode/decode",
+    "description": "Encodes or decodes selected text as Base64 and copies the result",
+    "category": "Developer",
+    "tags": ["text", "encoding"]
+  },
+  {
+    "file": "json_format.py",
+    "title": "JSON pretty-print",
+    "description": "Pretty-prints JSON and copies it to the clipboard",
+    "category": "Developer",
+    "tags": ["json", "developer"]
+  },
+  {
+    "file": "url_encode.py",
+    "title": "URL encode/decode",
+    "description": "Percent-encodes or decodes text for use in URLs",
+    "category": "Developer",
+    "tags": ["url", "encoding"]
+  },
+  {
+    "file": "dev_hashes.py",
+    "title": "Hashes and JWT decode",
+    "description": "SHA-256, MD5 and JWT payload decode - output to clipboard with a notification",
+    "category": "Developer",
+    "tags": ["developer", "encoding"]
+  },
+  {
+    "file": "converters.py",
+    "title": "Timestamp and color converters",
+    "description": "Auto-detects Unix epoch ↔ ISO 8601, #hex ↔ rgb(r,g,b)",
+    "category": "Developer",
+    "tags": ["developer", "utility"]
+  },
+  {
+    "file": "html_entities.py",
+    "title": "HTML entity encode/decode",
+    "description": "<p>café & \"co\"</p> ↔ &lt;p&gt;café &amp; &quot;co&quot;&lt;/p&gt;",
+    "category": "Developer",
+    "tags": ["text", "web", "encoding"]
+  }
+]

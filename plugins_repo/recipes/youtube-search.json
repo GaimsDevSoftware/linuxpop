@@ -1,0 +1,11 @@
+{
+  "name": "youtube-search",
+  "tooltip": "Search YouTube",
+  "icon": "linuxpop-youtube",
+  "content_types": ["plain_text"],
+  "priority": 70,
+  "action": {
+    "type": "open_url",
+    "template": "https://www.youtube.com/results?search_query={text_url}"
+  }
+}

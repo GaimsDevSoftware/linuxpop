@@ -1,0 +1,11 @@
+{
+  "name": "define-word",
+  "tooltip": "Define this word",
+  "icon": "accessories-dictionary-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 35,
+  "action": {
+    "type": "open_url",
+    "template": "https://www.google.com/search?q=define+{text_url}"
+  }
+}

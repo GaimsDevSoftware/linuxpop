@@ -1,0 +1,11 @@
+{
+  "name": "mdn-docs",
+  "tooltip": "Search MDN docs",
+  "icon": "applications-development-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 66,
+  "action": {
+    "type": "open_url",
+    "template": "https://developer.mozilla.org/en-US/search?q={text_url}"
+  }
+}

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Wrapper that launches LinuxPop from inside the Flatpak sandbox.
+# /app/share/linuxpop is where the build step deposits the Python sources.
+exec python3 /app/share/linuxpop/main.py "$@"

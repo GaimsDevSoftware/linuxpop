@@ -1,0 +1,182 @@
+# Flatpak manifest for LinuxPop.
+#
+# Build locally with:
+#     flatpak-builder --user --install --force-clean build-dir \
+#         packaging/flatpak/io.github.GaimsDevSoftware.LinuxPop.yml
+#
+# Then run:
+#     flatpak run io.github.GaimsDevSoftware.LinuxPop
+#
+# Notes:
+#   - LinuxPop runs on X11 and on KDE Plasma 6 / Wayland. The sandbox
+#     needs both sockets, keyboard simulation, system tray, notifications,
+#     and (on KDE) talk access to KWin + KGlobalAccel.
+#   - xdotool / xclip / wmctrl are not in any freedesktop runtime. They
+#     are built as Flatpak modules below from upstream source.
+#   - X11 global hotkey grabs work via the forwarded X11 socket.
+#
+#   TODO (full Wayland/KDE Flatpak — needs a build to verify):
+#     The Wayland backend shells out to wl-clipboard (wl-copy/wl-paste),
+#     wtype, and uses the gtk-layer-shell typelib. None ship in GNOME
+#     Platform 46, so they must be added as modules below (like xdotool),
+#     each with a real upstream URL + sha256. Until then a Flatpak build
+#     detects the wayland_kde backend but fails at runtime on KDE. The
+#     finish-args Wayland socket + KDE talk-names below are already set;
+#     only the bundled tools remain.
+
+app-id: io.github.GaimsDevSoftware.LinuxPop
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: linuxpop
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland              # KDE Plasma 6 Wayland backend
+  - --share=network               # AI plugins (ChatGPT URL prefill, Ollama, etc.)
+  - --filesystem=home             # plugin install + recipes + snippets in ~/.config/linuxpop
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher    # system tray
+  - --talk-name=org.freedesktop.portal.OpenURI   # xdg-open via portal
+  - --talk-name=org.kde.KWin                     # Wayland: cursorPos + active window via KWin scripting
+  - --talk-name=org.kde.kglobalaccel             # Wayland: global hotkey registration
+  - --device=dri                  # GTK rendering
+
+cleanup:
+  - /include
+  - /share/man
+  - /share/doc
+  - /lib/pkgconfig
+  - '*.la'
+  - '*.a'
+
+modules:
+
+  # ----- libhandy 1 -----
+  # GNOME's adaptive widget toolkit. LinuxPop uses Hdy.PreferencesWindow
+  # and Hdy.ActionRow.
+  - name: libhandy
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Dtests=false
+      - -Dvapi=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libhandy/1.8/libhandy-1.8.3.tar.xz
+        sha256: 05b497229073ff557f10b326e074c5066f8743a302d4820ab97bcb5cd2dab087
+
+  # ----- libayatana-appindicator (via Flathub shared-modules) -----
+  # System tray support. This pulls in libdbusmenu, ayatana-ido,
+  # libayatana-indicator, intltool, and libayatana-appindicator itself,
+  # all configured the way Flathub's reviewers know works. Trying to
+  # hand-roll this fights two layers of missing pkgconfig deps that
+  # aren't in GNOME 46 Platform.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  # ----- xdotool -----
+  # Keyboard simulation. Used by AI plugins for paste mode and by
+  # clipboard-picker's "paste at cursor" feature.
+  - name: xdotool
+    buildsystem: simple
+    build-commands:
+      - make PREFIX=/app
+      - make PREFIX=/app install
+    sources:
+      - type: archive
+        url: https://github.com/jordansissel/xdotool/releases/download/v3.20211022.1/xdotool-3.20211022.1.tar.gz
+        sha256: 96f0facfde6d78eacad35b91b0f46fecd0b35e474c03e00e30da3fdd345f9ada
+
+  # ----- libXmu -----
+  # xclip's configure script needs X11/Xmu/Atoms.h, which isn't in the
+  # GNOME 46 SDK. libXmu is a small X.org library; build it here so
+  # xclip below finds the header.
+  - name: libXmu
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.x.org/releases/individual/lib/libXmu-1.3.1.tar.xz
+        sha256: 81a99e94c4501e81c427cbaa4a11748b584933e94b7a156830c3621256857bc4
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - "*.la"
+
+  # ----- xclip -----
+  # X11 clipboard. LinuxPop reads PRIMARY/CLIPBOARD via this.
+  - name: xclip
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/astrand/xclip/archive/refs/tags/0.13.tar.gz
+        sha256: ca5b8804e3c910a66423a882d79bf3c9450b875ac8528791fb60ec9de667f758
+
+  # ----- wmctrl -----
+  # Window listing/activation for the AI paste flow. The dvdhrm/wmctrl
+  # GitHub mirror went 404, and the original Tomas Styblo SourceForge
+  # project's download URLs are also broken now. Debian's source pool
+  # is the most reliable upstream that's still available.
+  - name: wmctrl
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://deb.debian.org/debian/pool/main/w/wmctrl/wmctrl_1.07.orig.tar.gz
+        sha256: d78a1efdb62f18674298ad039c5cbdb1edb6e8e149bb3a8e3a01a4750aa3cca9
+
+  # ----- python-xlib -----
+  # Pure-Python Xlib bindings. Used for XFixes selection events + the
+  # raw keysym/keycode dance in hotkey.py.
+  #
+  # Use the pre-built wheel from PyPI rather than the sdist. The sdist's
+  # setup.py declares setup_requires=['setuptools-scm'] which causes
+  # setuptools to phone home for that build-time dep -- and Flatpak's
+  # build sandbox has no network, so it fails.
+  - name: python3-xlib
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          python_xlib-0.33-py2.py3-none-any.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/fc/b8/ff33610932e0ee81ae7f1269c890f697d56ff74b9f5b2ee5d9b7fa2c5355/python_xlib-0.33-py2.py3-none-any.whl
+        sha256: c3534038d42e0df2f1392a1b30a15a4ff5fdc2b86cfa94f072bf11b10a164398
+
+  # ----- pillow (for QR code plugin) -----
+  # Use the manylinux wheel rather than the sdist. Pillow's sdist
+  # requires a full C toolchain + JPEG/PNG/freetype/etc. headers; the
+  # manylinux wheel is self-contained and pip-installable as-is.
+  - name: python3-pillow
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/ac/10/c67e20445a707f7a610699bba4fe050583b688d8cd2d202572b257f46600/pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: 5e84b6cc6a4a3d76c153a6b19270b3526a5a8ed6b09501d3af891daa2a9de7d6
+
+  # ----- LinuxPop itself -----
+  - name: linuxpop
+    buildsystem: simple
+    build-commands:
+      # 1. Copy the Python sources into the runtime
+      - mkdir -p /app/share/linuxpop
+      - cp -r *.py icons plugins_repo recipes_repo /app/share/linuxpop/ 2>/dev/null || true
+
+      # 2. Wrapper script on PATH
+      - install -Dm755 packaging/flatpak/linuxpop.wrapper /app/bin/linuxpop
+
+      # 3. Desktop entry + AppStream metadata
+      - install -Dm644 packaging/io.github.GaimsDevSoftware.LinuxPop.desktop
+          /app/share/applications/io.github.GaimsDevSoftware.LinuxPop.desktop
+      - install -Dm644 packaging/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml
+          /app/share/metainfo/io.github.GaimsDevSoftware.LinuxPop.metainfo.xml
+
+      # 4. App icon at the canonical Flatpak path
+      - install -Dm644 icons/linuxpop.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.GaimsDevSoftware.LinuxPop.svg
+    sources:
+      - type: dir
+        path: ../..

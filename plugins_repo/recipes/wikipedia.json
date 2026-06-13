@@ -1,0 +1,11 @@
+{
+  "name": "wikipedia-search",
+  "tooltip": "Search Wikipedia",
+  "icon": "linuxpop-wikipedia",
+  "content_types": ["plain_text"],
+  "priority": 72,
+  "action": {
+    "type": "open_url",
+    "template": "https://en.wikipedia.org/wiki/Special:Search?search={text_url}"
+  }
+}

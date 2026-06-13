@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Build your own plugin — LinuxPop</title>
+  <meta name="description" content="Two ways to extend LinuxPop: a no-code wizard for URL/command/notify actions, or a 20-line Python plugin for anything more. Full API reference inside.">
+  <link rel="icon" href="assets/icons/linuxpop.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icons/linuxpop.svg" alt="LinuxPop">
+      LinuxPop
+    </a>
+    <div class="nav-links">
+      <a href="plugins.html">Plugins</a>
+      <a class="active" href="develop.html">Build your own</a>
+      <a class="nav-cta" href="https://github.com/GaimsDevSoftware/linuxpop">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="store-header">
+  <div class="container">
+    <h1>Build your own plugin</h1>
+    <p>Two paths: the no-code wizard for common patterns, or a tiny Python file for full power. Both show up in the popup the same way.</p>
+  </div>
+</header>
+
+<div class="container container-narrow doc">
+
+  <div class="callout">
+    <strong>TL;DR:</strong> if you want to "open this text in URL X" or "run this shell command on this text",
+    use the <a href="#wizard">wizard</a> — 30 seconds, zero code. For anything else,
+    the <a href="#python">Python API</a> is one decorator and a function.
+  </div>
+
+  <h2 id="wizard">Path 1 · Wizard (no Python)</h2>
+
+  <p>The wizard handles the <strong>~80%</strong> of plugin ideas that boil down to one of four primitives:</p>
+
+  <ul>
+    <li><strong>Open a URL</strong> with the selection inserted (Wikipedia search, Google Maps, YouTube, anything)</li>
+    <li><strong>Run a shell command</strong> with the selection (custom scripts, <code>pandoc</code>, <code>notify-send</code>)</li>
+    <li><strong>Show a notification</strong> with templated text</li>
+    <li><strong>Copy a transformed string</strong> back to the clipboard</li>
+  </ul>
+
+  <h3>Open the wizard</h3>
+  <ol>
+    <li>Click the tray icon → <em>Plugins…</em></li>
+    <li>Switch to the <em>Custom</em> tab</li>
+    <li>Click <em>New action…</em></li>
+  </ol>
+
+  <h3>Fields explained</h3>
+
+  <p><strong>Internal name</strong> — alphanumeric + hyphens. Becomes the filename and the plugin's ID.<br>
+  Example: <code>wikipedia-search</code></p>
+
+  <p><strong>Button label</strong> — what the popup tooltip shows.<br>
+  Example: <code>Search Wikipedia</code></p>
+
+  <p><strong>Icon</strong> — type a name from your icon theme, or click <em>Browse…</em> to pick from
+  3,800+ symbolic icons with live search. Want your own brand mark? Drop an
+  <code>.svg</code> or <code>.png</code> in <code>~/.config/linuxpop/icons/</code> — it's searchable
+  the next time you open the picker.</p>
+
+  <p><strong>When clicked</strong> — pick one of the four action types.</p>
+
+  <p><strong>Template</strong> — the actual payload. Use these variables:</p>
+
+  <pre><code>{text}        the raw selection
+{text_url}    URL-encoded (use this in href="...?q={text_url}")
+{text_shell}  shell-quoted (use this inside a command line)
+{text_upper}  uppercased
+{text_lower}  lowercased
+{text_strip}  whitespace-trimmed</code></pre>
+
+  <p>Click any variable chip under the field to insert it at the cursor.</p>
+
+  <p><strong>Show on</strong> — which content types should trigger this button. Leaving all unchecked
+  means the button is always shown.</p>
+
+  <h3>Example recipes</h3>
+
+  <h4>Wikipedia search</h4>
+  <pre><code>Name:      wikipedia-search
+Label:     Search Wikipedia
+Action:    Open a URL
+Template:  https://en.wikipedia.org/wiki/Special:Search?search={text_url}
+Show on:   Plain text</code></pre>
+
+  <h4>Translate to Norwegian via DeepL</h4>
+  <pre><code>Name:      deepl-no
+Label:     Translate to Norwegian
+Action:    Open a URL
+Template:  https://www.deepl.com/translator#auto/no/{text_url}
+Show on:   Plain text</code></pre>
+
+  <h4>Show text statistics</h4>
+  <pre><code>Name:      text-stats
+Label:     Stats
+Action:    Show a notification
+Template:  Selection: {text_strip}  (length above)
+Show on:   Plain text</code></pre>
+
+  <h4>Wrap text in markdown code-fence</h4>
+  <pre><code>Name:      md-code
+Label:     Wrap as code block
+Action:    Transform and copy
+Template:  ```
+{text}
+```
+Show on:   Plain text</code></pre>
+
+  <h3>Where it's saved</h3>
+  <p>Each recipe is one JSON file in <code>~/.config/linuxpop/recipes/&lt;name&gt;.json</code>.
+  Share a recipe by sending the JSON — the recipient drops it in their recipes folder
+  and it shows up next reload.</p>
+
+  <h2 id="python">Path 2 · Python plugin</h2>
+
+  <p>For anything the wizard can't express — HTTP calls, multi-step workflows, GUI dialogs,
+  reading files — write a Python file in <code>~/.config/linuxpop/plugins/</code>.</p>
+
+  <h3>Minimal example</h3>
+
+  <pre><code>"""Plugin that shouts the selection in a notification."""
+import subprocess
+
+from classifier import ContentType
+from plugin_base import Plugin
+
+
+def _shout(text: str) -&gt; None:
+    subprocess.run(
+        ["notify-send", "-i", "face-surprise", "SHOUT", text.upper()],
+        check=False,
+    )
+
+
+def register(register_plugin) -&gt; None:
+    register_plugin(Plugin(
+        name="shout",
+        icon="face-surprise-symbolic",
+        tooltip="SHOUT IT",
+        handler=_shout,
+        content_types=(ContentType.PLAIN_TEXT,),
+        priority=50,
+    ))</code></pre>
+
+  <p>Save as <code>~/.config/linuxpop/plugins/shout.py</code>, right-click tray → <em>Plugins…</em>
+  → it's loaded. Select text → click the new button → notification.</p>
+
+  <h3>The Plugin dataclass</h3>
+
+  <pre><code>Plugin(
+    name=str,                  # unique id, used in logs and order config
+    icon=str,                  # theme icon name (any "-symbolic" or full icon)
+    tooltip=str,               # hover text on the popup button
+    handler=Callable[[str]],   # called with the selected text on click
+    content_types=Iterable[ContentType],   # () = always, or specific types
+    priority=int,              # lower = earlier in popup (default 100)
+)</code></pre>
+
+  <h3>ContentType values</h3>
+  <ul>
+    <li><code>ContentType.PLAIN_TEXT</code> — anything that's not classified more specifically</li>
+    <li><code>ContentType.URL</code> — looks like <code>https://…</code>, <code>www.x.com</code>, <code>github.com/foo</code></li>
+    <li><code>ContentType.EMAIL</code> — <code>name@domain.tld</code></li>
+    <li><code>ContentType.PATH</code> — starts with <code>/</code>, <code>~/</code>, <code>./</code></li>
+    <li><code>ContentType.COMMAND</code> — first token looks like a shell command (<code>git</code>, <code>sudo</code>, <code>ls</code>, …)</li>
+  </ul>
+
+  <h3>Tips</h3>
+  <ul>
+    <li><strong>Run long work on a thread.</strong> Your handler is called on the GTK main loop, but
+        LinuxPop wraps it in a worker thread for you already. Heavy HTTP calls are fine.</li>
+    <li><strong>Copy results to the clipboard</strong> with
+        <code>subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode())</code>
+        so the user can paste them.</li>
+    <li><strong>Use <code>notify-send</code></strong> for any user feedback. LinuxPop's popup closes
+        when the handler returns; notifications are the natural way to confirm.</li>
+    <li><strong>Don't <code>sys.path.insert</code></strong> — <code>plugin_loader</code> puts the LinuxPop
+        directory on <code>sys.path</code> already.</li>
+  </ul>
+
+  <h2 id="settings">Plugin settings</h2>
+
+  <p>Your plugin can read user settings from <code>settings.py</code>'s singleton:</p>
+
+  <pre><code>from settings import get_settings
+config = get_settings()
+my_value = config.get("my_plugin_key", "default")</code></pre>
+
+  <p>To make a setting visible in the LinuxPop Settings dialog, add a default to
+  <code>settings.py</code>'s <code>DEFAULTS</code> dict and a row in <code>settings_gui.py</code>.
+  (Drop your file in the catalogue with a PR — we'll wire it up.)</p>
+
+  <h2 id="share">Sharing your plugin</h2>
+
+  <p>Two options:</p>
+
+  <ol>
+    <li><strong>Recipe (.json):</strong> if it's a wizard recipe, just share the file.
+        Anyone drops it in their <code>~/.config/linuxpop/recipes/</code>.</li>
+    <li><strong>Python (.py):</strong> open a PR against <code>plugins_repo/</code> in the LinuxPop
+        repo with your file and an entry in <code>manifest.json</code>. We curate the catalogue.</li>
+  </ol>
+
+  <div class="callout">
+    <strong>Coming in v0.2:</strong> a community catalogue. PR your recipe or plugin to the
+    LinuxPop repo and we'll feature it. Eventually a hosted <em>Community</em> tab in
+    Plugin Manager will let users browse without git.
+  </div>
+
+</div>
+
+<footer>
+  <div class="container">
+    LinuxPop is MIT-licensed. No telemetry. No accounts. <br>
+    <a href="https://github.com/GaimsDevSoftware/linuxpop">Source on GitHub</a> ·
+    <a href="https://github.com/GaimsDevSoftware/linuxpop/issues">Issues</a> ·
+    <a href="plugins.html">Plugin Store</a>
+  </div>
+</footer>
+
+</body>
+</html>

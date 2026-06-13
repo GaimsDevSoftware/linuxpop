@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "LinuxPop Send-to-AI bridge",
+  "version": "0.1.0",
+
+  "description": "Privacy-respecting bridge between the LinuxPop Linux desktop daemon and AI chat sites. Only writes user-supplied text into the focused composer; never reads conversation history. The only network destination is your own LinuxPop daemon on 127.0.0.1. Zero telemetry. Source: https://github.com/GaimsDevSoftware/linuxpop",
+
+  "author": "LinuxPop project",
+  "homepage_url": "https://github.com/GaimsDevSoftware/linuxpop",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "linuxpop-send-to-ai@gaimsdevsoftware.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+
+  "icons": {
+    "16":  "icons/linuxpop-16.png",
+    "32":  "icons/linuxpop-32.png",
+    "48":  "icons/linuxpop-48.png",
+    "96":  "icons/linuxpop-96.png",
+    "128": "icons/linuxpop-128.png"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*",
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://perplexity.ai/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "permissions": [],
+  "optional_permissions": [],
+
+  "host_permissions": [
+    "http://127.0.0.1:8766/*",
+    "http://127.0.0.1:8767/*",
+    "http://127.0.0.1:8768/*"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "json-minify-as-curl-data",
+  "tooltip": "Minify JSON and copy as --data-raw",
+  "icon": "text-x-generic-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 81,
+  "action": {
+    "type": "chain",
+    "title": "curl --data-raw on clipboard",
+    "steps": [
+      {"type": "transform", "template": "{text_json_min}"},
+      {"type": "transform", "template": "--data-raw {text_shell}"},
+      {"type": "copy"}
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "npm-lookup",
+  "tooltip": "npm package",
+  "icon": "package-x-generic-symbolic",
+  "content_types": ["plain_text"],
+  "priority": 69,
+  "action": {
+    "type": "open_url",
+    "template": "https://www.npmjs.com/package/{text_url}"
+  }
+}

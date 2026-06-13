@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local
+*.log
+.env
+.envrc
+.flatpak-builder/
+
+# Dev-tool state that may land in the repo if an MCP server runs from
+# this directory. Not part of LinuxPop.
+var/
+*.sqlite3
+*.sqlite
+
+# Browser extension build artifacts
+extensions/firefox/build/
+extensions/firefox/dist/
+extensions/chrome/build/
+extensions/chrome/dist/

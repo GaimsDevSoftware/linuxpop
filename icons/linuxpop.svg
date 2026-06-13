@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!--
+    LinuxPop app icon — colored version for launchers, desktop file, About dialog.
+    Squircle backdrop with a warm blue-to-violet gradient, white popup pill
+    with three vivid action dots and a subtle "selected text" underline.
+  -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"  stop-color="#5B7DF5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="pillGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E8ECF4"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dx="0" dy="3" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Squircle backdrop -->
+  <path d="M 40 8
+           H 216
+           a 32 32 0 0 1 32 32
+           V 216
+           a 32 32 0 0 1 -32 32
+           H 40
+           a 32 32 0 0 1 -32 -32
+           V 40
+           a 32 32 0 0 1 32 -32 Z"
+        fill="url(#bgGrad)"/>
+
+  <!-- Faint "selected text" underline beneath the popup -->
+  <rect x="68" y="186" width="120" height="6" rx="3" fill="#FFFFFF" opacity="0.35"/>
+  <rect x="74" y="200" width="80"  height="4" rx="2" fill="#FFFFFF" opacity="0.22"/>
+
+  <!-- Popup pill with downward tail -->
+  <g filter="url(#softShadow)">
+    <path d="M 64 60
+             H 192
+             a 26 26 0 0 1 26 26
+             V 118
+             a 26 26 0 0 1 -26 26
+             H 144
+             L 128 172
+             L 112 144
+             H 64
+             a 26 26 0 0 1 -26 -26
+             V 86
+             a 26 26 0 0 1 26 -26 Z"
+          fill="url(#pillGrad)"/>
+  </g>
+
+  <!-- Three action dots (vivid) -->
+  <circle cx="78"  cy="102" r="13" fill="#5B7DF5"/>
+  <circle cx="128" cy="102" r="13" fill="#7C3AED"/>
+  <circle cx="178" cy="102" r="13" fill="#EC4899"/>
+</svg>
