@@ -760,6 +760,16 @@ class App:
         # the dialog for some reason.
         def _open_welcome():
             try:
+                from onboarding import show_onboarding
+                show_onboarding(
+                    self.settings,
+                    on_open_plugins=self.open_plugins,
+                )
+                return False
+            except Exception:
+                log.exception(
+                    "onboarding failed; falling back to welcome dialog")
+            try:
                 from welcome import show_welcome_dialog
                 show_welcome_dialog(
                     self.settings,

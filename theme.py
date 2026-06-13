@@ -17,6 +17,7 @@ different mode swaps the active provider without restarting.
 """
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 import gi
@@ -54,7 +55,13 @@ hdypreferencesgroup {
    shouting. Adds visual depth at the top of every window. */
 headerbar,
 .titlebar {
-    background-image: linear-gradient(to bottom,
+    /* A discreet brand wash (blue -> violet -> magenta) layered over the base,
+       so every window's header reads as the same family as the onboarding. */
+    background-image: linear-gradient(120deg,
+            rgba(91, 125, 245, 0.18) 0%,
+            rgba(124, 58, 237, 0.14) 52%,
+            rgba(236, 72, 153, 0.10) 100%),
+        linear-gradient(to bottom,
         #232a3c 0%,
         #1a1f2e 100%);
     background-color: #1a1f2e;
@@ -95,14 +102,13 @@ label.dim-label,
 list.boxed-list,
 list.content {
     background-color: #1c2231;
-    border: 1px solid #3a4258;
-    border-radius: 12px;
-    padding: 2px;
-    /* Subtle inner top highlight + slightly stronger bottom border to give
-       cards real lift instead of bleeding into the dark background. */
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
-                0 -1px 0 rgba(0, 0, 0, 0.30) inset,
-                0 6px 14px rgba(0, 0, 0, 0.30);
+    border: 1px solid #2c3346;
+    border-radius: 16px;
+    padding: 5px;
+    /* Soft, onboarding-style elevation: a faint top highlight + a gentle, wide
+       drop shadow, so cards feel lifted and clean rather than heavy. */
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
+                0 10px 26px rgba(0, 0, 0, 0.18);
 }
 
 list.boxed-list > row,
@@ -110,9 +116,33 @@ list.content > row,
 hdyactionrow {
     background-color: transparent;
     color: #f0f3fa;
-    padding: 10px 14px;
-    border-bottom: 1px solid #2c3346;
+    padding: 14px 18px;
+    border-bottom: 1px solid #262d3f;
     transition: background-color 120ms ease;
+}
+
+/* HdyExpanderRow's CSS node is `row.expander` (NOT `hdyexpanderrow`, which
+   matched no node at all), with an inner `list` wrapping the header
+   `row.header` and a `list.nested` for sub-rows. Because the old selector
+   matched nothing, those inner nodes were never styled - so on KDE/Breeze they
+   kept a dark surface that the light-mode remap never reached, giving dark,
+   unreadable bundle cards in light mode. Style the REAL nodes with the card
+   surface (#1c2231 -> #ffffff in light) so they remap correctly in both modes. */
+row.expander,
+row.expander > box,
+row.expander > box > list,
+row.expander > box > list > row.header,
+row.expander > box > revealer,
+row.expander list.nested,
+row.expander list.nested > row {
+    background-color: #1c2231;
+    color: #f0f3fa;
+}
+
+row.expander > box > list > row.header:hover,
+row.expander list.nested > row:hover {
+    background-color: #262d3f;
+    border-radius: 10px;
 }
 
 list.boxed-list > row:last-child,
@@ -123,6 +153,7 @@ list.content > row:last-child {
 list.boxed-list > row:hover,
 list.content > row:hover {
     background-color: #262d3f;
+    border-radius: 10px;
 }
 
 list.boxed-list > row:selected,
@@ -132,6 +163,30 @@ list > row:selected {
         rgba(91, 125, 245, 0.18),
         rgba(124, 58, 237, 0.18));
     color: #ffffff;
+    border-radius: 10px;
+}
+
+/* ----- colored plugin badges (the onboarding-store look) ----- */
+.lp-badge {
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22),
+                0 1px 0 rgba(255, 255, 255, 0.20) inset;
+}
+.lp-badge-0 { background-image: linear-gradient(135deg, #5B7DF5, #4A6CE3); }
+.lp-badge-1 { background-image: linear-gradient(135deg, #7C3AED, #6929DB); }
+.lp-badge-2 { background-image: linear-gradient(135deg, #EC4899, #DB2777); }
+.lp-badge-3 { background-image: linear-gradient(135deg, #34C759, #16A34A); }
+.lp-badge-plain {
+    background-color: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18),
+                0 0 0 1px rgba(0, 0, 0, 0.06) inset;
+}
+.lp-badge-glyph { color: #ffffff; }
+.lp-badge-letter {
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 15px;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
 }
 
 /* ----- buttons ----- */
@@ -140,8 +195,8 @@ button {
     background-color: #262d3f;
     color: #f0f3fa;
     border: 1px solid #2c3346;
-    border-radius: 8px;
-    padding: 6px 14px;
+    border-radius: 10px;
+    padding: 8px 16px;
     font-weight: 500;
     transition: background-color 120ms ease,
                 border-color 120ms ease,
@@ -215,6 +270,58 @@ button.image-button:hover {
     border-color: transparent;
 }
 
+/* ----- window controls (close / minimize / maximize) -----
+   These are GtkButtons living in the CSD titlebar, so the generic `button`
+   rule above turned them into dark, 16px-padded rounded pills - the X glyph
+   got lost inside, so the close button read as a blank rectangle. On KDE the
+   decoration layout puts them top-left, where they are the first thing the
+   eye lands on. Reset them to compact circular controls; give close an
+   unmistakable red treatment so its purpose is obvious at a glance. */
+.titlebutton {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
+    margin: 0 3px;
+    border-radius: 50%;
+    background-image: none;
+    background-color: rgba(127, 140, 170, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: none;
+    color: #f0f3fa;
+    -gtk-icon-shadow: none;
+    -gtk-icon-transform: scale(0.92);
+    transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.titlebutton:hover {
+    background-color: rgba(127, 140, 170, 0.30);
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.titlebutton:active {
+    background-color: rgba(127, 140, 170, 0.42);
+}
+
+.titlebutton.close {
+    background-image: linear-gradient(to bottom, #ff5f57, #ed4c5c);
+    background-color: #ed4c5c;
+    border: 1px solid rgba(150, 20, 36, 0.55);
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(214, 60, 76, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.titlebutton.close:hover {
+    background-image: linear-gradient(to bottom, #ff726b, #f5586a);
+    box-shadow: 0 2px 7px rgba(214, 60, 76, 0.55),
+                inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+.titlebutton.close:active {
+    background-image: linear-gradient(to bottom, #e84b54, #d63c4c);
+    box-shadow: inset 0 1px 3px rgba(120, 16, 28, 0.5);
+}
+
 /* ----- entries / search ----- */
 entry,
 .entry,
@@ -223,8 +330,8 @@ spinbutton {
     background-color: #181d2a;
     color: #f0f3fa;
     border: 1px solid #3a4258;
-    border-radius: 8px;
-    padding: 6px 10px;
+    border-radius: 10px;
+    padding: 8px 12px;
     caret-color: #5B7DF5;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25) inset;
     transition: border-color 120ms ease, box-shadow 120ms ease;
@@ -249,29 +356,52 @@ entry placeholder {
     color: #5a6378;
 }
 
-/* ----- switches ----- */
+/* ----- switches (clean macOS-style pill) -----
+   Solid track (no gradient), a large white knob that nearly fills the height,
+   and a soft drop shadow for the macOS "lozenge" look. */
 switch {
-    background-color: #2a3145;
-    border: 1px solid #353c52;
-    border-radius: 14px;
-    min-width: 44px;
-    min-height: 24px;
+    background-color: #3d4456;          /* off: neutral slate track */
+    background-image: none;
+    border: none;
+    border-radius: 999px;
+    min-width: 48px;
+    min-height: 28px;
+    transition: background-color 200ms ease;
 }
 
 switch:checked {
-    background-image: linear-gradient(to right, #5B7DF5, #7C3AED);
-    background-color: #5B7DF5;
-    border-color: #5B7DF5;
+    background-color: #5B7DF5;          /* on: clean solid brand blue */
+    background-image: none;
+    border: none;
+}
+
+switch:disabled {
+    opacity: 0.45;
 }
 
 switch slider {
-    background-color: #f0f3fa;
-    border-radius: 50%;
+    background-color: #ffffff;
+    background-image: none;
     border: none;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    min-width: 18px;
-    min-height: 18px;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45),
+                0 2px 5px rgba(0, 0, 0, 0.20);
+    min-width: 24px;
+    min-height: 24px;
     margin: 2px;
+}
+
+/* keep the pill clean: GTK 3.24's GtkSwitch has two built-in on/off `image`
+   nodes (they fill most of the track). Collapse them to nothing - opacity alone
+   is not enough; the icon transform + zero size is what actually removes them. */
+switch image {
+    opacity: 0;
+    -gtk-icon-source: none;
+    -gtk-icon-transform: scale(0);
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
 }
 
 /* ----- combobox ----- */
@@ -631,8 +761,7 @@ _LIGHT_REMAP = {
     "#161a24": "#f0f2f7",  # sidebar bg
     "#141823": "#e0e4ee",  # notebook header
     "#14171f": "#ebeef4",  # check/radio bg
-    "#2a3145": "#d4d8e2",  # switch bg
-    "#353c52": "#c0c5d2",  # switch border
+    "#3d4456": "#d4d8e2",  # switch track (off) — light grey in light mode
     "#4a5266": "#a8b0c0",  # disabled text
     "#5a6378": "#7a8090",  # placeholder text
     # Pango-markup greys that several dialogs hard-code for dim/muted
@@ -716,6 +845,50 @@ def install_premium_theme(mode: str = "dark") -> None:
     effective = _resolve_mode(mode)
     if _active_mode == effective and _active_provider is not None:
         return
+
+    # HdyExpanderRow asks for "hdy-expander-arrow-symbolic" (and a couple other
+    # names) that neither Breeze/WhiteSur nor Adwaita ship, so every expander row
+    # rendered the red "image-missing" glyph as its disclosure arrow - in BOTH
+    # themes. Install the bundled copies into the user's standard hicolor dir,
+    # which GTK already watches so a rescan actually finds them (appending a
+    # brand-new search path does NOT take effect). Runs in light AND dark.
+    try:
+        src_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "icons", "hdy-compat", "hicolor", "scalable", "actions")
+        if os.path.isdir(src_dir):
+            import shutil as _sh
+            dst_dir = os.path.expanduser(
+                "~/.local/share/icons/hicolor/scalable/actions")
+            os.makedirs(dst_dir, exist_ok=True)
+            for _fn in os.listdir(src_dir):
+                if _fn.endswith(".svg") and not os.path.exists(
+                        os.path.join(dst_dir, _fn)):
+                    _sh.copy2(os.path.join(src_dir, _fn),
+                              os.path.join(dst_dir, _fn))
+            Gtk.IconTheme.get_default().rescan_if_needed()
+    except OSError:
+        pass
+
+    # On KDE/Wayland the host GTK theme is light Breeze, so any widget our CSS
+    # doesn't explicitly cover renders light with near-invisible light text.
+    # Force a known dark base theme + matching icon theme in DARK mode only; our
+    # premium CSS layers on top at APPLICATION priority. Left untouched on X11.
+    if effective == "dark":
+        try:
+            from platform_backend import get_backend
+            if get_backend().name == "wayland_kde":
+                s = Gtk.Settings.get_default()
+                if s is not None:
+                    s.set_property("gtk-application-prefer-dark-theme", True)
+                    s.set_property("gtk-theme-name", "Adwaita")
+                    # The app's button/action icons are GNOME/Adwaita symbolic
+                    # names; Breeze names many differently, so they'd render as
+                    # "image-missing". Force the Adwaita icon theme so they
+                    # resolve.
+                    s.set_property("gtk-icon-theme-name", "Adwaita")
+        except Exception:
+            pass
 
     css = _PREMIUM_CSS if effective == "dark" else _apply_remap(
         _PREMIUM_CSS, _LIGHT_REMAP)
