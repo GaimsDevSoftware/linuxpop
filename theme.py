@@ -763,12 +763,34 @@ def install_premium_theme(mode: str = "dark") -> None:
     if _active_mode == effective and _active_provider is not None:
         return
 
+    # HdyExpanderRow asks for "hdy-expander-arrow-symbolic" (and a couple other
+    # names) that neither Breeze/WhiteSur nor Adwaita ship, so every expander row
+    # rendered the red "image-missing" glyph as its disclosure arrow - in BOTH
+    # themes. Install the bundled copies into the user's standard hicolor dir,
+    # which GTK already watches so a rescan actually finds them (appending a
+    # brand-new search path does NOT take effect). Runs in light AND dark.
+    try:
+        src_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "icons", "hdy-compat", "hicolor", "scalable", "actions")
+        if os.path.isdir(src_dir):
+            import shutil as _sh
+            dst_dir = os.path.expanduser(
+                "~/.local/share/icons/hicolor/scalable/actions")
+            os.makedirs(dst_dir, exist_ok=True)
+            for _fn in os.listdir(src_dir):
+                if _fn.endswith(".svg") and not os.path.exists(
+                        os.path.join(dst_dir, _fn)):
+                    _sh.copy2(os.path.join(src_dir, _fn),
+                              os.path.join(dst_dir, _fn))
+            Gtk.IconTheme.get_default().rescan_if_needed()
+    except OSError:
+        pass
+
     # On KDE/Wayland the host GTK theme is light Breeze, so any widget our CSS
-    # doesn't explicitly cover (search entries, list selections, expander-row
-    # headers) renders light with near-invisible light text. Force a known
-    # dark base theme there so everything unstyled defaults to dark; our
-    # premium CSS still layers on top at APPLICATION priority. Left untouched
-    # on X11, where the user's existing GTK theme already works.
+    # doesn't explicitly cover renders light with near-invisible light text.
+    # Force a known dark base theme + matching icon theme in DARK mode only; our
+    # premium CSS layers on top at APPLICATION priority. Left untouched on X11.
     if effective == "dark":
         try:
             from platform_backend import get_backend
@@ -778,20 +800,10 @@ def install_premium_theme(mode: str = "dark") -> None:
                     s.set_property("gtk-application-prefer-dark-theme", True)
                     s.set_property("gtk-theme-name", "Adwaita")
                     # The app's button/action icons are GNOME/Adwaita symbolic
-                    # names; Breeze names many of them differently, so they'd
-                    # render as the red "image-missing" glyph. Force the
-                    # Adwaita icon theme so they resolve. The few names Adwaita
-                    # also lacks are shipped in icons/hdy-compat (below).
+                    # names; Breeze names many differently, so they'd render as
+                    # "image-missing". Force the Adwaita icon theme so they
+                    # resolve.
                     s.set_property("gtk-icon-theme-name", "Adwaita")
-                # HdyExpanderRow asks for "hdy-expander-arrow-symbolic", which
-                # Breeze (and most non-Adwaita themes) don't ship, so it shows
-                # the red "image-missing" glyph. Ship our own copy and add it
-                # to the icon search path so the arrow renders correctly.
-                icon_dir = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "icons", "hdy-compat")
-                if os.path.isdir(icon_dir):
-                    Gtk.IconTheme.get_default().append_search_path(icon_dir)
         except Exception:
             pass
 
