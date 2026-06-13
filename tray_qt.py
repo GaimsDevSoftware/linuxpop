@@ -80,6 +80,16 @@ class TrayQt:
         self._timer.timeout.connect(self._check_socket)
         self._timer.start(100)
 
+        # Parent-death watchdog. PR_SET_PDEATHSIG (set by the launcher) is the
+        # primary guard, but it can miss if the tray gets reparented to a
+        # systemd subreaper rather than PID 1. So also poll our parent PID:
+        # the moment it stops being the daemon that spawned us, that daemon is
+        # gone and we must remove our tray icon instead of lingering forever.
+        self._initial_ppid = os.getppid()
+        self._ppid_timer = QTimer()
+        self._ppid_timer.timeout.connect(self._check_parent_alive)
+        self._ppid_timer.start(2000)
+
         avail = QSystemTrayIcon.isSystemTrayAvailable()
         print(f"[tray-qt] Started (QSystemTrayIcon, tray_available={avail})",
               flush=True)
@@ -165,6 +175,18 @@ class TrayQt:
         self._sock.setblocking(False)
         info_file = SOCKET_DIR / "tray.info"
         info_file.write_text(f"{socket_path}\n{os.getpid()}\n")
+
+    def _check_parent_alive(self) -> None:
+        """Quit if the daemon that spawned us is gone. Detected by the parent
+        PID changing (reparented to init or a systemd subreaper). Removes our
+        tray icon so a crashed/killed daemon can't leave a ghost behind."""
+        try:
+            if os.getppid() != self._initial_ppid:
+                print("[tray-qt] parent daemon gone -- exiting", flush=True)
+                self._running = False
+                self._app.quit()
+        except Exception:
+            pass
 
     def _check_socket(self) -> None:
         if not self._running:

@@ -20,6 +20,37 @@ SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
 TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_qt.py")
 
 
+def _tray_preexec() -> None:
+    """Runs in the tray child between fork and exec.
+
+    1. PR_SET_PDEATHSIG: ask the kernel to SIGTERM this process the instant
+       its parent (the main daemon) dies. Without this, killing or crashing
+       the daemon left the Qt tray subprocess orphaned (reparented to systemd)
+       and its tray icon lingered forever -- which is how two LinuxPop icons
+       could end up side by side after a few restarts.
+    2. setsid(): give the tray its own session so a Ctrl-C in the daemon's
+       terminal doesn't also tear it down (the original intent of the
+       start_new_session flag this replaces).
+
+    The death-signal is armed FIRST, then we re-check the parent is still
+    alive, to close the tiny fork-then-parent-exits race before setsid()."""
+    try:
+        import ctypes
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(
+            PR_SET_PDEATHSIG, signal.SIGTERM)
+        # If the parent vanished between fork and now, PDEATHSIG already
+        # missed its window -- exit rather than become the next orphan.
+        if os.getppid() == 1:
+            os._exit(0)
+    except Exception:
+        pass
+    try:
+        os.setsid()
+    except OSError:
+        pass
+
+
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
     buf = b""
     while len(buf) < n:
@@ -94,7 +125,7 @@ class Tray:
                 [sys.executable, TRAY_SCRIPT],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT,
-                start_new_session=True,  # don't propagate signals
+                preexec_fn=_tray_preexec,  # die with parent + own session
             )
             print(f"[tray] spawned Qt tray process (pid={self._proc.pid})")
         except OSError as exc:
