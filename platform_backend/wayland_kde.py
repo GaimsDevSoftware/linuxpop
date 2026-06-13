@@ -114,6 +114,21 @@ class WaylandSelectionWatcher:
                     break  # wl-paste exited
             except OSError:
                 break
+            # Capture the cursor at the FIRST event of the burst, then re-
+            # capture on every subsequent selection change. The last capture
+            # therefore lands on the final change -- the drag release, right at
+            # the end of the selected text. We deliberately do NOT query the
+            # pointer again after the settle delay: by then the user has let go
+            # and started moving the mouse toward the popup, and that drift was
+            # exactly why the popup appeared away from the selection instead of
+            # anchored over it. (On KWin Wayland there is no API for the text
+            # selection's rectangle, so the release point is the best anchor we
+            # have.)
+            cap_x = cap_y = None
+            try:
+                cap_x, cap_y = self._backend.pointer_position()
+            except Exception:  # noqa: BLE001
+                pass
             # Drain the rest of the burst: keep consuming until the stream is
             # quiet for one debounce window.
             settle = max(0.2, self._debounce_s)
@@ -126,6 +141,10 @@ class WaylandSelectionWatcher:
                         break
                 except OSError:
                     break
+                try:
+                    cap_x, cap_y = self._backend.pointer_position()
+                except Exception:  # noqa: BLE001
+                    pass
             if self._stop.is_set():
                 break
             # The very first settled value is whatever was already selected
@@ -137,13 +156,14 @@ class WaylandSelectionWatcher:
             if not text or not text.strip():
                 continue
             self._last_text = text
+            if cap_x is None:
+                try:
+                    cap_x, cap_y = self._backend.pointer_position()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[wayland] pointer query failed: {exc}")
+                    cap_x, cap_y = 0, 0
             try:
-                x, y = self._backend.pointer_position()
-            except Exception as exc:  # noqa: BLE001
-                print(f"[wayland] pointer query failed: {exc}")
-                x, y = 0, 0
-            try:
-                self._on_selection(text, x, y)
+                self._on_selection(text, cap_x, cap_y)
             except Exception as exc:  # noqa: BLE001
                 print(f"[wayland] selection callback error: {exc}")
 
