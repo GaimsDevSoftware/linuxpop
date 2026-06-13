@@ -218,6 +218,13 @@ DEFAULTS: dict[str, Any] = {
     # if you want every action visible regardless of how many you
     # enable; drop it for a tighter single-row look.
     "max_popup_buttons": 24,
+    # What the popup does when more actions match than fit on one line:
+    #   "wrap"   -> spill onto a second row (classic two-line look),
+    #   "expand" -> keep one tidy line, with a chevron that reveals the rest
+    #               on click (recommended: compact, nothing dropped),
+    #   "cap"    -> one row only; the remainder sit behind a "+N" chip.
+    # All modes are still bounded by max_popup_buttons above.
+    "popup_overflow_mode": "expand",
     # If True (default): after the command, drop into an interactive shell so
     #   output stays visible. Close with exit/Ctrl-D/X.
     # If False: terminal closes immediately after the command exits (output lost).

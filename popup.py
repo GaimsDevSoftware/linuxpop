@@ -483,8 +483,6 @@ class PopupWindow:
             print(f"[popup] no plugins for {content_type.value} (editable={editable})")
             return
 
-        per_row = self._max_per_row()
-
         def make_handler(p):
             def _on_click(_btn):
                 # Snapshot text at click time + run on a worker thread so
@@ -517,20 +515,8 @@ class PopupWindow:
                 self.hide()
             return _on_click
 
-        for i, plugin in enumerate(plugins):
-            target_row = self._row1 if i < per_row else self._row2
-            self._add_button(
-                plugin.icon, plugin.tooltip, make_handler(plugin),
-                row=target_row,
-            )
-
-        if hidden_count > 0:
-            # Park the overflow chip on whichever row the last button
-            # landed on so the popup stays visually balanced.
-            chip_row = (self._row2
-                        if len(plugins) > per_row else self._row1)
-            self._add_overflow_chip(hidden_count, max_btns, row=chip_row)
-
+        specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]
+        self._present_buttons(specs, hidden_count, max_btns)
         self._present_near(x, y)
 
     def _add_overflow_chip(
@@ -576,6 +562,86 @@ class PopupWindow:
         if target is self._row2:
             self._row2.set_no_show_all(False)
 
+    # ---- overflow layout --------------------------------------------------
+    def _overflow_mode(self) -> str:
+        """How to handle more actions than fit on one line:
+          'wrap'   -> spill onto a second row (default),
+          'expand' -> one row + a chevron that reveals the rest on click,
+          'cap'    -> one row only; the rest go behind a +N chip.
+        """
+        try:
+            from settings import get_settings as _gs
+            m = (_gs().get("popup_overflow_mode") or "wrap").strip().lower()
+        except Exception:
+            m = "wrap"
+        return m if m in ("wrap", "expand", "cap") else "wrap"
+
+    def _present_buttons(self, specs, hidden_count: int, max_btns: int) -> None:
+        """Lay out (icon, tooltip, handler) specs into the bar per the user's
+        overflow mode, adding the matching overflow affordance. `hidden_count`
+        is how many were already dropped by the max_popup_buttons cap."""
+        per_row = self._max_per_row()
+        n = len(specs)
+        mode = self._overflow_mode()
+        if mode == "cap":
+            shown = min(n, per_row)
+            for icon, tip, h in specs[:shown]:
+                self._add_button(icon, tip, h, row=self._row1)
+            extra = (n - shown) + hidden_count
+            if extra > 0:
+                self._add_overflow_chip(extra, max_btns, row=self._row1)
+        elif mode == "expand":
+            first = min(n, per_row)
+            for icon, tip, h in specs[:first]:
+                self._add_button(icon, tip, h, row=self._row1)
+            rest = specs[first:]
+            if rest or hidden_count > 0:
+                self._add_expand_chip(rest, hidden_count, max_btns)
+        else:  # 'wrap' — two rows
+            shown = min(n, 2 * per_row)
+            for i, (icon, tip, h) in enumerate(specs[:shown]):
+                self._add_button(icon, tip, h,
+                                 row=self._row1 if i < per_row else self._row2)
+            extra = (n - shown) + hidden_count
+            if extra > 0:
+                self._add_overflow_chip(
+                    extra, max_btns,
+                    row=self._row2 if shown > per_row else self._row1)
+
+    def _add_expand_chip(self, rest, hidden_count: int, max_btns: int) -> None:
+        """A chevron at the end of row 1; clicking it reveals row 2 with the
+        actions that didn't fit on the first line ('expand' overflow mode)."""
+        count = len(rest) + hidden_count
+        btn = Gtk.Button()
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.set_tooltip_text(
+            f"Show {count} more action{'s' if count != 1 else ''}")
+        btn.get_style_context().add_class("linuxpop-action")
+        btn.get_style_context().add_class("linuxpop-overflow")
+        img = Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.MENU)
+        img.set_pixel_size(max(12, int(_resolve_button_size() * 0.6)))
+        btn.set_image(img)
+        btn.set_always_show_image(True)
+
+        def _expand(_b):
+            _b.destroy()
+            per_row = self._max_per_row()
+            shown2 = min(len(rest), per_row)
+            for icon, tip, h in rest[:shown2]:
+                self._add_button(icon, tip, h, row=self._row2)
+            extra = (len(rest) - shown2) + hidden_count
+            if extra > 0:
+                self._add_overflow_chip(extra, max_btns, row=self._row2)
+            self._row2.set_no_show_all(False)
+            self._row2.show_all()
+            try:
+                self.win.queue_resize()
+            except Exception:
+                pass
+
+        btn.connect("clicked", _expand)
+        self._row1.pack_start(btn, False, False, 0)
+
     def show_actions(
         self,
         items: list[tuple[str, str, "Callable[[], None]"]],
@@ -596,26 +662,22 @@ class PopupWindow:
         if not items:
             return
 
-        per_row = self._max_per_row()
-        for i, (icon, tooltip, callback) in enumerate(items):
-            def make_handler(cb, name):
-                def _on_click(_btn):
-                    def _worker():
-                        try:
-                            cb()
-                        except Exception as exc:  # noqa: BLE001
-                            print(f"[popup] action '{name}' failed: {exc}")
-                    threading.Thread(
-                        target=_worker, daemon=True, name=f"action-{name}",
-                    ).start()
-                    self.hide()
-                return _on_click
-            target_row = self._row1 if i < per_row else self._row2
-            self._add_button(
-                icon, tooltip, make_handler(callback, tooltip),
-                row=target_row,
-            )
+        def make_handler(cb, name):
+            def _on_click(_btn):
+                def _worker():
+                    try:
+                        cb()
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[popup] action '{name}' failed: {exc}")
+                threading.Thread(
+                    target=_worker, daemon=True, name=f"action-{name}",
+                ).start()
+                self.hide()
+            return _on_click
 
+        specs = [(icon, tooltip, make_handler(callback, tooltip))
+                 for (icon, tooltip, callback) in items]
+        self._present_buttons(specs, 0, 0)
         self._present_near(x, y)
 
     def _present_near(self, x: int, y: int) -> None:

@@ -591,6 +591,33 @@ class SettingsDialog:
         count_row.set_activatable_widget(count_spin)
         group.add(count_row)
 
+        # Overflow mode: what the popup does when more actions match than fit
+        # on a single line. Bounded by the cap above.
+        ov_row = Handy.ActionRow()
+        ov_row.set_title("When actions overflow")
+        ov_row.set_subtitle(
+            "How the popup handles more actions than fit on one line. "
+            "‘One row + expand arrow’ stays compact and reveals the rest on "
+            "click; ‘Wrap’ uses two rows; ‘One row only’ hides extras behind "
+            "a +N chip.")
+        ov_combo = Gtk.ComboBoxText()
+        ov_combo.set_valign(Gtk.Align.CENTER)
+        for _key, _label in (
+            ("expand", "One row + expand arrow"),
+            ("wrap", "Wrap to two rows"),
+            ("cap", "One row only (+N chip)"),
+        ):
+            ov_combo.append(_key, _label)
+        ov_combo.set_active_id(
+            (self._settings.get("popup_overflow_mode") or "expand"))
+        ov_combo.connect(
+            "changed",
+            lambda c: self._save_key(
+                "popup_overflow_mode", c.get_active_id() or "expand"))
+        ov_row.add(ov_combo)
+        ov_row.set_activatable_widget(ov_combo)
+        group.add(ov_row)
+
         return group
 
     def _build_activation_group(self) -> Handy.PreferencesGroup:
