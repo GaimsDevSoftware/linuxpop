@@ -633,13 +633,22 @@ class App:
         # the dialog for some reason.
         def _open_welcome():
             try:
-                from welcome import show_welcome_dialog
-                show_welcome_dialog(
+                from onboarding import show_onboarding
+                show_onboarding(
                     self.settings,
                     on_open_plugins=self.open_plugins,
                 )
             except Exception:
-                log.exception("welcome dialog failed; falling back to notify-send")
+                log.exception("onboarding failed; falling back to welcome dialog")
+                try:
+                    from welcome import show_welcome_dialog
+                    show_welcome_dialog(
+                        self.settings,
+                        on_open_plugins=self.open_plugins,
+                    )
+                    return False
+                except Exception:
+                    log.exception("welcome dialog failed; falling back to notify")
                 try:
                     subprocess.run(
                         ["notify-send", "--hint=byte:transient:1",  "-i", "linuxpop", "-t", "8000",
