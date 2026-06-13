@@ -407,12 +407,73 @@ class PopupWindow:
         target_w = min(680, int(monitor_w * 0.5))
         return max(4, target_w // approx_button_width)
 
+    def _device_scale(self) -> int:
+        """The monitor's device-pixel scale (2 on a HiDPI screen), read from
+        the monitor rather than the popup window (a layer-shell surface can
+        under-report its own scale)."""
+        try:
+            display = Gdk.Display.get_default()
+            monitor = None
+            win = self.win.get_window() if self.win is not None else None
+            if win is not None:
+                monitor = display.get_monitor_at_window(win)
+            if monitor is None:
+                monitor = display.get_primary_monitor() or display.get_monitor(0)
+            return monitor.get_scale_factor() if monitor else 1
+        except Exception:
+            return 1
+
+    def _colored_icon_with_rim(self, icon_name: str, icon_px: int):
+        """A colour logo composited onto a surface at device resolution with a
+        thin dark contrast rim hugging the tile edge, so the bright icon reads
+        cleanly against the dark popup bar. Returns None on any failure so the
+        caller can fall back to the plain icon-name path."""
+        try:
+            import cairo
+            import math
+            scale = self._device_scale()
+            dev = max(12, icon_px * scale)
+            pb = Gtk.IconTheme.get_default().load_icon(
+                icon_name, dev, Gtk.IconLookupFlags.FORCE_SIZE)
+            if pb is None:
+                return None
+            surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, dev, dev)
+            cr = cairo.Context(surf)
+            Gdk.cairo_set_source_pixbuf(cr, pb, 0, 0)
+            cr.paint()
+            # Thin dark rounded rim, matched to the brand tiles' ~24% corner.
+            r = dev * 0.24
+            lw = max(1.0, dev * 0.045)
+            o = lw / 2 + 0.4
+            x, y, w, h = o, o, dev - 2 * o, dev - 2 * o
+            cr.new_sub_path()
+            cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+            cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+            cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+            cr.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
+            cr.close_path()
+            cr.set_line_width(lw)
+            cr.set_source_rgba(0, 0, 0, 0.6)
+            cr.stroke()
+            surf.set_device_scale(scale, scale)
+            return Gtk.Image.new_from_surface(surf)
+        except Exception:
+            return None
+
     def _make_icon_image(self, icon_name: str) -> Gtk.Image:
-        """Render an icon scaled to ~72% of the configured button size,
-        so it has a comfortable halo of padding inside the button. GTK
-        handles HiDPI natively."""
+        """Render an icon scaled to ~72% of the configured button size, so it
+        has a comfortable halo of padding inside the button.
+
+        Colour logos (non-symbolic) are composited with a thin dark contrast
+        rim at device resolution so they stay crisp on HiDPI and separate
+        cleanly from the dark bar. Symbolic icons stay on the icon-name path
+        so the popup's CSS can still recolour them to follow the text."""
         size = _resolve_button_size()
         icon_px = max(12, int(size * 0.72))
+        if icon_name and not icon_name.endswith("-symbolic"):
+            img = self._colored_icon_with_rim(icon_name, icon_px)
+            if img is not None:
+                return img
         image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
         image.set_pixel_size(icon_px)
         return image
