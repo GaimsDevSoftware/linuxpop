@@ -67,7 +67,8 @@ DEFAULTS: dict[str, Any] = {
     # Hotkey to open the clipboard / snippets picker. Press, type to filter,
     # Enter to paste at the cursor. Ignored if clipboard_history_enabled
     # is False.
-    "clipboard_hotkey": "super+v",
+    # Default avoids Meta+V, which KDE Klipper / clipboard managers grab.
+    "clipboard_hotkey": "super+shift+v",
     # Hotkey to capture a screen region and OCR it. Requires `maim` and
     # `tesseract-ocr` on PATH. Empty string disables. Useful for
     # reaching text inside PDF viewers, video frames, OS chrome, and

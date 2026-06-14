@@ -110,11 +110,11 @@ def _send_via_url(service: str, url_template: str, text: str,
     encoded = urllib.parse.quote(text, safe="")
     url = url_template.format(text_url=encoded)
     try:
-        subprocess.Popen(
-            ["xdg-open", url],
-            start_new_session=True,
-            env=_desktop_env(),
-        )
+        # Route through the platform backend so the browser is raised to the
+        # foreground on Wayland/KDE (focus-stealing prevention otherwise leaves
+        # it in the background). The except-FileNotFoundError below is dead now
+        # but harmless.
+        __import__("platform_backend").get_backend().open_url(url)
     except FileNotFoundError:
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
@@ -294,9 +294,100 @@ def _diagnose_window(window_id: str) -> str:
         return f"wid={window_id}"
 
 
+def _is_wayland_backend() -> bool:
+    """True on the native Wayland/KDE backend, where xdotool/wmctrl don't work
+    and we must paste via wl-clipboard + wtype + KWin instead."""
+    try:
+        return getattr(
+            __import__("platform_backend").get_backend(), "name", "") == "wayland_kde"
+    except Exception:
+        return False
+
+
+def _send_via_paste_wayland(service: str, url: str, window_terms: list[str],
+                            text: str, paste_key: str = "ctrl+v",
+                            settle_extra: float = 0.0) -> None:
+    """Wayland/KDE paste path (xdotool/wmctrl are X11-only and silently no-op
+    under Wayland, which is why Claude never received the text on Fedora).
+
+    Flow: stash the prompt on the clipboard -> open the chat page (the platform
+    backend force-raises the browser via a KWin script) -> poll KWin's
+    active-window class+title until the *browser* is focused AND showing the
+    service -> inject the paste keystroke with wtype. Focus is confirmed before
+    pasting so we never blindly paste into whatever window happened to be in
+    front (e.g. a terminal); if it can't be confirmed we leave the prompt on the
+    clipboard and ask the user to press Ctrl+V."""
+    backend = __import__("platform_backend").get_backend()
+    saved_clip = backend.read_selection("clipboard")
+
+    def _restore():
+        try:
+            if saved_clip:
+                backend.set_clipboard(saved_clip)
+        except Exception:
+            pass
+
+    backend.set_clipboard(text)
+    try:
+        backend.open_url(url)
+    except FileNotFoundError:
+        _restore()
+        subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                        "-i", "dialog-error", f"Could not open {service}",
+                        "xdg-open is missing"], check=False)
+        return
+
+    try:
+        browser_kw = (backend._browser_keyword() or "").lower()
+    except Exception:
+        browser_kw = ""
+    service_terms = [t.lower() for t in (window_terms or []) if t] + [service.lower()]
+
+    def worker():
+        window_timeout = max(4.0, _window_timeout())
+        deadline = time.monotonic() + window_timeout
+        ready = False
+        while time.monotonic() < deadline:
+            try:
+                hay = backend.active_window_haystacks()  # [class, title] lowercased
+            except Exception:
+                hay = []
+            if hay:
+                has_browser = (not browser_kw) or any(browser_kw in h for h in hay)
+                has_service = any(term in h for h in hay for term in service_terms)
+                if has_browser and has_service:
+                    ready = True
+                    break
+            time.sleep(0.25)
+
+        # Keystroke injection (wtype/ydotool) cannot deliver Ctrl+V on this KWin
+        # Wayland session — the compositor doesn't pass injected modifier chords
+        # to clients (verified: even Ctrl+A doesn't register). So we never fake a
+        # paste (which could land in the wrong window). The prompt is on the
+        # clipboard and the chat is focused; the user presses Ctrl+V — their real
+        # keyboard works fine. (Install the browser userscript for hands-free
+        # insertion; this path is the no-setup fallback.)
+        print(f"[send_to_ai] wl-paste {service}: ready={ready} "
+              f"active={hay if ready else '?'}; prompt on clipboard for Ctrl+V",
+              flush=True)
+        subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "6000",
+                        "-i", "applications-internet", f"{service}: press Ctrl+V",
+                        "Your selection is on the clipboard — press Ctrl+V in the "
+                        "chat box, then Enter to send."], check=False)
+        time.sleep(45.0)   # keep the prompt on the clipboard while they paste
+        _restore()
+
+    threading.Thread(target=worker, daemon=True,
+                     name=f"ai-wlpaste-{service}").start()
+
+
 def _send_via_paste(service: str, url: str, window_terms: list[str],
                     text: str, paste_key: str = "ctrl+v",
                     settle_extra: float = 0.0) -> None:
+    if _is_wayland_backend():
+        _send_via_paste_wayland(service, url, window_terms, text,
+                                paste_key=paste_key, settle_extra=settle_extra)
+        return
     # Snapshot the user's clipboard + primary BEFORE we clobber them,
     # so we can restore once paste lands. Without this, asking Claude
     # silently overwrites whatever was on the clipboard with the
@@ -307,11 +398,11 @@ def _send_via_paste(service: str, url: str, window_terms: list[str],
     }
     _stuff_text(text)
     try:
-        subprocess.Popen(
-            ["xdg-open", url],
-            start_new_session=True,
-            env=_desktop_env(),
-        )
+        # Route through the platform backend so the browser is raised to the
+        # foreground on Wayland/KDE (focus-stealing prevention otherwise leaves
+        # it in the background). The except-FileNotFoundError below is dead now
+        # but harmless.
+        __import__("platform_backend").get_backend().open_url(url)
     except FileNotFoundError:
         # Restore immediately on failure - we never paste, so the user's
         # clipboard shouldn't stay overwritten.
@@ -416,6 +507,12 @@ _SERVICES = {
         icon="linuxpop-claude",
         tooltip="Ask Claude",
         service="Claude",
+        # Claude Desktop registers the claude:// scheme and ?q= prefills the
+        # composer directly. (The web https://claude.ai/?q= was disabled, but the
+        # desktop deep link still works.) Preferred over paste/userscript when
+        # the app is installed — no server, no userscript, no keystroke paste.
+        deeplink="claude://claude.ai/new",
+        deeplink_focus_kw="claude",
         mode="paste",
         url="https://claude.ai/new",
         userscript_url="https://claude.ai/new",
@@ -699,6 +796,19 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
         )
         return
 
+    # If the browser userscript has never registered (no install marker), the
+    # chat page would open but nothing would inject the text — exactly the
+    # "nothing reaches Claude's box" symptom. Fall back to the paste path, which
+    # needs no browser extension. Auto-upgrades to true userscript injection the
+    # moment the user installs it and loads a matched site (which sets the marker).
+    if not bridge_server.userscript_marker_exists():
+        _send_via_paste(
+            service, spec.get("url") or base_url, spec.get("window_terms", []),
+            text, paste_key=spec.get("paste_key", "ctrl+v"),
+            settle_extra=spec.get("settle_extra", 0.0),
+        )
+        return
+
     try:
         from settings import get_settings
         start_port = int(get_settings().get("ai_userscript_bridge_port", 8766) or 8766)
@@ -742,11 +852,11 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
     url = f"{base_url}{sep}linuxpop={token}"
 
     try:
-        subprocess.Popen(
-            ["xdg-open", url],
-            start_new_session=True,
-            env=_desktop_env(),
-        )
+        # Route through the platform backend so the browser is raised to the
+        # foreground on Wayland/KDE (focus-stealing prevention otherwise leaves
+        # it in the background). The except-FileNotFoundError below is dead now
+        # but harmless.
+        __import__("platform_backend").get_backend().open_url(url)
     except FileNotFoundError:
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "3000",
@@ -762,6 +872,129 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
          "Userscript will insert the prompt when the page loads."],
         check=False,
     )
+
+
+# ---- desktop deep-link mode (claude:// etc.) ----------------------------
+#
+# The flawless path on KDE when the service ships a desktop app that registers a
+# URL scheme: the deep link prefills the composer via ?q= directly. No bridge,
+# no userscript, and no keystroke injection for the text (impossible on this
+# KWin/Wayland session anyway — injected modifier chords never reach apps).
+# Submitting needs one Enter; Enter is a SINGLE keycode (28), which ydotool can
+# deliver even though Ctrl+V can't. Mirrors our krunner-claude runner.
+
+def _scheme_registered(deeplink: str) -> bool:
+    scheme = deeplink.split("://", 1)[0]
+    if not scheme:
+        return False
+    try:
+        out = subprocess.run(
+            ["xdg-mime", "query", "default", f"x-scheme-handler/{scheme}"],
+            capture_output=True, text=True, timeout=2)
+        return bool(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _ydotool_enter() -> None:
+    """Press Enter in the focused window via ydotool. Enter is a single keycode,
+    so it lands on this compositor even though injected modifier chords don't."""
+    yd = shutil.which("ydotool")
+    sock = os.environ.get("YDOTOOL_SOCKET") or os.path.join(
+        os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"),
+        ".ydotool_socket")
+    if not yd or not os.path.exists(sock):
+        return
+    try:
+        subprocess.run([yd, "key", "28:1", "28:0"],
+                       env=dict(os.environ, YDOTOOL_SOCKET=sock),
+                       capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _focus_window_kw(keyword: str) -> None:
+    """Bring a window whose class/caption contains `keyword` to the front.
+    Prefers the persistent KWin shortcut the krunner-claude companion registers
+    (the reliable Wayland pattern); else force-activates via a one-shot script."""
+    kw = keyword.lower()
+    if "claude" in kw:
+        try:
+            import dbus
+            comp = dbus.Interface(
+                dbus.SessionBus().get_object("org.kde.kglobalaccel", "/component/kwin"),
+                "org.kde.kglobalaccel.Component")
+            if "Focus Claude (KRunner)" in [str(n) for n in comp.shortcutNames()]:
+                comp.invokeShortcut("Focus Claude (KRunner)")
+                return
+        except Exception:
+            pass
+    try:
+        import dbus
+        import tempfile
+        js = (
+            'var L=(workspace.windowList?workspace.windowList():workspace.clientList());'
+            'for(var i=0;i<L.length;i++){var w=L[i];try{'
+            'var c=(""+(w.resourceClass||"")).toLowerCase();'
+            'var p=(""+(w.caption||"")).toLowerCase();'
+            'if(c.indexOf("%s")>=0||p.indexOf("%s")>=0){'
+            'if(w.minimized)w.minimized=false;workspace.activeWindow=w;break;}}catch(e){}}'
+        ) % (kw, kw)
+        bus = dbus.SessionBus()
+        fd, path = tempfile.mkstemp(suffix=".js", prefix="linuxpop-focus-")
+        os.write(fd, js.encode("utf-8")); os.close(fd)
+        scripting = dbus.Interface(
+            bus.get_object("org.kde.KWin", "/Scripting"), "org.kde.kwin.Scripting")
+        sid = int(scripting.loadScript(path))
+        dbus.Interface(bus.get_object("org.kde.KWin", f"/Scripting/Script{sid}"),
+                       "org.kde.kwin.Script").run()
+        time.sleep(0.2)
+        try:
+            scripting.unloadScript(path)
+        except Exception:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    except Exception:
+        pass
+
+
+def _send_via_deeplink(service: str, spec: dict, text: str) -> None:
+    """Open the service's desktop app via its URL scheme with the prompt
+    prefilled in ?q=. Focus the window; if auto-submit is on, press Enter."""
+    import urllib.parse
+    base = spec["deeplink"]
+    sep = "&" if "?" in base else "?"
+    url = f"{base}{sep}q={urllib.parse.quote(text)}"
+    try:
+        subprocess.Popen(["xdg-open", url], close_fds=True)
+    except FileNotFoundError:
+        subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "3000",
+                        "-i", "dialog-error", f"Could not open {service}",
+                        "xdg-open is missing"], check=False)
+        return
+    kw = spec.get("deeplink_focus_kw", service.lower())
+    submit = _auto_submit_enabled()
+
+    def worker():
+        time.sleep(0.3)
+        _focus_window_kw(kw)
+        if submit:
+            # Retry a few times — the composer mounts after the deep link opens.
+            for i in range(5):
+                time.sleep(0.7 + i * 0.45)
+                _focus_window_kw(kw)
+                _ydotool_enter()
+
+    threading.Thread(target=worker, daemon=True,
+                     name=f"ai-deeplink-{service}").start()
+    subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "2500",
+                    "-i", spec.get("icon", "applications-internet"),
+                    f"Sent to {service}",
+                    "Opened in the desktop app with your selection."
+                    + ("" if submit else " Press Enter to send.")], check=False)
 
 
 # ---- dispatch -----------------------------------------------------------
@@ -806,6 +1039,14 @@ def _send(spec: dict):
         # to their native mode so the button still does something useful.
         if mode == "userscript" and not spec.get("userscript_supported"):
             mode = spec.get("mode", "paste")
+
+        # Desktop deep link is the most reliable path on KDE/Wayland when the
+        # service's app registers a URL scheme (e.g. Claude Desktop's claude://):
+        # ?q= prefills the composer directly — no server, userscript, or paste.
+        # Explicit API mode still wins; everything else defers to the deep link.
+        if mode != "api" and spec.get("deeplink") and _scheme_registered(spec["deeplink"]):
+            _send_via_deeplink(spec["service"], spec, text)
+            return
 
         if mode == "api":
             _send_via_api(spec["service"], spec, text)

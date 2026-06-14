@@ -706,6 +706,207 @@ def _active_window_haystacks() -> list[str]:
     return out
 
 
+# ----- Wayland trigger watcher (evdev + libxkbcommon + ydotool) ----------
+# XRecord only sees XWayland clients and xdotool can't reach native Wayland
+# windows, so the X watcher is blind on a Wayland session. Here we read the
+# raw keyboard devices via /dev/input (user must be in the 'input' group),
+# translate keycodes through the live xkb layout with libxkbcommon, and
+# inject expansions with ydotool. Detection/matching is inherited from
+# _TriggerWatcher; only the input source and the injection path differ.
+
+_KEY_BACKSPACE = 14
+# Modifiers that abort a partial trigger (a chord, not typing). RIGHTALT
+# (AltGr, 100) is deliberately excluded - it's needed to type @ { } [ ] on
+# many layouts and xkb resolves it for us.
+_ABORT_MODS = {29, 97, 56, 125, 126}  # ctrl L/R, left-alt, super L/R
+# While we inject with ydotool, those synthetic keystrokes come back through
+# /dev/input. The injector sets this; the watcher ignores events until then.
+_kbd_suppress_until = 0.0
+
+
+def _is_wayland() -> bool:
+    return bool(os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _ydotool_env() -> dict:
+    sock = (os.environ.get("YDOTOOL_SOCKET")
+            or f"/run/user/{os.getuid()}/.ydotool_socket")
+    return {**os.environ, "YDOTOOL_SOCKET": sock}
+
+
+def _detect_xkb_layout() -> tuple:
+    """(layout, variant, model) for the active keyboard, best-effort via
+    localectl. Falls back to us/pc105. Multi-layout configs use the first."""
+    layout, variant, model = "us", "", "pc105"
+    try:
+        out = subprocess.run(["localectl", "status"], capture_output=True,
+                             text=True, timeout=2.0).stdout
+        for line in out.splitlines():
+            s = line.strip()
+            if s.startswith("X11 Layout:"):
+                layout = s.split(":", 1)[1].strip() or layout
+            elif s.startswith("X11 Variant:"):
+                variant = s.split(":", 1)[1].strip()
+            elif s.startswith("X11 Model:"):
+                model = s.split(":", 1)[1].strip() or model
+    except Exception:
+        pass
+    return layout.split(",")[0], variant.split(",")[0], model
+
+
+class _XkbMapper:
+    """libxkbcommon ctypes wrapper: evdev key code -> UTF-8 char under the
+    live modifier state."""
+
+    def __init__(self, layout: str, variant: str, model: str) -> None:
+        import ctypes as C
+        self._ok = False
+        try:
+            xkb = C.CDLL("libxkbcommon.so.0")
+        except OSError:
+            return
+        self._xkb = xkb
+
+        class _RN(C.Structure):
+            _fields_ = [("rules", C.c_char_p), ("model", C.c_char_p),
+                        ("layout", C.c_char_p), ("variant", C.c_char_p),
+                        ("options", C.c_char_p)]
+
+        xkb.xkb_context_new.restype = C.c_void_p
+        xkb.xkb_context_new.argtypes = [C.c_int]
+        xkb.xkb_keymap_new_from_names.restype = C.c_void_p
+        xkb.xkb_keymap_new_from_names.argtypes = [C.c_void_p, C.POINTER(_RN),
+                                                  C.c_int]
+        xkb.xkb_state_new.restype = C.c_void_p
+        xkb.xkb_state_new.argtypes = [C.c_void_p]
+        xkb.xkb_state_key_get_utf8.restype = C.c_int
+        xkb.xkb_state_key_get_utf8.argtypes = [C.c_void_p, C.c_uint32,
+                                               C.c_char_p, C.c_size_t]
+        xkb.xkb_state_update_key.restype = C.c_int
+        xkb.xkb_state_update_key.argtypes = [C.c_void_p, C.c_uint32, C.c_int]
+        ctx = xkb.xkb_context_new(0)
+
+        def _mk(lay, var, mod):
+            rn = _RN(b"evdev", (mod or "pc105").encode(),
+                     (lay or "us").encode(),
+                     var.encode() if var else None, None)
+            return xkb.xkb_keymap_new_from_names(ctx, C.byref(rn), 0)
+
+        km = _mk(layout, variant, model) or _mk("us", "", "pc105")
+        if not km:
+            return
+        self._state = xkb.xkb_state_new(km)
+        self._buf = C.create_string_buffer(16)
+        self._ok = bool(self._state)
+
+    def char_for_press(self, code: int) -> str:
+        if not self._ok:
+            return ""
+        self._xkb.xkb_state_key_get_utf8(self._state, code + 8, self._buf, 16)
+        return self._buf.raw.split(b"\x00", 1)[0].decode("utf-8", "replace")
+
+    def update(self, code: int, down: bool) -> None:
+        if self._ok:
+            self._xkb.xkb_state_update_key(self._state, code + 8,
+                                           1 if down else 0)
+
+
+class _WaylandTriggerWatcher(_TriggerWatcher):
+    """evdev + xkb + ydotool variant of the trigger watcher for Wayland."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        layout, variant, model = _detect_xkb_layout()
+        self._mapper = _XkbMapper(layout, variant, model)
+        self._fds: list = []
+        print(f"[triggers] Wayland watcher (layout={layout} "
+              f"variant={variant or '-'})")
+
+    def _open_keyboards(self) -> list:
+        import glob
+        # by-path/*-event-kbd is exactly the physical keyboards - and it
+        # excludes ydotool's virtual uinput device (no bus path), so we
+        # never read back the very keys we inject.
+        paths = set()
+        for p in glob.glob("/dev/input/by-path/*-event-kbd"):
+            try:
+                paths.add(os.path.realpath(p))
+            except OSError:
+                pass
+        if not paths:
+            paths = set(glob.glob("/dev/input/event*"))
+        fds = []
+        for path in sorted(paths):
+            try:
+                fds.append(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
+            except OSError as exc:
+                print(f"[triggers] cannot open {path}: {exc}")
+        return fds
+
+    def _run(self) -> None:
+        if not getattr(self._mapper, "_ok", False):
+            print("[triggers] libxkbcommon unavailable - Wayland triggers off")
+            return
+        self._fds = self._open_keyboards()
+        if not self._fds:
+            print("[triggers] no readable keyboards - add yourself to the "
+                  "'input' group? Wayland triggers off")
+            return
+        print(f"[triggers] watching {len(self._fds)} keyboard device(s)")
+        import struct
+        ev_fmt = "llHHi"
+        ev_size = struct.calcsize(ev_fmt)
+        EV_KEY = 0x01
+        try:
+            while not self._stop.is_set():
+                r, _, _ = _select.select(self._fds, [], [], 0.5)
+                for fd in r:
+                    try:
+                        data = os.read(fd, ev_size * 64)
+                    except (BlockingIOError, OSError):
+                        continue
+                    for off in range(0, len(data) - ev_size + 1, ev_size):
+                        _s, _us, et, code, value = struct.unpack_from(
+                            ev_fmt, data, off)
+                        if et == EV_KEY:
+                            self._on_key(code, value)
+        finally:
+            for fd in self._fds:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            self._fds = []
+
+    def _on_key(self, code: int, value: int) -> None:
+        if value == 0:  # release
+            self._mapper.update(code, False)
+            return
+        # press (1) or autorepeat (2)
+        abort = code in _ABORT_MODS
+        is_bs = code == _KEY_BACKSPACE
+        ch = "" if (abort or is_bs) else self._mapper.char_for_press(code)
+        if value == 1:
+            self._mapper.update(code, True)
+        if time.monotonic() < _kbd_suppress_until:
+            return  # our own injected keystrokes - don't re-buffer them
+        if abort:
+            with self._lock:
+                self._buffer.clear()
+            return
+        if is_bs:
+            with self._lock:
+                if self._buffer:
+                    self._buffer.pop()
+            return
+        if not ch:
+            return
+        if ch == "\r":
+            ch = "\n"
+        if ch.isprintable() or ch in _TRIGGER_CHARS:
+            self._handle_char(ch)
+
+
 def _trigger_blocked() -> bool:
     """Return True if the active window matches any pattern in the
     user's trigger_blocklist_patterns setting."""
@@ -751,7 +952,7 @@ def _fire_trigger_expansion(
     rendered = _propagate_case(typed, rendered)
     _bump_usage(snippet.id)
 
-    def worker():
+    def worker_x11():
         if not shutil.which("xdotool"):
             return
         # Wait for the user to physically release the boundary key
@@ -810,6 +1011,50 @@ def _fire_trigger_expansion(
             check=False,
         )
 
+    def worker_wayland():
+        if not shutil.which("ydotool"):
+            print("[triggers] ydotool not found - cannot expand on Wayland")
+            return
+        global _kbd_suppress_until
+        env = _ydotool_env()
+        n_delete = len(trigger) + 1
+        # Suppress reading our own injected keystrokes for the whole run.
+        _kbd_suppress_until = (time.monotonic() + 1.2
+                               + 0.02 * (n_delete + cursor_left))
+        time.sleep(0.06)
+        # 1. Delete the typed shortcode + boundary char. Single keys inject
+        #    fine via ydotool (keycode 14 = BackSpace).
+        bs = []
+        for _ in range(n_delete):
+            bs += ["14:1", "14:0"]
+        subprocess.run(["ydotool", "key", *bs], env=env, check=False)
+        time.sleep(0.03)
+        # 2. Stage the expansion on BOTH clipboard and primary. This carries
+        #    full unicode (ae/oe/aa etc.) that 'ydotool type' silently drops,
+        #    since type maps through a US keycode table.
+        try:
+            subprocess.run(["wl-copy"], input=rendered.encode("utf-8"),
+                           check=False, timeout=2.0)
+            subprocess.run(["wl-copy", "--primary"],
+                           input=rendered.encode("utf-8"),
+                           check=False, timeout=2.0)
+        except (OSError, subprocess.SubprocessError):
+            return
+        time.sleep(0.05)
+        # 3. Paste with Shift+Insert (LEFTSHIFT=42, INSERT=110). ydotool's
+        #    Ctrl chords don't register on KWin, but Shift+Insert does - and
+        #    it pastes the staged unicode verbatim.
+        subprocess.run(["ydotool", "key", "42:1", "110:1", "110:0", "42:0"],
+                       env=env, check=False)
+        if cursor_left > 0:
+            time.sleep(0.05)
+            lf = []
+            for _ in range(cursor_left):
+                lf += ["105:1", "105:0"]
+            subprocess.run(["ydotool", "key", *lf], env=env, check=False)
+        _kbd_suppress_until = time.monotonic() + 0.25
+
+    worker = worker_wayland if _is_wayland() else worker_x11
     threading.Thread(target=worker, daemon=True,
                      name="trigger-expansion").start()
     return False
@@ -821,7 +1066,8 @@ def _maybe_start_trigger_watcher() -> None:
     enabled = bool(_cfg("snippet_triggers_enabled", False))
     if enabled:
         if _trigger_watcher is None:
-            _trigger_watcher = _TriggerWatcher()
+            _trigger_watcher = (_WaylandTriggerWatcher() if _is_wayland()
+                                else _TriggerWatcher())
         _trigger_watcher.start()
     else:
         if _trigger_watcher is not None:
@@ -1561,12 +1807,22 @@ class _PickerDialog:
         win.set_skip_taskbar_hint(True)
         win.set_skip_pager_hint(True)
         win.set_keep_above(True)
-        # Borderless, ephemeral picker - no title bar, no min/max/close
-        # decorations. Dismissed by Esc, click-outside, or focus-out.
-        # Moveable via the brand-row drag handle below.
-        win.set_decorated(False)
-        win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        win.set_resizable(False)
+        # Borderless, ephemeral picker on X11 - moved via the brand-row drag
+        # handle. On Wayland a client can't self-position or self-move an
+        # undecorated window, so give the picker real KWin decorations there:
+        # the user gets move + resize for free from the window manager.
+        try:
+            from platform_backend import get_backend
+            _wl = get_backend().name == "wayland_kde"
+        except Exception:
+            _wl = False
+        if _wl:
+            win.set_decorated(True)
+            win.set_resizable(True)
+        else:
+            win.set_decorated(False)
+            win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+            win.set_resizable(False)
         win.connect("destroy", self._on_destroy)
         win.connect("key-press-event", self._on_key_press)
         win.connect("focus-out-event", self._on_focus_out)

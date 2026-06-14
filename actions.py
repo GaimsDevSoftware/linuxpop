@@ -137,20 +137,11 @@ def pin_as_snippet(text: str) -> None:
 
 
 def copy_to_clipboard(text: str) -> None:
-    """Copy text to the X11 clipboard via xclip."""
-    if not shutil.which("xclip"):
-        print("[actions] xclip not installed, cannot copy")
-        return
-    try:
-        subprocess.run(
-            ["xclip", "-selection", "clipboard"],
-            input=text.encode("utf-8"),
-            check=True,
-            timeout=2.0,
-        )
-        print(f"[actions] copied {len(text)} chars to clipboard")
-    except subprocess.CalledProcessError as exc:
-        print(f"[actions] xclip failed: {exc}")
+    """Copy text to the system clipboard (backend: xclip on X11, wl-copy on
+    Wayland/KDE)."""
+    from platform_backend import get_backend
+    get_backend().set_clipboard(text)
+    print(f"[actions] copied {len(text)} chars to clipboard")
 
 
 def replace_selection(new_text: str) -> None:
@@ -158,49 +149,27 @@ def replace_selection(new_text: str) -> None:
     selection - the in-place transform behaviour PopClip has on macOS.
 
     Sequence:
-      1. xclip writes the new text to CLIPBOARD
-      2. ~50 ms settle so the X selection-owner change propagates
-      3. xdotool sends Ctrl+V, which the focused app interprets as
+      1. write the new text to the clipboard
+      2. ~50 ms settle so the selection-owner change propagates
+      3. send Ctrl+V (backend), which the focused app interprets as
          'paste over the current selection'
 
-    If the focused widget is read-only the Ctrl+V is silently
-    discarded, but the result is still on the clipboard so the user
-    can paste it elsewhere - same fallback as a manual Copy.
+    If the focused widget is read-only the paste is silently discarded,
+    but the result is still on the clipboard so the user can paste it
+    elsewhere - same fallback as a manual Copy.
     """
-    if not shutil.which("xclip"):
-        print("[actions] xclip not installed, cannot replace selection")
-        return
-    try:
-        subprocess.run(
-            ["xclip", "-selection", "clipboard"],
-            input=new_text.encode("utf-8"),
-            check=False,
-            timeout=2.0,
-        )
-    except subprocess.TimeoutExpired:
-        print("[actions] xclip write timed out - selection not replaced")
-        return
+    from platform_backend import get_backend
+    backend = get_backend()
+    backend.set_clipboard(new_text)
     if force_copy_active():
         # Shift-modifier on the popup button: result goes to the
-        # clipboard, but we deliberately skip the Ctrl+V so the
-        # original selection stays put.
+        # clipboard, but we deliberately skip the paste so the original
+        # selection stays put.
         print("[actions] force-copy mode - clipboard only, no paste")
-        return
-    if not shutil.which("xdotool"):
-        # No xdotool: leave the result on the clipboard so the user can
-        # paste manually with Ctrl+V.
-        print("[actions] xdotool missing - text on clipboard only")
         return
     import time as _t
     _t.sleep(0.05)
-    try:
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
-            check=False,
-            timeout=2.0,
-        )
-    except subprocess.TimeoutExpired:
-        print("[actions] xdotool paste timed out - text on clipboard only")
+    backend.paste()
 
 
 def _desktop_env() -> dict:
@@ -227,18 +196,12 @@ def _desktop_env() -> dict:
 
 def open_url(text: str) -> None:
     url = _strip_invisible(text)
-    # Naked URLs (no scheme) get https:// so xdg-open routes them to the browser
+    # Naked URLs (no scheme) get https:// so the browser routes them correctly
     if not url.lower().startswith(("http://", "https://", "ftp://", "file://", "mailto:")):
         url = "https://" + url
-    try:
-        subprocess.Popen(
-            ["xdg-open", url],
-            start_new_session=True,
-            env=_desktop_env(),
-        )
-        print(f"[actions] opened URL: {url}")
-    except FileNotFoundError:
-        print("[actions] xdg-open not available")
+    from platform_backend import get_backend
+    get_backend().open_url(url)
+    print(f"[actions] opened URL: {url}")
 
 
 # General-purpose web search engines. The value is a URL template - '{q}'
@@ -283,11 +246,8 @@ def _search_template() -> str:
 def search_web(text: str) -> None:
     query = urllib.parse.quote_plus(_strip_invisible(text))
     url = _search_template().replace("{q}", query)
-    subprocess.Popen(
-        ["xdg-open", url],
-        start_new_session=True,
-        env=_desktop_env(),
-    )
+    from platform_backend import get_backend
+    get_backend().open_url(url)
 
 
 def _find_terminal() -> Optional[tuple[str, list[str]]]:

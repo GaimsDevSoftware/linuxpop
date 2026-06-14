@@ -25,6 +25,29 @@ from pathlib import Path
 log = logging.getLogger("linuxpop")
 
 
+def _stage_text(text: str) -> None:
+    """Put `text` on the clipboard (and PRIMARY) with the right tool for the
+    session: wl-copy on Wayland, xclip on X11. The old code only knew xclip,
+    which isn't installed on a Wayland box - so OCR'd text silently never
+    reached the clipboard."""
+    data = text.encode("utf-8")
+    if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-copy"):
+        for extra in ([], ["--primary"]):
+            try:
+                subprocess.run(["wl-copy", *extra], input=data,
+                               check=False, timeout=2.0)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return
+    if shutil.which("xclip"):
+        for sel in ("clipboard", "primary"):
+            try:
+                subprocess.run(["xclip", "-selection", sel], input=data,
+                               check=False, timeout=2.0)
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
 def _distro_id() -> str:
     """Read /etc/os-release ID + ID_LIKE so we can pick the right
     package manager. ID_LIKE is the fallback distro family (e.g.
@@ -66,23 +89,94 @@ def install_command() -> str:
             "tesseract-ocr-nor maim")
 
 
+def _has_capture_tool() -> bool:
+    """True if any supported region-capture tool is on PATH. spectacle and
+    grim work natively on Wayland; maim/gnome-screenshot are the X11 path."""
+    return bool(shutil.which("spectacle") or shutil.which("grim")
+                or shutil.which("maim") or shutil.which("gnome-screenshot"))
+
+
 def is_supported() -> tuple[bool, str]:
     """Return (ok, reason). ok=False means we can't run OCR right now;
-    the reason names which dependency is missing so the user can fix
-    it themselves."""
-    if not shutil.which("maim") and not shutil.which("gnome-screenshot"):
-        return False, ("install 'maim' (or 'gnome-screenshot') for "
-                       "region capture: sudo apt install maim")
+    the reason is a SHORT human label of what's missing (the Settings row
+    pairs it with an Install button, so it doesn't need to spell out a
+    command)."""
+    if not _has_capture_tool():
+        return False, "screen-capture tool not installed"
     if not shutil.which("tesseract"):
-        return False, ("install 'tesseract-ocr' for text recognition: "
-                       "sudo apt install tesseract-ocr")
+        return False, "tesseract OCR engine not installed"
     return True, ""
+
+
+def install_argv() -> "list[str] | None":
+    """A pkexec argv that installs the missing OCR dependencies non-
+    interactively (pkexec shows a graphical auth prompt). Returns None when
+    we don't recognise the package manager. A capture tool is only added
+    when none is present - KDE already ships spectacle, so on most Wayland
+    desktops only tesseract is missing."""
+    ids = _distro_id()
+
+    def has(needles: tuple) -> bool:
+        return any(n in ids for n in needles)
+
+    need_capture = not _has_capture_tool()
+    if has(("fedora", "rhel", "centos", "rocky", "alma")):
+        pkgs = ["tesseract", "tesseract-langpack-eng"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "dnf", "install", "-y", *pkgs]
+    if has(("arch", "manjaro", "endeavouros")):
+        pkgs = ["tesseract", "tesseract-data-eng"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "pacman", "-S", "--noconfirm", *pkgs]
+    if has(("opensuse", "suse")):
+        pkgs = ["tesseract-ocr", "tesseract-ocr-traineddata-english"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "zypper", "--non-interactive", "install", *pkgs]
+    if has(("debian", "ubuntu", "mint", "pop", "elementary", "zorin",
+            "neon", "kali", "deepin", "mx")):
+        pkgs = ["tesseract-ocr", "tesseract-ocr-eng", "tesseract-ocr-nor"]
+        if need_capture:
+            pkgs.append("maim")
+        return ["pkexec", "apt-get", "install", "-y", *pkgs]
+    return None
 
 
 def _capture_region(out_path: Path) -> bool:
     """Use whichever region-capture tool is installed to grab a user-
     drawn rectangle and write it as a PNG. Returns False if the user
     cancelled or the tool errored out."""
+    if shutil.which("spectacle"):
+        # KDE's capture tool. Its rectangular-region selector works
+        # natively on Wayland (maim is X11-only and grim needs wlroots),
+        # so it's the right default on KWin. -r region, -b background (no
+        # GUI window), -n no notification, -o write to file.
+        try:
+            subprocess.run(
+                ["spectacle", "-r", "-b", "-n", "-o", str(out_path)],
+                capture_output=True, timeout=120,
+            )
+            return out_path.is_file() and out_path.stat().st_size > 0
+        except subprocess.TimeoutExpired:
+            log.warning("[ocr] spectacle timed out")
+            return False
+    if shutil.which("grim") and shutil.which("slurp"):
+        # wlroots compositors (sway, Hyprland): slurp picks the region,
+        # grim captures it.
+        try:
+            geom = subprocess.run(["slurp"], capture_output=True,
+                                  timeout=60, text=True)
+            if geom.returncode != 0 or not geom.stdout.strip():
+                return False
+            res = subprocess.run(
+                ["grim", "-g", geom.stdout.strip(), str(out_path)],
+                capture_output=True, timeout=30,
+            )
+            return res.returncode == 0 and out_path.is_file()
+        except subprocess.TimeoutExpired:
+            return False
     if shutil.which("maim"):
         # `-s` puts maim in interactive region-select mode; output goes
         # to stdout if we don't pass a filename. We use a filename so
@@ -171,30 +265,80 @@ def capture_and_recognize(lang: str = "eng+nor") -> tuple[bool, str]:
             pass
 
 
+def _capture_via_overlay() -> "str | None":
+    """Run the frictionless overlay selector on the GTK main thread and return
+    the cropped PNG path (or None if cancelled). Called from a worker thread,
+    so it blocks on an Event until the user finishes the drag."""
+    import threading
+    from gi.repository import GLib
+    import ocr_selector
+    done = threading.Event()
+    holder: dict = {}
+
+    def _cb(path):
+        holder["path"] = path
+        done.set()
+
+    GLib.idle_add(ocr_selector.select_and_capture, _cb)
+    if not done.wait(180):
+        return None
+    return holder.get("path")
+
+
 def run_ocr_to_clipboard() -> None:
     """User-facing entry point. Triggered by the OCR hotkey or by the
     tray menu. Captures a region, OCRs it, puts the result on the
     clipboard, and shows the result text in the popup (so it lands as
     a selection the rest of LinuxPop's actions can pick up)."""
-    ok, payload = capture_and_recognize()
-    if not ok:
+    ok_sup, reason = is_supported()
+    if not ok_sup:
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "4000",
-             "-i", "dialog-information", "LinuxPop OCR", payload],
+             "-i", "dialog-information", "LinuxPop OCR", reason],
             check=False,
         )
         return
-    # Park the text on the clipboard so it's usable everywhere.
-    subprocess.run(
-        ["xclip", "-selection", "clipboard"],
-        input=payload.encode("utf-8"), check=False, timeout=2.0,
-    )
-    # Also park it on PRIMARY so the popup can immediately act on it
-    # the same way it would on a real selection.
-    subprocess.run(
-        ["xclip", "-selection", "primary"],
-        input=payload.encode("utf-8"), check=False, timeout=2.0,
-    )
+
+    # Prefer the frictionless overlay selector (drag -> done, no Accept step).
+    # Fall back to spectacle's region capture if it isn't available.
+    payload = None
+    used_overlay = False
+    try:
+        import ocr_selector
+        if ocr_selector.available():
+            used_overlay = True
+            crop = _capture_via_overlay()
+            if crop is None:
+                return  # user cancelled (Esc / zero-size drag)
+            text = (_run_tesseract(Path(crop), lang="eng+nor")
+                    or _run_tesseract(Path(crop), lang="eng"))
+            try:
+                os.unlink(crop)
+            except OSError:
+                pass
+            if not text:
+                subprocess.run(
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3500",
+                     "-i", "dialog-information", "LinuxPop OCR",
+                     "No text found in the selection."], check=False)
+                return
+            payload = text
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ocr] overlay selector failed, falling back: {exc}")
+        payload = None
+
+    if payload is None:
+        ok, payload = capture_and_recognize()
+        if not ok:
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "4000",
+                 "-i", "dialog-information", "LinuxPop OCR", payload],
+                check=False,
+            )
+            return
+    # Park the text on the clipboard (and PRIMARY) so it's usable everywhere
+    # and the popup can act on it like a real selection.
+    _stage_text(payload)
     # Friendly confirmation - tail the recognised text so the user knows
     # OCR ran and roughly what came out.
     preview = payload.replace("\n", " ")[:120]
