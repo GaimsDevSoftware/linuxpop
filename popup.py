@@ -470,6 +470,12 @@ class PopupWindow:
         so the popup's CSS can still recolour them to follow the text."""
         size = _resolve_button_size()
         icon_px = max(12, int(size * 0.72))
+        # Swap to the colour tile or the mono glyph per the user's icon_style.
+        try:
+            import icon_style
+            icon_name = icon_style.resolve(icon_name)
+        except Exception:
+            pass
         if icon_name and not icon_name.endswith("-symbolic"):
             img = self._colored_icon_with_rim(icon_name, icon_px)
             if img is not None:

@@ -657,6 +657,56 @@ class SettingsDialog:
         size_row.set_activatable_widget(size_spin)
         group.add(size_row)
 
+        # ----- Plugin icon style: colourful tiles vs uniform mono glyphs -----
+        icon_row = Handy.ActionRow()
+        icon_row.set_title("Plugin icon style")
+        icon_row.set_subtitle(
+            "Colourful tiles, or uniform mono glyphs that match the plain "
+            "edit icons. Applies to the popup and Plugin Manager.")
+        icon_combo = Gtk.ComboBoxText()
+        icon_combo.append("color", "Colourful tiles")
+        icon_combo.append("glyph", "Simple glyphs")
+        _cur_style = (self._settings.get("icon_style") or "color")
+        if _cur_style not in ("color", "glyph"):
+            _cur_style = "color"
+        icon_combo.set_active_id(_cur_style)
+        icon_combo.set_valign(Gtk.Align.CENTER)
+        icon_row.add(icon_combo)
+        icon_row.set_activatable_widget(icon_combo)
+        group.add(icon_row)
+
+        # Live preview strip: sample icons rendered in the chosen style.
+        icon_preview = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                               spacing=12)
+        icon_preview.set_halign(Gtk.Align.CENTER)
+        icon_preview.set_margin_top(8)
+        icon_preview.set_margin_bottom(12)
+
+        def _rebuild_icon_preview(style: str) -> None:
+            for ch in icon_preview.get_children():
+                ch.destroy()
+            try:
+                import icon_style as _ist
+                concepts = _ist.PREVIEW_CONCEPTS
+            except Exception:
+                concepts = []
+            for concept in concepts:
+                nm = (f"linuxpop-{concept}-symbolic" if style == "glyph"
+                      else f"linuxpop-{concept}")
+                im = Gtk.Image.new_from_icon_name(nm, Gtk.IconSize.DND)
+                im.set_pixel_size(30)
+                icon_preview.pack_start(im, False, False, 0)
+            icon_preview.show_all()
+
+        _rebuild_icon_preview(_cur_style)
+        group.add(icon_preview)
+
+        def _on_icon_style_changed(combo: Gtk.ComboBoxText) -> None:
+            style = combo.get_active_id() or "color"
+            self._save_key("icon_style", style)
+            _rebuild_icon_preview(style)
+        icon_combo.connect("changed", _on_icon_style_changed)
+
         # Max buttons per popup: how many actions can show before the
         # popup wraps to a second row and (past 2 rows) drops to a
         # "+N" overflow chip. Pairs with popup_button_size to govern
