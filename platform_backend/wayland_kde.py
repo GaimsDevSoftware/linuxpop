@@ -31,6 +31,24 @@ from .base import PlatformBackend
 
 _LAYER = None
 
+# Linux input-event codes (linux/input-event-codes.h) keyed by the
+# xdotool-style key names the rest of the app emits. Used to build
+# ydotool `key` CODE:STATE tokens. Letters/digits are lower-cased on
+# lookup; the named keys cover every chord the app actually sends
+# (Return, ctrl+Return, BackSpace, ctrl+a/x/v) plus common extras.
+_YDOTOOL_KEYCODES = {
+    **{d: 2 + i for i, d in enumerate("1234567890")},  # KEY_1=2 .. KEY_0=11
+    "a": 30, "b": 48, "c": 46, "d": 32, "e": 18, "f": 33, "g": 34,
+    "h": 35, "i": 23, "j": 36, "k": 37, "l": 38, "m": 50, "n": 49,
+    "o": 24, "p": 25, "q": 16, "r": 19, "s": 31, "t": 20, "u": 22,
+    "v": 47, "w": 17, "x": 45, "y": 21, "z": 44,
+    "return": 28, "enter": 28, "kp_enter": 96,
+    "backspace": 14, "tab": 15, "escape": 1, "esc": 1,
+    "space": 57, "delete": 111, "minus": 12, "equal": 13,
+    "home": 102, "end": 107, "prior": 104, "next": 109,
+    "left": 105, "right": 106, "up": 103, "down": 108,
+}
+
 
 def _layer_shell():
     """Import GtkLayerShell lazily so importing this module doesn't hard-fail
@@ -402,6 +420,57 @@ class WaylandKdeBackend(PlatformBackend):
         return 0, 0
 
     # ---- keystroke injection --------------------------------------------
+    #
+    # wtype is DEAD on KWin: it drives zwp_virtual_keyboard_v1, which KWin
+    # does not implement, so it silently no-ops on Plasma. The validated
+    # path on KWin is ydotool, which writes to the kernel uinput device and
+    # bypasses Wayland's synthetic-input ban entirely (needs the ydotoold
+    # user daemon + /dev/uinput + user in `input` group). The future
+    # sandbox-clean route is libei via the RemoteDesktop portal (`eitype`),
+    # left as a fallback hook for when that CLI is present.
+    #
+    # Order: ydotool (works on KWin) -> wtype (works on wlroots/Sway, dead on
+    # KWin but harmless to try) so this same backend still injects on a
+    # non-KDE Wayland compositor.
+
+    def _ydotool_env(self) -> dict:
+        """Env for ydotool with YDOTOOL_SOCKET pointed at the running
+        daemon. ydotoold here listens on $XDG_RUNTIME_DIR/.ydotool_socket;
+        set it explicitly so we don't depend on ydotool's compiled default."""
+        env = os.environ.copy()
+        if not env.get("YDOTOOL_SOCKET"):
+            runtime = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+            sock = os.path.join(runtime, ".ydotool_socket")
+            if os.path.exists(sock):
+                env["YDOTOOL_SOCKET"] = sock
+        return env
+
+    def _ydotool_key_events(self, combo: str) -> Optional[list[str]]:
+        """Translate an xdotool-style chord ('ctrl+v', 'Return') into the
+        CODE:STATE token list ydotool `key` expects. Modifiers are pressed
+        in order then released in reverse, wrapping the final key."""
+        parts = [p.strip() for p in combo.split("+") if p.strip()]
+        if not parts:
+            return None
+        mod_codes = {"ctrl": 29, "control": 29, "shift": 42, "alt": 56,
+                     "super": 125, "win": 125, "meta": 125}
+        mods = []
+        for m in parts[:-1]:
+            code = mod_codes.get(m.lower())
+            if code is None:
+                print(f"[wayland] ydotool: unknown modifier {m!r} in {combo!r}")
+                return None
+            mods.append(code)
+        key = parts[-1]
+        key_code = _YDOTOOL_KEYCODES.get(key) or _YDOTOOL_KEYCODES.get(key.lower())
+        if key_code is None:
+            print(f"[wayland] ydotool: unknown key {key!r} in {combo!r}")
+            return None
+        events = [f"{c}:1" for c in mods]
+        events += [f"{key_code}:1", f"{key_code}:0"]
+        events += [f"{c}:0" for c in reversed(mods)]
+        return events
+
     def _wtype_args(self, combo: str) -> Optional[list[str]]:
         parts = [p.strip() for p in combo.split("+") if p.strip()]
         if not parts:
@@ -420,22 +489,37 @@ class WaylandKdeBackend(PlatformBackend):
         return args
 
     def send_key(self, combo: str) -> None:
-        if not shutil.which("wtype"):
-            print("[wayland] wtype missing - cannot send key")
-            return
-        args = self._wtype_args(combo)
-        if args is None:
-            return
-        subprocess.run(["wtype"] + args, check=False)
+        if shutil.which("ydotool"):
+            events = self._ydotool_key_events(combo)
+            if events is not None:
+                try:
+                    subprocess.run(["ydotool", "key", *events],
+                                   env=self._ydotool_env(), check=False)
+                    return
+                except OSError as exc:
+                    print(f"[wayland] ydotool key failed: {exc}")
+        if shutil.which("wtype"):
+            args = self._wtype_args(combo)
+            if args is not None:
+                subprocess.run(["wtype"] + args, check=False)
+                return
+        print(f"[wayland] no working key-injection tool for {combo!r} "
+              "(install ydotool + ydotoold on KWin)")
 
     def type_text(self, text: str) -> None:
-        if not shutil.which("wtype"):
-            print("[wayland] wtype missing - cannot type text")
+        if shutil.which("ydotool"):
+            try:
+                # `--` terminates ydotool's own option parsing so text that
+                # starts with '-' is typed literally rather than parsed.
+                subprocess.run(["ydotool", "type", "--", text],
+                               env=self._ydotool_env(), check=False)
+                return
+            except OSError as exc:
+                print(f"[wayland] ydotool type failed: {exc}")
+        if shutil.which("wtype"):
+            subprocess.run(["wtype", text], check=False)
             return
-        # `--` is not understood by wtype; guard against a leading dash by
-        # typing via stdin is unsupported, so pass directly (paste-replace
-        # text rarely starts with '-').
-        subprocess.run(["wtype", text], check=False)
+        print("[wayland] no working text-injection tool (install ydotool)")
 
     # ---- active window ---------------------------------------------------
     def active_window_haystacks(self) -> list[str]:
