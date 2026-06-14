@@ -353,6 +353,289 @@ class WaylandKdeHotkey:
         self._registered = False
 
 
+def _detect_kbd_rmlvo() -> tuple:
+    """(model, layout, variant, options) for the active keyboard so raw
+    /dev/input keycodes can be interpreted through the user's REAL xkb
+    config. Crucially this includes the xkb *options* (e.g. a Ctrl/Alt swap
+    via ctrl:swap_lalt_lctl) - localectl omits those, so KDE keeps them in
+    kxkbrc. evdev events are pre-xkb, so without the keymap a remap is
+    invisible to us."""
+    model, layout, variant, options = "pc105", "us", "", ""
+    try:
+        out = subprocess.run(["localectl", "status"], capture_output=True,
+                             text=True, timeout=2.0).stdout
+        for line in out.splitlines():
+            s = line.strip()
+            if s.startswith("X11 Layout:"):
+                layout = s.split(":", 1)[1].strip() or layout
+            elif s.startswith("X11 Variant:"):
+                variant = s.split(":", 1)[1].strip()
+            elif s.startswith("X11 Model:"):
+                model = s.split(":", 1)[1].strip() or model
+            elif s.startswith("X11 Options:"):
+                options = s.split(":", 1)[1].strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # KDE keeps the live keyboard options (Ctrl/Alt swap, caps remaps, …) in
+    # kxkbrc and is authoritative on Wayland - prefer it over localectl.
+    try:
+        path = os.path.expanduser("~/.config/kxkbrc")
+        in_layout = False
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("["):
+                    in_layout = (line == "[Layout]")
+                elif in_layout and line.startswith("Options="):
+                    options = line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return (model, layout.split(",")[0], variant.split(",")[0], options)
+
+
+class _XkbModifierState:
+    """libxkbcommon ctypes wrapper that tracks LOGICAL modifier state from
+    raw evdev keycodes, honouring the user's layout + options. This is what
+    lets a Ctrl/Alt swap (kxkbrc Options=ctrl:swap_lalt_lctl) be respected:
+    we ask xkb 'is Control effectively active?' instead of hard-coding which
+    physical keycode is Ctrl."""
+
+    _MOD_NAME = {
+        "ctrl": b"Control", "shift": b"Shift", "alt": b"Mod1", "super": b"Mod4",
+    }
+    _XKB_STATE_MODS_EFFECTIVE = 1 << 3
+
+    def __init__(self) -> None:
+        import ctypes as C
+        self._ok = False
+        try:
+            xkb = C.CDLL("libxkbcommon.so.0")
+        except OSError:
+            return
+        self._xkb = xkb
+
+        class _RN(C.Structure):
+            _fields_ = [("rules", C.c_char_p), ("model", C.c_char_p),
+                        ("layout", C.c_char_p), ("variant", C.c_char_p),
+                        ("options", C.c_char_p)]
+
+        xkb.xkb_context_new.restype = C.c_void_p
+        xkb.xkb_context_new.argtypes = [C.c_int]
+        xkb.xkb_keymap_new_from_names.restype = C.c_void_p
+        xkb.xkb_keymap_new_from_names.argtypes = [
+            C.c_void_p, C.POINTER(_RN), C.c_int]
+        xkb.xkb_state_new.restype = C.c_void_p
+        xkb.xkb_state_new.argtypes = [C.c_void_p]
+        xkb.xkb_state_update_key.restype = C.c_int
+        xkb.xkb_state_update_key.argtypes = [C.c_void_p, C.c_uint32, C.c_int]
+        xkb.xkb_state_mod_name_is_active.restype = C.c_int
+        xkb.xkb_state_mod_name_is_active.argtypes = [
+            C.c_void_p, C.c_char_p, C.c_int]
+        ctx = xkb.xkb_context_new(0)
+        if not ctx:
+            return
+        model, layout, variant, options = _detect_kbd_rmlvo()
+
+        def _mk(opts):
+            rn = _RN(b"evdev", (model or "pc105").encode(),
+                     (layout or "us").encode(),
+                     variant.encode() if variant else None,
+                     opts.encode() if opts else None)
+            return xkb.xkb_keymap_new_from_names(ctx, C.byref(rn), 0)
+
+        km = _mk(options) or _mk("")
+        if not km:
+            return
+        self._state = xkb.xkb_state_new(km)
+        self._ok = bool(self._state)
+        print(f"[dblclick] xkb state ok={self._ok} layout={layout} "
+              f"variant={variant or '-'} options={options or '-'}")
+
+    def update(self, evdev_code: int, down: bool) -> None:
+        if self._ok:
+            self._xkb.xkb_state_update_key(
+                self._state, evdev_code + 8, 1 if down else 0)
+
+    def is_active(self, mod: str):
+        """True/False if the named modifier is effectively held, or None when
+        xkb is unavailable (caller falls back to raw keycodes)."""
+        if not self._ok:
+            return None
+        name = self._MOD_NAME.get(mod)
+        if not name:
+            return None
+        return self._xkb.xkb_state_mod_name_is_active(
+            self._state, name, self._XKB_STATE_MODS_EFFECTIVE) == 1
+
+
+class WaylandDoubleClickWatcher:
+    """evdev-based modifier+double-click watcher for native Wayland.
+
+    The X11 path (XRecord) only sees XWayland windows on KWin, so the
+    double-click-modifier feature was dead for native Wayland apps. This
+    reads mouse buttons AND modifier keys straight from /dev/input - the
+    same mechanism the snippet-trigger and outside-click watchers already
+    use, so it works for every toolkit. Needs the user in the 'input'
+    group; silently inert otherwise.
+
+    Mirrors mouse_watcher.DoubleClickWatcher's semantics (300 ms window,
+    8 px tolerance, gated on the configured modifier). evdev button events
+    carry no coordinates, so the cursor position comes from the KWin
+    pointer query - fetched only while the gating modifier is held, so the
+    DBus round-trip happens for our gesture, not on every click.
+    """
+
+    _MOD_CODES = {
+        "ctrl":  {29, 97},    # KEY_LEFTCTRL / KEY_RIGHTCTRL
+        "shift": {42, 54},    # KEY_LEFTSHIFT / KEY_RIGHTSHIFT
+        "alt":   {56, 100},   # KEY_LEFTALT / KEY_RIGHTALT
+        "super": {125, 126},  # KEY_LEFTMETA / KEY_RIGHTMETA
+    }
+    _ALL_MODS = {29, 97, 42, 54, 56, 100, 125, 126}
+    _BTN_LEFT = 0x110
+    _DOUBLE_CLICK_MS = 300
+    _POSITION_TOLERANCE_PX = 8
+
+    def __init__(self, backend, on_double_click) -> None:
+        self._backend = backend
+        self._cb = on_double_click
+        self._stop = threading.Event()
+        self._thread = None
+        self._held = set()      # raw modifier keycodes down (xkb fallback)
+        self._xkb = None        # layout-aware modifier state (built in _run)
+        self._last_ms = 0
+        self._last_xy = (0, 0)
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="linuxpop-dblclick-wl")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _required_mod_name(self) -> str:
+        """The configured modifier name, read fresh each click so changing
+        the setting takes effect without a restart."""
+        try:
+            from settings import get_settings
+            name = (get_settings().get("double_click_modifier") or "ctrl").lower()
+        except Exception:
+            name = "ctrl"
+        return name if name in self._MOD_CODES else "ctrl"
+
+    def _required_codes(self) -> set:
+        """Raw-keycode fallback set, used only when xkb is unavailable."""
+        return self._MOD_CODES.get(self._required_mod_name(), self._MOD_CODES["ctrl"])
+
+    def _open_devices(self) -> list:
+        import glob
+        # by-path names are the physical devices and exclude ydotool's
+        # virtual uinput node (no bus path) - so injected keys never
+        # pollute the modifier state.
+        paths = set()
+        for pat in ("*-event-kbd", "*-event-mouse"):
+            for p in glob.glob(f"/dev/input/by-path/{pat}"):
+                try:
+                    paths.add(os.path.realpath(p))
+                except OSError:
+                    pass
+        if not paths:
+            paths = set(glob.glob("/dev/input/event*"))
+        fds = []
+        for path in sorted(paths):
+            try:
+                fds.append(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+        return fds
+
+    def _run(self) -> None:
+        import struct
+        fds = self._open_devices()
+        if not fds:
+            print("[dblclick] no readable input devices - add yourself to the "
+                  "'input' group? Wayland double-click off")
+            return
+        # Layout-aware modifier state so a Ctrl/Alt swap is respected. If
+        # libxkbcommon is missing we fall back to raw keycodes in _on_left_press.
+        self._xkb = _XkbModifierState()
+        print(f"[dblclick] evdev watcher on {len(fds)} device(s) (Wayland)")
+        EV_KEY = 0x01
+        fmt = "llHHi"
+        size = struct.calcsize(fmt)
+        try:
+            while not self._stop.is_set():
+                r, _, _ = _select.select(fds, [], [], 0.3)
+                for fd in r:
+                    try:
+                        data = os.read(fd, size * 64)
+                    except (BlockingIOError, OSError):
+                        continue
+                    for off in range(0, len(data) - size + 1, size):
+                        _s, _us, et, code, val = struct.unpack_from(
+                            fmt, data, off)
+                        if et != EV_KEY:
+                            continue
+                        if code == self._BTN_LEFT:
+                            if val == 1:
+                                self._on_left_press()
+                            continue
+                        # Keyboard key: feed xkb (press=1/release=0; ignore
+                        # autorepeat=2) and keep the raw-code fallback set.
+                        if val in (0, 1):
+                            self._xkb.update(code, val == 1)
+                        if code in self._ALL_MODS:
+                            if val == 1:
+                                self._held.add(code)
+                            elif val == 0:
+                                self._held.discard(code)
+        finally:
+            for fd in fds:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+    def _on_left_press(self) -> None:
+        # Only act on our gesture: the configured modifier must be held.
+        # This also keeps the KWin pointer query off the plain-click path.
+        name = self._required_mod_name()
+        active = self._xkb.is_active(name) if self._xkb else None
+        if active is None:
+            # xkb unavailable - fall back to raw physical keycodes (ignores
+            # any Ctrl/Alt swap, but better than nothing).
+            active = bool(self._held & self._required_codes())
+        if not active:
+            return
+        x, y = self._backend.pointer_position()
+        now_ms = int(time.monotonic() * 1000)
+        elapsed = now_ms - self._last_ms
+        dx = abs(x - self._last_xy[0])
+        dy = abs(y - self._last_xy[1])
+        if (elapsed < self._DOUBLE_CLICK_MS
+                and dx < self._POSITION_TOLERANCE_PX
+                and dy < self._POSITION_TOLERANCE_PX):
+            self._last_ms = 0
+            self._last_xy = (0, 0)
+            # Tiny settle so the app sees the click first, then we show
+            # the menu (same as the X11 watcher).
+            GLib.timeout_add(20, self._fire, x, y)
+            return
+        self._last_ms = now_ms
+        self._last_xy = (x, y)
+
+    def _fire(self, x: int, y: int) -> bool:
+        try:
+            self._cb(x, y)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[dblclick] callback failed: {exc}")
+        return False  # one-shot
+
+
 class WaylandKdeBackend(PlatformBackend):
     name = "wayland_kde"
     popup_uses_xlib = False
@@ -415,6 +698,12 @@ class WaylandKdeBackend(PlatformBackend):
             parts = out.stdout.strip().split()
             if len(parts) == 2:
                 return int(parts[0]), int(parts[1])
+            # Empty/short stdout means the KWin script round-trip produced
+            # nothing (timeout, DBus-name clash, KWin busy). This is the
+            # silent path that lands the popup at the top-left corner.
+            print(f"[wayland] cursor query gave no coords "
+                  f"(rc={out.returncode}, stdout={out.stdout!r}, "
+                  f"stderr={out.stderr.strip()!r}) -> falling back to (0,0)")
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             print(f"[wayland] cursor query failed: {exc}")
         return 0, 0
@@ -619,19 +908,12 @@ class WaylandKdeBackend(PlatformBackend):
         return WaylandKdeHotkey(hotkey_str, on_trigger)
 
     def make_double_click_watcher(self, on_double_click):
-        # There is no native-Wayland way to watch global pointer events, but
-        # XRecord still works over XWayland (the same path the snippet-trigger
-        # watcher uses here), so the modifier+double-click gesture works inside
-        # XWayland windows. For native Wayland windows it simply never fires -
-        # the popup hotkey covers those. Best-effort and non-fatal.
-        if not os.environ.get("DISPLAY"):
-            return None
-        try:
-            from mouse_watcher import DoubleClickWatcher
-            return DoubleClickWatcher(on_double_click)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[wayland] double-click watcher unavailable: {exc}")
-            return None
+        # XRecord (the old path) only sees XWayland windows on KWin, so the
+        # gesture was dead for native Wayland apps. Read mouse buttons +
+        # modifier keys from /dev/input instead - kernel-level, so it covers
+        # XWayland AND native Wayland windows. Needs the user in 'input';
+        # the watcher logs and stays inert otherwise.
+        return WaylandDoubleClickWatcher(self, on_double_click)
 
     # ---- popup positioning ----------------------------------------------
     def init_popup_window(self, win) -> None:

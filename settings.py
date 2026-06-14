@@ -169,6 +169,9 @@ DEFAULTS: dict[str, Any] = {
     # XGrabKey path is still wired up for power users who want pure
     # event-driven behaviour: flip this off in Settings.
     "hotkey_use_polling": True,
+    # Target language for the Translate plugin (ISO code, e.g. "en", "no",
+    # "de"). Changeable from the dropdown in the translation bubble itself.
+    "translate_target_lang": "en",
     # Milliseconds before the popup auto-hides if the mouse never enters
     # it. 6.5 s leaves enough time to read the buttons without overstaying
     # - 8 s felt sluggish in practice. Tunable via Settings → Timing.

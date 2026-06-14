@@ -386,6 +386,12 @@ class PopupWindow:
                 self._esc_keycode = 0
         self._prev_button_pressed = False
         self._prev_esc_pressed = False
+        # True while the pointer is over the popup. The popup must never
+        # auto-hide while this holds (user is reading / about to click).
+        # On Wayland this enter/leave signal is reliable; the tick's
+        # screen-space safe-zone math is not (pointer.get_position() is
+        # surface-local there), so Wayland persistence is driven from here.
+        self._pointer_in_popup = False
 
     def _clear_buttons(self) -> None:
         # destroy() drops the GTK refcount to 0, which releases the button's
@@ -953,6 +959,9 @@ class PopupWindow:
         # returns — so the window appears directly at the correct spot.
         get_backend().move_popup_window(self.win, target_x, target_y)
         self.win.present()
+        # Fresh show: the pointer is at the selection, not on the popup yet.
+        # Reset so a stale True from a prior show can't suppress dismissal.
+        self._pointer_in_popup = False
 
         # Record safe zones for the cursor-tracking loop
         self._origin_logical = (lx, ly)
@@ -1013,10 +1022,13 @@ class PopupWindow:
 
     def _on_initial_timeout(self) -> bool:
         self._initial_hide_id = None
-        # Only auto-hide if the user never reached the popup. If
-        # _hide_timeout_id is None and tick says we're in safe zone,
-        # we still hide here - the contract is "after N ms without
-        # pointer entry, give up".
+        # Never give up while the pointer is actually on the popup - the
+        # user is reading it / reaching for a button. _on_leave will arm
+        # the leave-grace once they move off it.
+        if self._pointer_in_popup:
+            return False
+        # Otherwise honour the contract: after N ms without pointer entry,
+        # give up.
         self.hide()
         return False
 
@@ -1061,27 +1073,20 @@ class PopupWindow:
             self._click_watcher = None
 
     def _on_global_click(self) -> bool:
-        """A mouse button was pressed somewhere. If the cursor isn't over the
-        popup, dismiss it. Runs on the GLib main loop."""
+        """A mouse button was pressed somewhere (Wayland evdev watcher).
+        Dismiss the popup unless the click landed on it. Runs on the GLib
+        main loop.
+
+        We decide inside-vs-outside from the enter/leave flag, NOT from
+        pointer.get_position(): on Wayland that returns surface-local
+        coordinates that are stale/meaningless when the click lands on
+        another window, so a click well outside used to read as 'inside'
+        and fail to dismiss. The pointer must be over the popup to click
+        anything on it, so _pointer_in_popup is the reliable signal."""
         if not self.win.get_visible():
             return False
-        try:
-            seat = self.win.get_display().get_default_seat()
-            _s, px, py = seat.get_pointer().get_position()
-            # On Wayland, get_position() returns surface-local coordinates
-            # (relative to whichever surface the pointer last entered), NOT
-            # absolute screen coords. For our layer-shell popup the popup's
-            # own surface-local space spans (0..w, 0..h), so clicking inside
-            # the popup yields small positive values. _point_in_popup checks
-            # against screen-space _popup_rect and would always return False
-            # on Wayland, causing every click (including on our own buttons)
-            # to dismiss the popup. Check surface-local bounds instead.
-            _rx, _ry, w, h = self._popup_rect
-            inside = (0 <= px <= w) and (0 <= py <= h)
-            if not inside:
-                self.hide()
-        except Exception:
-            pass
+        if not self._pointer_in_popup:
+            self.hide()
         return False
 
     def _tick(self) -> bool:
@@ -1126,6 +1131,13 @@ class PopupWindow:
             except Exception as exc:  # noqa: BLE001
                 print(f"[popup] xlib query failed: {exc}")
 
+        # Wayland: pointer.get_position() is surface-local, so the screen-
+        # space safe-zone math below is wrong (it would mis-fire and hide
+        # the popup while the cursor is right on it). Persistence there is
+        # driven entirely by enter/leave (_pointer_in_popup + _on_leave's
+        # grace), so skip this block.
+        if self._xdpy is None:
+            return True
         in_safe = self._in_safe_zone(px, py)
         if in_safe:
             # Reset/cancel any countdown - user is still on text or popup
@@ -1178,9 +1190,9 @@ class PopupWindow:
     def _on_enter(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        # User reached the popup - both timers should stop. Initial
-        # grace was "give up if they never come"; once they're here,
-        # the leave-grace alone governs disappearance.
+        # User reached the popup - it must not auto-hide while they're on
+        # it. Cancel BOTH the initial-grace and any leave-grace countdown.
+        self._pointer_in_popup = True
         self._cancel_initial_hide()
         self._cancel_hide_timeout()
         return False
@@ -1188,8 +1200,14 @@ class PopupWindow:
     def _on_leave(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        # Don't arm here - the tracker decides based on whether we're still
-        # near the original text. Leaving the popup alone isn't enough.
+        self._pointer_in_popup = False
+        # On X11 the tracker tick (screen-space safe-zone) governs hiding,
+        # so leaving the popup alone isn't enough - the cursor may still be
+        # over the selected text. On Wayland the tick can't do that math, so
+        # arm the leave-grace here: the popup lingers briefly (covering a
+        # cursor that's still very near) then hides.
+        if self._xdpy is None and self.win.get_visible():
+            self._arm_hide_timeout(self._leave_grace_ms)
         return False
 
     def _on_key_press(self, _widget, event):
