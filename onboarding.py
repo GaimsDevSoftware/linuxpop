@@ -458,59 +458,106 @@ def _draw_summon(cr, w, h, t):
     sx, sy, sw, sh = _stage(cr, w, h)
     keys1 = getattr(_draw_summon, "keys", ["Super", "Shift", "Y"])
     keys2 = getattr(_draw_summon, "clip_keys", ["Ctrl", "Super", "V"])
-    T = 8.0
+    T = 12.0
     lt = t % T
-    beat2 = lt >= 4.0
-    keys = keys2 if beat2 else keys1
-    base = (lt - 4.0) if beat2 else lt
-    label = "Clipboard history" if beat2 else "Popup hotkey"
-    accent = VIOLET if beat2 else BLUE
-    swap = _bump(_seg(lt % 4.0, 0.0, 0.25))  # tiny flash on switch
+    seg = int(lt // 4.0)        # 0 popup hotkey, 1 clipboard, 2 snippets
+    base = lt - seg * 4.0       # 0..4 within the beat
     cx = sx + sw / 2 + 18
     cy = sy + 50
-    # keycaps press in sequence
-    widths = [26 + 15 * len(k) for k in keys]
-    total = sum(widths) + 26 * (len(keys) - 1)
-    x = cx - total / 2
-    for i, k in enumerate(keys):
-        press = (_seg(base, 0.5 + i * 0.30, 0.72 + i * 0.30)
-                 - _seg(base, 1.5, 1.72))
-        kw = _keycap(cr, x, cy, k, press, accent)
-        if i < len(keys) - 1:
-            _text(cr, x + kw + 6, cy + 26, "+", 17, MUTE, center=False)
-        x += kw + 26
-    _text(cr, cx, cy - 18, label, 13, accent, bold=True, center=True)
-    # result of the combo
-    if not beat2:
-        blip = _bump(_seg(base, 1.6, 2.9))
-        if blip > 0:
-            _popupbar(cr, cx - 64, cy + 64, 3, blip)
+    if seg < 2:
+        keys = keys2 if seg == 1 else keys1
+        label = "Clipboard history" if seg == 1 else "Popup hotkey"
+        accent = VIOLET if seg == 1 else BLUE
+        # keycaps press in sequence
+        widths = [26 + 15 * len(k) for k in keys]
+        total = sum(widths) + 26 * (len(keys) - 1)
+        x = cx - total / 2
+        for i, k in enumerate(keys):
+            press = (_seg(base, 0.5 + i * 0.30, 0.72 + i * 0.30)
+                     - _seg(base, 1.5, 1.72))
+            kw = _keycap(cr, x, cy, k, press, accent)
+            if i < len(keys) - 1:
+                _text(cr, x + kw + 6, cy + 26, "+", 17, MUTE, center=False)
+            x += kw + 26
+        _text(cr, cx, cy - 18, label, 13, accent, bold=True, center=True)
+        if seg == 0:
+            blip = _bump(_seg(base, 1.6, 2.9))
+            if blip > 0:
+                _popupbar(cr, cx - 64, cy + 64, 3, blip)
+        else:
+            rise = _eo(_seg(base, 1.6, 2.4))
+            if rise > 0:
+                lx = cx - 90
+                ly = cy + 60
+                _shadow(cr, lx, ly, 180, 70, 10)
+                _rrect(cr, lx, ly, 180, 70, 10)
+                cr.set_source_rgb(1, 1, 1)
+                cr.fill_preserve()
+                cr.set_source_rgba(*STAGE_BORDER, 1)
+                cr.set_line_width(1)
+                cr.stroke()
+                for r in range(3):
+                    ry = ly + 12 + r * 18
+                    ra = _eo(_seg(base, 1.7 + r * 0.18, 2.3 + r * 0.18))
+                    cr.arc(lx + 16, ry + 4, 4, 0, 2 * math.pi)
+                    cr.set_source_rgba(*_ACCENTS[r], ra)
+                    cr.fill()
+                    _bar(cr, lx + 28, ry + 1, 140 * ra, 7, (0.82, 0.85, 0.91))
     else:
-        rise = _eo(_seg(base, 1.6, 2.4))
-        if rise > 0:
-            lx = cx - 90
-            ly = cy + 60
-            _shadow(cr, lx, ly, 180, 70, 10)
-            _rrect(cr, lx, ly, 180, 70, 10)
-            cr.set_source_rgb(1, 1, 1)
-            cr.fill_preserve()
-            cr.set_source_rgba(*STAGE_BORDER, 1)
-            cr.set_line_width(1)
-            cr.stroke()
-            for r in range(3):
-                ry = ly + 12 + r * 18
-                ra = _eo(_seg(base, 1.7 + r * 0.18, 2.3 + r * 0.18))
-                cr.arc(lx + 16, ry + 4, 4, 0, 2 * math.pi)
-                cr.set_source_rgba(*_ACCENTS[r], ra)
-                cr.fill()
-                _bar(cr, lx + 28, ry + 1, (140) * ra, 7, (0.82, 0.85, 0.91))
+        # seg 2: snippets / text expansion - type a short trigger, it
+        # expands into the whole text. Lives inside clipboard history.
+        accent = PINK
+        _text(cr, cx, cy - 18, "Snippets & text expansion", 13, accent,
+              bold=True, center=True)
+        fw, fh = 224, 46
+        fx = cx - fw / 2
+        fy = cy + 14
+        _shadow(cr, fx, fy, fw, fh, 9)
+        _rrect(cr, fx, fy, fw, fh, 9)
+        cr.set_source_rgb(1, 1, 1)
+        cr.fill_preserve()
+        cr.set_source_rgba(*STAGE_BORDER, 1)
+        cr.set_line_width(1)
+        cr.stroke()
+        trigger = ";sig"
+        expanded = "Best regards, Alex"
+        ty = fy + fh / 2 + 5
+        if _seg(base, 2.0, 2.45) < 0.5:
+            n = int(round(len(trigger) * _seg(base, 0.5, 1.8)))
+            shown = trigger[:n]
+            _text(cr, fx + 16, ty, shown, 15, (0.20, 0.22, 0.28),
+                  center=False)
+            if int(t * 2) % 2 == 0:  # blinking caret
+                cw = fx + 16 + len(shown) * 8.6
+                cr.set_source_rgba(0.20, 0.22, 0.28, 0.8)
+                cr.set_line_width(1.5)
+                cr.move_to(cw, fy + 12)
+                cr.line_to(cw, fy + fh - 12)
+                cr.stroke()
+        else:
+            a = _eo(_seg(base, 2.0, 2.7))
+            _text(cr, fx + 16, ty, expanded, 14, (0.20, 0.22, 0.28),
+                  a=a, center=False)
+        spark = _bump(_seg(base, 1.95, 2.7))  # pop at the swap
+        if spark > 0:
+            scx, scy = fx + fw - 22, fy + fh / 2
+            cr.set_line_width(2)
+            for k in range(4):
+                ang = k * (math.pi / 2) + 0.4
+                rr = 6 + 10 * spark
+                cr.set_source_rgba(*PINK, spark)
+                cr.move_to(scx + 3 * math.cos(ang), scy + 3 * math.sin(ang))
+                cr.line_to(scx + rr * math.cos(ang), scy + rr * math.sin(ang))
+                cr.stroke()
+        _text(cr, cx, fy + fh + 22,
+              "Type a shortcut, get the whole text", 11, MUTE, center=True)
     # guide on the left, hops with the key presses
     hop = abs(math.sin(base * 3.0)) * 6 if base < 1.6 else 0
     _mascot(cr, sx + 64, sy + sh / 2 + 6, 1.0,
             look=(0.6, -0.2), blink=_blink_at(t),
             mouth="open" if base < 1.8 else "smile", bob=-hop)
-    _speech(cr, sx + 30, sy + 20,
-            "Press it!" if not beat2 else "...or this one",
+    speeches = ["Press it!", "...or this one", "...and snippets!"]
+    _speech(cr, sx + 30, sy + 20, speeches[seg],
             a=_eo(_seg(base, 0.2, 0.7)) * (1 - _seg(base, 3.4, 4.0)))
 
 
@@ -722,8 +769,10 @@ def _build_pages(settings):
              draw=_draw_how),
         dict(title="Summon it your way",
              body=f"It appears automatically when you select text. Or press "
-                  f"<b>{_fmt(popup_key)}</b> for the popup anywhere, and "
-                  f"<b>{_fmt(clip_key)}</b> for clipboard history.",
+                  f"<b>{_fmt(popup_key)}</b> anywhere, and "
+                  f"<b>{_fmt(clip_key)}</b> for clipboard history — which "
+                  f"also keeps your snippets, so a short trigger expands "
+                  f"into the whole text as you type.",
              draw=_draw_summon),
         dict(title="Add ready-made plugins",
              body="Open the tray icon → <b>Plugins</b> → <b>Available</b> and "
