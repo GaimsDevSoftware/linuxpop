@@ -265,19 +265,77 @@ def capture_and_recognize(lang: str = "eng+nor") -> tuple[bool, str]:
             pass
 
 
+def _capture_via_overlay() -> "str | None":
+    """Run the frictionless overlay selector on the GTK main thread and return
+    the cropped PNG path (or None if cancelled). Called from a worker thread,
+    so it blocks on an Event until the user finishes the drag."""
+    import threading
+    from gi.repository import GLib
+    import ocr_selector
+    done = threading.Event()
+    holder: dict = {}
+
+    def _cb(path):
+        holder["path"] = path
+        done.set()
+
+    GLib.idle_add(ocr_selector.select_and_capture, _cb)
+    if not done.wait(180):
+        return None
+    return holder.get("path")
+
+
 def run_ocr_to_clipboard() -> None:
     """User-facing entry point. Triggered by the OCR hotkey or by the
     tray menu. Captures a region, OCRs it, puts the result on the
     clipboard, and shows the result text in the popup (so it lands as
     a selection the rest of LinuxPop's actions can pick up)."""
-    ok, payload = capture_and_recognize()
-    if not ok:
+    ok_sup, reason = is_supported()
+    if not ok_sup:
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "4000",
-             "-i", "dialog-information", "LinuxPop OCR", payload],
+             "-i", "dialog-information", "LinuxPop OCR", reason],
             check=False,
         )
         return
+
+    # Prefer the frictionless overlay selector (drag -> done, no Accept step).
+    # Fall back to spectacle's region capture if it isn't available.
+    payload = None
+    used_overlay = False
+    try:
+        import ocr_selector
+        if ocr_selector.available():
+            used_overlay = True
+            crop = _capture_via_overlay()
+            if crop is None:
+                return  # user cancelled (Esc / zero-size drag)
+            text = (_run_tesseract(Path(crop), lang="eng+nor")
+                    or _run_tesseract(Path(crop), lang="eng"))
+            try:
+                os.unlink(crop)
+            except OSError:
+                pass
+            if not text:
+                subprocess.run(
+                    ["notify-send", "--hint=byte:transient:1", "-t", "3500",
+                     "-i", "dialog-information", "LinuxPop OCR",
+                     "No text found in the selection."], check=False)
+                return
+            payload = text
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ocr] overlay selector failed, falling back: {exc}")
+        payload = None
+
+    if payload is None:
+        ok, payload = capture_and_recognize()
+        if not ok:
+            subprocess.run(
+                ["notify-send", "--hint=byte:transient:1", "-t", "4000",
+                 "-i", "dialog-information", "LinuxPop OCR", payload],
+                check=False,
+            )
+            return
     # Park the text on the clipboard (and PRIMARY) so it's usable everywhere
     # and the popup can act on it like a real selection.
     _stage_text(payload)
