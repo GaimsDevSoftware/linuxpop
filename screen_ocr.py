@@ -25,6 +25,29 @@ from pathlib import Path
 log = logging.getLogger("linuxpop")
 
 
+def _stage_text(text: str) -> None:
+    """Put `text` on the clipboard (and PRIMARY) with the right tool for the
+    session: wl-copy on Wayland, xclip on X11. The old code only knew xclip,
+    which isn't installed on a Wayland box - so OCR'd text silently never
+    reached the clipboard."""
+    data = text.encode("utf-8")
+    if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-copy"):
+        for extra in ([], ["--primary"]):
+            try:
+                subprocess.run(["wl-copy", *extra], input=data,
+                               check=False, timeout=2.0)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return
+    if shutil.which("xclip"):
+        for sel in ("clipboard", "primary"):
+            try:
+                subprocess.run(["xclip", "-selection", sel], input=data,
+                               check=False, timeout=2.0)
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
 def _distro_id() -> str:
     """Read /etc/os-release ID + ID_LIKE so we can pick the right
     package manager. ID_LIKE is the fallback distro family (e.g.
@@ -255,17 +278,9 @@ def run_ocr_to_clipboard() -> None:
             check=False,
         )
         return
-    # Park the text on the clipboard so it's usable everywhere.
-    subprocess.run(
-        ["xclip", "-selection", "clipboard"],
-        input=payload.encode("utf-8"), check=False, timeout=2.0,
-    )
-    # Also park it on PRIMARY so the popup can immediately act on it
-    # the same way it would on a real selection.
-    subprocess.run(
-        ["xclip", "-selection", "primary"],
-        input=payload.encode("utf-8"), check=False, timeout=2.0,
-    )
+    # Park the text on the clipboard (and PRIMARY) so it's usable everywhere
+    # and the popup can act on it like a real selection.
+    _stage_text(payload)
     # Friendly confirmation - tail the recognised text so the user knows
     # OCR ran and roughly what came out.
     preview = payload.replace("\n", " ")[:120]

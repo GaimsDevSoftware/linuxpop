@@ -177,12 +177,24 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
     if not buf.get_text(s, e, True):
         _set_placeholder()
 
-    def _on_focus_in(_w, _e):
+    def _clear_placeholder() -> None:
         if view._placeholder_active:
             view._setting_placeholder = True
             buf.set_text("")
             view._placeholder_active = False
             view._setting_placeholder = False
+
+    def _on_key_press(_w, event):
+        # Clear the hint the moment the user types something that produces
+        # text (letters, digits, space, Ctrl+V...), but keep it for pure
+        # navigation/modifier keys - and, crucially, while the field is
+        # merely focused. Clearing on focus-in used to wipe the hint the
+        # instant the dialog opened (the TextView grabs focus on show), so
+        # the example only reappeared after a focus-out/in cycle such as a
+        # right-click. keyval_to_unicode is non-zero exactly for the keys
+        # that put a character in the buffer.
+        if view._placeholder_active and Gdk.keyval_to_unicode(event.keyval):
+            _clear_placeholder()
         return False
 
     def _on_focus_out(_w, _e):
@@ -191,7 +203,7 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
             _set_placeholder()
         return False
 
-    view.connect("focus-in-event", _on_focus_in)
+    view.connect("key-press-event", _on_key_press)
     view.connect("focus-out-event", _on_focus_out)
 
 

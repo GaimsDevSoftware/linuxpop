@@ -560,6 +560,12 @@ class App:
                     self._bound_clipboard_hotkey = ""
                     if new_clip:
                         self._start_clipboard_hotkey()
+                # Bind the OCR hotkey if it just became usable - e.g. the
+                # user installed tesseract via the Settings Install button -
+                # so it starts working without a daemon restart.
+                if ((self.settings.get("ocr_hotkey") or "").strip()
+                        and self.ocr_hotkey is None):
+                    self._start_ocr_hotkey()
                 # Live-apply the double-click watcher toggle.
                 self._maybe_start_dblclick_watcher()
                 log.info("settings reloaded")
