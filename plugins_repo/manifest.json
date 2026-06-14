@@ -150,7 +150,7 @@
     "kind": "recipe",
     "file": "google-translate.json",
     "title": "Google Translate to English",
-    "description": "Auto-detect source language → translate to English",
+    "description": "Auto-detect source language \u2192 translate to English",
     "category": "Web shortcuts",
     "tags": [
       "web",
@@ -162,7 +162,7 @@
     "kind": "recipe",
     "file": "google-maps.json",
     "title": "Look up in Google Maps",
-    "description": "Address, place name or coordinates → Maps search",
+    "description": "Address, place name or coordinates \u2192 Maps search",
     "category": "Web shortcuts",
     "tags": [
       "web"
@@ -310,7 +310,7 @@
   {
     "file": "converters.py",
     "title": "Timestamp and color converters",
-    "description": "Auto-detects Unix epoch ↔ ISO 8601, #hex ↔ rgb(r,g,b)",
+    "description": "Auto-detects Unix epoch \u2194 ISO 8601, #hex \u2194 rgb(r,g,b)",
     "category": "Developer",
     "tags": [
       "developer",
@@ -321,7 +321,7 @@
   {
     "file": "html_entities.py",
     "title": "HTML entity encode/decode",
-    "description": "<p>café & \"co\"</p> ↔ &lt;p&gt;café &amp; &quot;co&quot;&lt;/p&gt;",
+    "description": "<p>caf\u00e9 & \"co\"</p> \u2194 &lt;p&gt;caf\u00e9 &amp; &quot;co&quot;&lt;/p&gt;",
     "category": "Developer",
     "tags": [
       "text",
@@ -329,5 +329,17 @@
       "encoding"
     ],
     "icon": "text-html-symbolic"
+  },
+  {
+    "file": "send_to_mentor.py",
+    "title": "Send to Mentor",
+    "description": "Send the selection to the active chat in Mentor (your local Odysseus fork)",
+    "category": "AI",
+    "tags": [
+      "ai",
+      "mentor",
+      "local"
+    ],
+    "icon": "linuxpop-mentor"
   }
 ]

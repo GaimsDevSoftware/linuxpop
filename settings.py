@@ -224,6 +224,10 @@ DEFAULTS: dict[str, Any] = {
     #   "cap"    -> one row only; the remainder sit behind a "+N" chip.
     # All modes are still bounded by max_popup_buttons above.
     "popup_overflow_mode": "expand",
+    # Icon style for branded/utility plugins:
+    #   "color" -> vibrant gradient tiles (default)
+    #   "glyph" -> uniform mono glyphs that match the plain text-edit icons
+    "icon_style": "color",
     # If True (default): after the command, drop into an interactive shell so
     #   output stays visible. Close with exit/Ctrl-D/X.
     # If False: terminal closes immediately after the command exits (output lost).
