@@ -174,14 +174,8 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
     if atype == "open_url":
         def handler(text: str) -> None:
             url = _render(template, text).strip()
-            try:
-                subprocess.Popen(["xdg-open", url], start_new_session=True)
-            except FileNotFoundError:
-                subprocess.run(
-                    ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",
-                     "Recipe error", "xdg-open is not installed"],
-                    check=False,
-                )
+            from platform_backend import get_backend
+            get_backend().open_url(url)
         return handler
 
     if atype == "run_command":
@@ -311,10 +305,8 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
                     )
                 elif stype == "open_url":
                     url = (rendered or current).strip()
-                    try:
-                        subprocess.Popen(["xdg-open", url], start_new_session=True)
-                    except FileNotFoundError:
-                        log.warning("[chain] xdg-open missing for step %d", i)
+                    from platform_backend import get_backend
+                    get_backend().open_url(url)
                 elif stype == "run_command":
                     cmd = rendered or current
                     try:

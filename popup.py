@@ -16,7 +16,12 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, Gtk  # noqa: E402
 
-from Xlib import X, XK, display as xdisplay  # noqa: E402
+try:
+    from Xlib import X, XK, display as xdisplay  # noqa: E402
+except Exception:  # python-xlib is absent on pure-Wayland (KDE) installs
+    X = XK = xdisplay = None  # type: ignore
+
+from platform_backend import get_backend  # noqa: E402
 
 import actions
 import plugin_loader
@@ -192,6 +197,76 @@ def reinstall_popup_css() -> None:
     _install_css()
 
 
+class _ClickWatcher:
+    """Wayland fallback for the X11 pointer-button poll. KWin doesn't deliver
+    clicks that land outside a no-focus layer-shell surface, so we read the
+    raw mouse devices via /dev/input while the popup is up and fire a callback
+    on any button press. Needs the user in the 'input' group (same as the
+    snippet trigger watcher); silently inert otherwise."""
+
+    def __init__(self, on_click) -> None:
+        self._on_click = on_click
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="popup-clickwatch")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _run(self) -> None:
+        import glob
+        import os
+        import struct
+        import select as _sel
+        from gi.repository import GLib
+        EV_KEY = 0x01
+        BTNS = {0x110, 0x111, 0x112}  # BTN_LEFT / RIGHT / MIDDLE
+        fmt = "llHHi"
+        size = struct.calcsize(fmt)
+        paths = set()
+        for p in glob.glob("/dev/input/by-path/*-event-mouse"):
+            try:
+                paths.add(os.path.realpath(p))
+            except OSError:
+                pass
+        if not paths:
+            paths = set(glob.glob("/dev/input/event*"))
+        fds = []
+        for path in sorted(paths):
+            try:
+                fds.append(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+        if not fds:
+            return
+        try:
+            while not self._stop.is_set():
+                r, _, _ = _sel.select(fds, [], [], 0.3)
+                for fd in r:
+                    try:
+                        data = os.read(fd, size * 32)
+                    except (BlockingIOError, OSError):
+                        continue
+                    for off in range(0, len(data) - size + 1, size):
+                        _s, _us, et, code, val = struct.unpack_from(
+                            fmt, data, off)
+                        if et == EV_KEY and code in BTNS and val == 1:
+                            GLib.idle_add(self._on_click)
+        finally:
+            for fd in fds:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+
 class PopupWindow:
     def __init__(
         self,
@@ -226,6 +301,13 @@ class PopupWindow:
         self.win.set_focus_on_map(False)
         self.win.set_type_hint(Gdk.WindowTypeHint.POPUP_MENU)
         self.win.get_style_context().add_class("linuxpop-popup")
+
+        # Let the platform backend prepare the window before it's ever shown
+        # (X11: no-op; Wayland/KDE: gtk-layer-shell init for free positioning).
+        try:
+            get_backend().init_popup_window(self.win)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[popup] backend window init failed: {exc}")
 
         # Transparent background so the rounded corners of the inner bar show through
         screen = self.win.get_screen()
@@ -288,14 +370,20 @@ class PopupWindow:
         self._origin_logical: tuple[float, float] = (0.0, 0.0)
         self._popup_rect: tuple[int, int, int, int] = (0, 0, 0, 0)  # x, y, w, h logical
         self._scale: int = 1
-        # Xlib display used for polling pointer button state + Esc key
-        try:
-            self._xdpy = xdisplay.Display()
-            self._esc_keycode = self._xdpy.keysym_to_keycode(XK.string_to_keysym("Escape"))
-        except Exception as exc:  # noqa: BLE001
-            print(f"[popup] could not open Xlib display: {exc}")
-            self._xdpy = None
-            self._esc_keycode = 0
+        # Xlib display used for polling pointer button state + Esc key.
+        # X11 only - the Wayland/KDE backend dismisses via GTK events
+        # (leave/focus-out/key-press), so we never open an Xlib display there.
+        self._xdpy = None
+        self._esc_keycode = 0
+        if get_backend().popup_uses_xlib and xdisplay is not None:
+            try:
+                self._xdpy = xdisplay.Display()
+                self._esc_keycode = self._xdpy.keysym_to_keycode(
+                    XK.string_to_keysym("Escape"))
+            except Exception as exc:  # noqa: BLE001
+                print(f"[popup] could not open Xlib display: {exc}")
+                self._xdpy = None
+                self._esc_keycode = 0
         self._prev_button_pressed = False
         self._prev_esc_pressed = False
 
@@ -391,7 +479,8 @@ class PopupWindow:
 
     def _device_scale(self) -> int:
         """The monitor's device-pixel scale (2 on a HiDPI screen), read from
-        the monitor rather than the popup window (which can under-report)."""
+        the monitor rather than the popup window (a layer-shell surface can
+        under-report its own scale)."""
         try:
             display = Gdk.Display.get_default()
             monitor = None
@@ -565,7 +654,6 @@ class PopupWindow:
 
         specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]
         self._present_buttons(specs, hidden_count, max_btns)
-
         self._present_near(x, y)
 
     def _add_overflow_chip(
@@ -646,7 +734,7 @@ class PopupWindow:
             rest = specs[first:]
             if rest or hidden_count > 0:
                 self._add_expand_chip(rest, hidden_count, max_btns)
-        else:  # 'wrap' - two rows
+        else:  # 'wrap' — two rows
             shown = min(n, 2 * per_row)
             for i, (icon, tip, h) in enumerate(specs[:shown]):
                 self._add_button(icon, tip, h,
@@ -727,7 +815,6 @@ class PopupWindow:
         specs = [(icon, tooltip, make_handler(callback, tooltip))
                  for (icon, tooltip, callback) in items]
         self._present_buttons(specs, 0, 0)
-
         self._present_near(x, y)
 
     def _present_near(self, x: int, y: int) -> None:
@@ -738,8 +825,13 @@ class PopupWindow:
         self._bar.show_all()
         self._outer.show_all()
 
-        # Realize so we can query its natural size, then position above the point
-        self.win.show_all()
+        # Realize WITHOUT mapping so we can measure natural size before the
+        # window is visible. show_all() on the children above marks them as
+        # visible so GTK includes them in the size request; realize() creates
+        # the GDK window resources without actually mapping (showing) it.
+        # On Wayland/layer-shell, mapping happens via show_all() AFTER we set
+        # the margins — if we called show_all() here the window would flash at
+        # (0, 0) before the layer-shell margins take effect.
         self.win.realize()
 
         _, natural = self.win.get_preferred_size()
@@ -752,8 +844,14 @@ class PopupWindow:
         display = screen.get_display()
         monitor = display.get_monitor_at_point(int(x), int(y))
         scale = monitor.get_scale_factor() if monitor else 1
-        lx = x / scale
-        ly = y / scale
+        if get_backend().pointer_is_logical:
+            # Wayland/KDE: cursor coords are already in logical pixels (same
+            # space as the monitor geometry), so don't divide by scale -
+            # doing so would place the popup at half the cursor position.
+            lx, ly = float(x), float(y)
+        else:
+            lx = x / scale
+            ly = y / scale
 
         # Cursor Y is the mouse position, which sits in the middle of the
         # selected line. We need to clear the whole line (~24 px tall in
@@ -761,6 +859,12 @@ class PopupWindow:
         # on top of the text it's supposed to act on.
         _LINE_CLEARANCE = 28
         _BELOW_GAP = 32  # used when there isn't room above
+        if get_backend().pointer_is_logical:
+            # Wayland: we only have the pointer, which sits inside/under the
+            # selection rather than above it. Lift the popup further so it
+            # clears the copied text instead of covering it.
+            _LINE_CLEARANCE = 64
+            _BELOW_GAP = 56
 
         # Place the popup horizontally centered on (lx,ly), clearly above ly
         target_x = int(lx - w / 2)
@@ -776,7 +880,12 @@ class PopupWindow:
                 target_y = int(ly + _BELOW_GAP)
             target_y = min(target_y, geom.y + geom.height - h - 4)
 
-        self.win.move(target_x, target_y)
+        # Set layer-shell margins BEFORE mapping so the popup appears at the
+        # correct position on first frame (no 0,0 flash). X11 move() is also
+        # called here (no-op on Wayland), so both backends go through the same
+        # code path.
+        get_backend().move_popup_window(self.win, target_x, target_y)
+        self.win.show_all()
         self.win.present()
 
         # Record safe zones for the cursor-tracking loop
@@ -869,12 +978,35 @@ class PopupWindow:
         self._stop_tracking()
         from gi.repository import GLib
         self._tracker_id = GLib.timeout_add(150, self._tick)
+        # Wayland has no Xlib button poll, so watch the mouse via /dev/input to
+        # dismiss the popup the moment the user clicks anywhere outside it.
+        if self._xdpy is None:
+            self._click_watcher = _ClickWatcher(self._on_global_click)
+            self._click_watcher.start()
 
     def _stop_tracking(self) -> None:
         if self._tracker_id is not None:
             from gi.repository import GLib
             GLib.source_remove(self._tracker_id)
             self._tracker_id = None
+        cw = getattr(self, "_click_watcher", None)
+        if cw is not None:
+            cw.stop()
+            self._click_watcher = None
+
+    def _on_global_click(self) -> bool:
+        """A mouse button was pressed somewhere. If the cursor isn't over the
+        popup, dismiss it. Runs on the GLib main loop."""
+        if not self.win.get_visible():
+            return False
+        try:
+            seat = self.win.get_display().get_default_seat()
+            _s, px, py = seat.get_pointer().get_position()
+            if not self._point_in_popup(px, py):
+                self.hide()
+        except Exception:
+            pass
+        return False
 
     def _tick(self) -> bool:
         # Stop tracking once the window is hidden

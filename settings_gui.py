@@ -185,10 +185,14 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
             view._setting_placeholder = False
 
     def _on_key_press(_w, event):
-        # Clear the hint on the first text-producing key, not on focus -
-        # focusing alone used to wipe the example the instant the dialog
-        # opened (the TextView grabs focus on show), so it only reappeared
-        # after a focus-out/in cycle such as a right-click.
+        # Clear the hint the moment the user types something that produces
+        # text (letters, digits, space, Ctrl+V...), but keep it for pure
+        # navigation/modifier keys - and, crucially, while the field is
+        # merely focused. Clearing on focus-in used to wipe the hint the
+        # instant the dialog opened (the TextView grabs focus on show), so
+        # the example only reappeared after a focus-out/in cycle such as a
+        # right-click. keyval_to_unicode is non-zero exactly for the keys
+        # that put a character in the buffer.
         if view._placeholder_active and Gdk.keyval_to_unicode(event.keyval):
             _clear_placeholder()
         return False
@@ -802,53 +806,92 @@ class SettingsDialog:
             ocr_ok, ocr_reason = False, "screen_ocr module not available"
         if ocr_ok:
             ocr_row.set_subtitle(
-                "Press this anywhere to draw a rectangle on screen. "
-                "Text inside the rectangle is OCR'd by tesseract and "
-                "lands on the clipboard.")
+                "Draw a box anywhere; the text inside is copied as text.")
         else:
-            ocr_row.set_subtitle(
-                f"Setup needed - {ocr_reason}. The hotkey is saved "
-                "but won't fire until the missing tools are installed.")
+            ocr_row.set_subtitle(f"Setup needed: {ocr_reason}.")
         ocr_recorder = HotkeyRecorder(
             self._settings.get("ocr_hotkey") or "",
             on_changed=lambda v: self._save_key("ocr_hotkey", v),
         )
-        # When OCR backends aren't available, surface a "Copy install
-        # command" button that puts the right apt/dnf/pacman/zypper
-        # command on the clipboard. Same one-step pattern we use for
-        # the MCP server snippet and the userscript-manager store link
-        # - we don't run privileged commands ourselves but we make the
-        # next manual step trivial.
+        # When OCR backends aren't available, offer a one-click Install
+        # button that runs the install in the background via pkexec (a
+        # graphical password prompt), then re-probes and updates the row
+        # live. Replaces the old "copy command to clipboard" dance, which
+        # also relied on xclip - absent on a Wayland box.
         if not ocr_ok:
             try:
-                from screen_ocr import install_command as _ocr_install_cmd
-                cmd = _ocr_install_cmd()
+                from screen_ocr import install_argv as _ocr_install_argv
+                argv = _ocr_install_argv()
             except Exception:
-                cmd = ""
-            if cmd:
-                ocr_copy_btn = Gtk.Button(label="Copy install command")
-                ocr_copy_btn.set_valign(Gtk.Align.CENTER)
-                ocr_copy_btn.set_tooltip_text(
-                    "Puts the right install command for your distro "
-                    "on the clipboard. Paste into a terminal and run.")
+                argv = None
+            ocr_install_btn = Gtk.Button(label="Install")
+            ocr_install_btn.set_valign(Gtk.Align.CENTER)
+            ocr_install_btn.get_style_context().add_class("suggested-action")
+            ocr_install_btn.set_tooltip_text(
+                "Installs the OCR tools in the background "
+                "(asks for your password).")
+            if argv is None:
+                ocr_install_btn.set_sensitive(False)
+                ocr_install_btn.set_tooltip_text(
+                    "Couldn't detect your package manager - please "
+                    "install tesseract manually.")
 
-                def _on_ocr_copy(_b, cmd=cmd):
-                    subprocess.run(
-                        ["xclip", "-selection", "clipboard"],
-                        input=cmd.encode("utf-8"),
-                        check=False, timeout=2.0,
-                    )
-                    subprocess.run(
-                        ["notify-send", "--hint=byte:transient:1",
-                         "-t", "3500", "-i", "edit-paste-symbolic",
-                         "LinuxPop OCR",
-                         "Install command on clipboard. Paste into a "
-                         "terminal, run it, then restart LinuxPop."],
-                        check=False,
-                    )
+            def _on_ocr_install(btn, argv=argv, row=ocr_row):
+                if not argv:
+                    return
+                btn.set_sensitive(False)
+                btn.set_label("Installing...")
+                row.set_subtitle(
+                    "Installing - authorise the password prompt...")
 
-                ocr_copy_btn.connect("clicked", _on_ocr_copy)
-                ocr_row.add(ocr_copy_btn)
+                def _done(ok, err):
+                    try:
+                        from screen_ocr import is_supported as _sup
+                        now_ok, reason = _sup()
+                    except Exception:
+                        now_ok, reason = ok, ""
+                    if now_ok:
+                        row.set_subtitle(
+                            "Ready. Draw a box anywhere to copy its text.")
+                        btn.set_label("Installed")
+                        btn.set_sensitive(False)
+                        try:
+                            btn.get_style_context().remove_class(
+                                "suggested-action")
+                        except Exception:
+                            pass
+                        # Bind the hotkey now that the backend works.
+                        if self._on_changed is not None:
+                            try:
+                                self._on_changed()
+                            except Exception:
+                                pass
+                    else:
+                        row.set_subtitle(
+                            f"Install didn't complete: {reason or err}. "
+                            "Try again.")
+                        btn.set_label("Install")
+                        btn.set_sensitive(True)
+                    return False
+
+                def _worker():
+                    ok, err = False, ""
+                    try:
+                        res = subprocess.run(
+                            argv, capture_output=True, timeout=600)
+                        ok = res.returncode == 0
+                        if not ok:
+                            err = (res.stderr or b"").decode(
+                                "utf-8", "replace").strip()[-160:]
+                    except Exception as exc:  # noqa: BLE001
+                        err = str(exc)
+                    GLib.idle_add(_done, ok, err)
+
+                threading.Thread(target=_worker, daemon=True,
+                                 name="ocr-install").start()
+
+            ocr_install_btn.connect("clicked", _on_ocr_install)
+            ocr_row.add(ocr_install_btn)
         ocr_row.add(ocr_recorder)
         ocr_clear = Gtk.Button.new_from_icon_name(
             "edit-clear-symbolic", Gtk.IconSize.BUTTON)
