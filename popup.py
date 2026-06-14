@@ -197,6 +197,76 @@ def reinstall_popup_css() -> None:
     _install_css()
 
 
+class _ClickWatcher:
+    """Wayland fallback for the X11 pointer-button poll. KWin doesn't deliver
+    clicks that land outside a no-focus layer-shell surface, so we read the
+    raw mouse devices via /dev/input while the popup is up and fire a callback
+    on any button press. Needs the user in the 'input' group (same as the
+    snippet trigger watcher); silently inert otherwise."""
+
+    def __init__(self, on_click) -> None:
+        self._on_click = on_click
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="popup-clickwatch")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _run(self) -> None:
+        import glob
+        import os
+        import struct
+        import select as _sel
+        from gi.repository import GLib
+        EV_KEY = 0x01
+        BTNS = {0x110, 0x111, 0x112}  # BTN_LEFT / RIGHT / MIDDLE
+        fmt = "llHHi"
+        size = struct.calcsize(fmt)
+        paths = set()
+        for p in glob.glob("/dev/input/by-path/*-event-mouse"):
+            try:
+                paths.add(os.path.realpath(p))
+            except OSError:
+                pass
+        if not paths:
+            paths = set(glob.glob("/dev/input/event*"))
+        fds = []
+        for path in sorted(paths):
+            try:
+                fds.append(os.open(path, os.O_RDONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+        if not fds:
+            return
+        try:
+            while not self._stop.is_set():
+                r, _, _ = _sel.select(fds, [], [], 0.3)
+                for fd in r:
+                    try:
+                        data = os.read(fd, size * 32)
+                    except (BlockingIOError, OSError):
+                        continue
+                    for off in range(0, len(data) - size + 1, size):
+                        _s, _us, et, code, val = struct.unpack_from(
+                            fmt, data, off)
+                        if et == EV_KEY and code in BTNS and val == 1:
+                            GLib.idle_add(self._on_click)
+        finally:
+            for fd in fds:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+
+
 class PopupWindow:
     def __init__(
         self,
@@ -898,12 +968,35 @@ class PopupWindow:
         self._stop_tracking()
         from gi.repository import GLib
         self._tracker_id = GLib.timeout_add(150, self._tick)
+        # Wayland has no Xlib button poll, so watch the mouse via /dev/input to
+        # dismiss the popup the moment the user clicks anywhere outside it.
+        if self._xdpy is None:
+            self._click_watcher = _ClickWatcher(self._on_global_click)
+            self._click_watcher.start()
 
     def _stop_tracking(self) -> None:
         if self._tracker_id is not None:
             from gi.repository import GLib
             GLib.source_remove(self._tracker_id)
             self._tracker_id = None
+        cw = getattr(self, "_click_watcher", None)
+        if cw is not None:
+            cw.stop()
+            self._click_watcher = None
+
+    def _on_global_click(self) -> bool:
+        """A mouse button was pressed somewhere. If the cursor isn't over the
+        popup, dismiss it. Runs on the GLib main loop."""
+        if not self.win.get_visible():
+            return False
+        try:
+            seat = self.win.get_display().get_default_seat()
+            _s, px, py = seat.get_pointer().get_position()
+            if not self._point_in_popup(px, py):
+                self.hide()
+        except Exception:
+            pass
+        return False
 
     def _tick(self) -> bool:
         # Stop tracking once the window is hidden
