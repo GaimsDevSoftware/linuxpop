@@ -530,14 +530,77 @@ class PopupWindow:
         except Exception:
             return None
 
+    def _glyph_colors(self) -> tuple[str, str]:
+        """Foreground + background hex for our custom mono glyphs, following
+        the popup's resolved light/dark theme. Dark-theme defaults: a light
+        glyph on the dark bar."""
+        fg, bg = "#f0f3fa", "#1c2231"
+        try:
+            import theme as _theme
+            mode = _theme._resolve_mode(
+                (get_settings_func() or {}).get("theme", "dark"))
+            if mode == "light":
+                fg, bg = "#1c2231", "#ffffff"
+        except Exception:
+            pass
+        return fg, bg
+
+    def _glyph_image(self, icon_name: str, icon_px: int):
+        """Load one of our custom linuxpop-*-symbolic glyphs, recolouring its
+        hardcoded palette to the current theme.
+
+        These SVGs hardcode #f0f0f0 strokes (tuned for the dark bar) and are
+        NOT in GTK's recolourable symbolic format, so GTK never recolours them
+        via the popup CSS `color` property. On a light popup they'd render
+        near-white-on-white (invisible) - the "faint glyph" bug. We recolour
+        them ourselves at load time instead. Returns None on any failure so the
+        caller can fall back to the plain icon-name path."""
+        try:
+            from gi.repository import GdkPixbuf, Gio, GLib
+            info = Gtk.IconTheme.get_default().lookup_icon(
+                icon_name, icon_px, Gtk.IconLookupFlags.FORCE_SIZE)
+            if info is None:
+                return None
+            path = info.get_filename()
+            if not path or not path.endswith(".svg"):
+                return None
+            with open(path, "rb") as fh:
+                svg = fh.read()
+            if b"#f0f0f0" not in svg.lower():
+                return None  # not one of our hardcoded glyphs - leave to GTK
+            fg, bg = self._glyph_colors()
+            # Body strokes/fills -> foreground; punch-out holes (#2b2b2b) ->
+            # background so negative space matches the bar in both themes; the
+            # lone map-pin green accent -> foreground (mono glyph).
+            for old, new in (
+                (b"#f0f0f0", fg), (b"#F0F0F0", fg),
+                (b"#2b2b2b", bg), (b"#2B2B2B", bg),
+                (b"#1d7a3a", fg), (b"#1D7A3A", fg),
+            ):
+                svg = svg.replace(old, new.encode())
+            scale = self._device_scale()
+            dev = max(12, icon_px * scale)
+            stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(svg))
+            pb = GdkPixbuf.Pixbuf.new_from_stream_at_scale(
+                stream, dev, dev, True, None)
+            if pb is None:
+                return None
+            surf = Gdk.cairo_surface_create_from_pixbuf(pb, 1, None)
+            surf.set_device_scale(scale, scale)
+            return Gtk.Image.new_from_surface(surf)
+        except Exception:
+            return None
+
     def _make_icon_image(self, icon_name: str) -> Gtk.Image:
         """Render an icon scaled to ~72% of the configured button size, so it
         has a comfortable halo of padding inside the button.
 
         Colour logos (non-symbolic) are composited with a thin dark contrast
         rim at device resolution so they stay crisp on HiDPI and separate
-        cleanly from the dark bar. Symbolic icons stay on the icon-name path
-        so the popup's CSS can still recolour them to follow the text."""
+        cleanly from the dark bar. Our custom linuxpop-*-symbolic glyphs are
+        recoloured to the theme foreground at load time (GTK can't recolour
+        them via CSS). System symbolic icons stay on the icon-name path so the
+        popup's CSS can recolour them to follow the text."""
         size = _resolve_button_size()
         icon_px = max(12, int(size * 0.72))
         # Swap to the colour tile or the mono glyph per the user's icon_style.
@@ -548,6 +611,10 @@ class PopupWindow:
             pass
         if icon_name and not icon_name.endswith("-symbolic"):
             img = self._colored_icon_with_rim(icon_name, icon_px)
+            if img is not None:
+                return img
+        elif icon_name and icon_name.startswith("linuxpop-"):
+            img = self._glyph_image(icon_name, icon_px)
             if img is not None:
                 return img
         image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
@@ -825,7 +892,12 @@ class PopupWindow:
         self._bar.show_all()
         self._outer.show_all()
 
-        # Realize so we can query its natural size, then position above the point
+        # Map the window off-screen first so GTK performs a full layout pass
+        # and get_preferred_size() returns the real size. We never return to
+        # the GLib main loop before setting the real position, so the
+        # compositor never renders a frame at (-10000, -10000) — the first
+        # visible frame is already at the correct position.
+        get_backend().move_popup_window(self.win, -10000, -10000)
         self.win.show_all()
         self.win.realize()
 
@@ -875,6 +947,10 @@ class PopupWindow:
                 target_y = int(ly + _BELOW_GAP)
             target_y = min(target_y, geom.y + geom.height - h - 4)
 
+        # Move to the real position. The window is already mapped (off-screen);
+        # this updates the layer-shell margins. The compositor applies the new
+        # position on the next Wayland commit, which happens when the main loop
+        # returns — so the window appears directly at the correct spot.
         get_backend().move_popup_window(self.win, target_x, target_y)
         self.win.present()
 
@@ -992,7 +1068,17 @@ class PopupWindow:
         try:
             seat = self.win.get_display().get_default_seat()
             _s, px, py = seat.get_pointer().get_position()
-            if not self._point_in_popup(px, py):
+            # On Wayland, get_position() returns surface-local coordinates
+            # (relative to whichever surface the pointer last entered), NOT
+            # absolute screen coords. For our layer-shell popup the popup's
+            # own surface-local space spans (0..w, 0..h), so clicking inside
+            # the popup yields small positive values. _point_in_popup checks
+            # against screen-space _popup_rect and would always return False
+            # on Wayland, causing every click (including on our own buttons)
+            # to dismiss the popup. Check surface-local bounds instead.
+            _rx, _ry, w, h = self._popup_rect
+            inside = (0 <= px <= w) and (0 <= py <= h)
+            if not inside:
                 self.hide()
         except Exception:
             pass
