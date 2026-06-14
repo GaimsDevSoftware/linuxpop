@@ -177,12 +177,20 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
     if not buf.get_text(s, e, True):
         _set_placeholder()
 
-    def _on_focus_in(_w, _e):
+    def _clear_placeholder() -> None:
         if view._placeholder_active:
             view._setting_placeholder = True
             buf.set_text("")
             view._placeholder_active = False
             view._setting_placeholder = False
+
+    def _on_key_press(_w, event):
+        # Clear the hint on the first text-producing key, not on focus -
+        # focusing alone used to wipe the example the instant the dialog
+        # opened (the TextView grabs focus on show), so it only reappeared
+        # after a focus-out/in cycle such as a right-click.
+        if view._placeholder_active and Gdk.keyval_to_unicode(event.keyval):
+            _clear_placeholder()
         return False
 
     def _on_focus_out(_w, _e):
@@ -191,7 +199,7 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
             _set_placeholder()
         return False
 
-    view.connect("focus-in-event", _on_focus_in)
+    view.connect("key-press-event", _on_key_press)
     view.connect("focus-out-event", _on_focus_out)
 
 
@@ -644,6 +652,56 @@ class SettingsDialog:
         size_row.add(size_spin)
         size_row.set_activatable_widget(size_spin)
         group.add(size_row)
+
+        # ----- Plugin icon style: colourful tiles vs uniform mono glyphs -----
+        icon_row = Handy.ActionRow()
+        icon_row.set_title("Plugin icon style")
+        icon_row.set_subtitle(
+            "Colourful tiles, or uniform mono glyphs that match the plain "
+            "edit icons. Applies to the popup and Plugin Manager.")
+        icon_combo = Gtk.ComboBoxText()
+        icon_combo.append("color", "Colourful tiles")
+        icon_combo.append("glyph", "Simple glyphs")
+        _cur_style = (self._settings.get("icon_style") or "color")
+        if _cur_style not in ("color", "glyph"):
+            _cur_style = "color"
+        icon_combo.set_active_id(_cur_style)
+        icon_combo.set_valign(Gtk.Align.CENTER)
+        icon_row.add(icon_combo)
+        icon_row.set_activatable_widget(icon_combo)
+        group.add(icon_row)
+
+        # Live preview strip: sample icons rendered in the chosen style.
+        icon_preview = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                               spacing=12)
+        icon_preview.set_halign(Gtk.Align.CENTER)
+        icon_preview.set_margin_top(8)
+        icon_preview.set_margin_bottom(12)
+
+        def _rebuild_icon_preview(style: str) -> None:
+            for ch in icon_preview.get_children():
+                ch.destroy()
+            try:
+                import icon_style as _ist
+                concepts = _ist.PREVIEW_CONCEPTS
+            except Exception:
+                concepts = []
+            for concept in concepts:
+                nm = (f"linuxpop-{concept}-symbolic" if style == "glyph"
+                      else f"linuxpop-{concept}")
+                im = Gtk.Image.new_from_icon_name(nm, Gtk.IconSize.DND)
+                im.set_pixel_size(30)
+                icon_preview.pack_start(im, False, False, 0)
+            icon_preview.show_all()
+
+        _rebuild_icon_preview(_cur_style)
+        group.add(icon_preview)
+
+        def _on_icon_style_changed(combo: Gtk.ComboBoxText) -> None:
+            style = combo.get_active_id() or "color"
+            self._save_key("icon_style", style)
+            _rebuild_icon_preview(style)
+        icon_combo.connect("changed", _on_icon_style_changed)
 
         # Max buttons per popup: how many actions can show before the
         # popup wraps to a second row and (past 2 rows) drops to a

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#15151a"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <radialGradient id="corona" cx="50%" cy="50%" r="50%">
+      <stop offset="38%" stop-color="#e0a95e" stop-opacity="0"/>
+      <stop offset="62%" stop-color="#e0a95e" stop-opacity="0.95"/>
+      <stop offset="78%" stop-color="#e0a95e" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#e0a95e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- eclipse: glowing corona behind a dark disk -->
+  <circle cx="128" cy="120" r="64" fill="url(#corona)"/>
+  <circle cx="128" cy="120" r="40" fill="#050506"/>
+  <circle cx="128" cy="120" r="40" fill="none" stroke="#e0a95e" stroke-opacity="0.55" stroke-width="1.5"/>
+  <!-- two stars joined (Fedora + M4, toward home) -->
+  <circle cx="86" cy="196" r="3.2" fill="#64d2ff"/>
+  <circle cx="170" cy="196" r="3.2" fill="#64d2ff"/>
+  <line x1="86" y1="196" x2="170" y2="196" stroke="#64d2ff" stroke-opacity="0.45" stroke-width="1.2"/>
+</svg>

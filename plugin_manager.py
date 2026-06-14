@@ -379,6 +379,11 @@ class PluginManagerDialog:
         on a brand-coloured tile (the colour is stable per plugin); a colourful
         logo (e.g. an AI service) sits on a light tile so it reads. Falls back
         to a coloured initial only when there's no usable icon."""
+        try:
+            import icon_style
+            icon_name = icon_style.resolve(icon_name)
+        except Exception:
+            pass
         key = (key or "?").strip()
         idx = (sum(ord(c) for c in key) % 4) if key else 0
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
