@@ -63,6 +63,22 @@ Prefer a single file? Grab the `.flatpak` bundle from the
 > In the Flatpak build, "open file/folder" works (read-only home access); screen OCR
 > isn't bundled yet (planned for a later release).
 
+### Native packages
+
+**Debian · Ubuntu · Linux Mint** — grab `linuxpop_*_all.deb` from the
+[latest release](https://github.com/GaimsDevSoftware/linuxpop/releases/latest):
+
+```sh
+sudo apt install ./linuxpop_0.9.2_all.deb
+```
+
+**Fedora (COPR)** — native RPM with `dnf` updates:
+
+```sh
+sudo dnf copr enable gaimsdevsoftware/linuxpop
+sudo dnf install linuxpop
+```
+
 ### From source
 
 #### 1. System dependencies
