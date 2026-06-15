@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fase 0 spike — can LinuxPop show a popup at the cursor on KWin Wayland?
+"""Fase 0 spike - can LinuxPop show a popup at the cursor on KWin Wayland?
 
 This is a THROWAWAY prototype. Its only job is to answer the go/no-go question
 for the whole Fedora KDE plan: on KDE Plasma 6 / Wayland, can we
@@ -10,7 +10,7 @@ for the whole Fedora KDE plan: on KDE Plasma 6 / Wayland, can we
   4. do all three fast enough to feel instant               (latency)
 
 It is NOT production code and is not wired into the app. Run it on a real
-Fedora KDE Plasma 6 Wayland session — it proves nothing on X11.
+Fedora KDE Plasma 6 Wayland session - it proves nothing on X11.
 
 Usage:
     python3 spike.py --check layer     # just test positioning (fixed coords)
@@ -161,7 +161,7 @@ def check_layer(seconds: float = 6.0) -> int:
     place_at(win, 600, 400)
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
-    print(f"Shown a popup anchored at (600,400) for {seconds:.0f}s — watch the screen.")
+    print(f"Shown a popup anchored at (600,400) for {seconds:.0f}s - watch the screen.")
     GLib.timeout_add(int(seconds * 1000), lambda: (win.destroy(), False)[1])
     Gtk.main()
     return 0
@@ -180,7 +180,7 @@ def check_cursor() -> int:
         Gtk.main_quit()
 
     reader.request(on_report)
-    GLib.timeout_add(3000, lambda: (print("TIMEOUT: no Report from KWin in 3s — "
+    GLib.timeout_add(3000, lambda: (print("TIMEOUT: no Report from KWin in 3s - "
                                            "is this KDE Wayland? is the script blocked?"),
                                      Gtk.main_quit())[1] and False)
     Gtk.main()
@@ -190,7 +190,7 @@ def check_cursor() -> int:
 def check_full(seconds: float = 30.0) -> int:
     """The real thing: watch the PRIMARY selection, pop up at the cursor."""
     if not subprocess_which("wl-paste"):
-        sys.stderr.write("wl-paste not found — sudo dnf install wl-clipboard\n")
+        sys.stderr.write("wl-paste not found - sudo dnf install wl-clipboard\n")
         return 1
 
     reader = CursorReader()
@@ -229,7 +229,7 @@ def check_full(seconds: float = 30.0) -> int:
         return True
 
     GLib.io_add_watch(watch.stdout, GLib.IO_IN, on_stdout)
-    print(f"Select text in any app for the next {seconds:.0f}s — popup should appear "
+    print(f"Select text in any app for the next {seconds:.0f}s - popup should appear "
           "at the cursor. (auto-exits)")
     GLib.timeout_add(int(seconds * 1000), Gtk.main_quit)
     try:

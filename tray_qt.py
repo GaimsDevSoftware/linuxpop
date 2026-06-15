@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""LinuxPop tray icon — Qt QSystemTrayIcon (StatusNotifierItem + DBusMenu).
+"""LinuxPop tray icon - Qt QSystemTrayIcon (StatusNotifierItem + DBusMenu).
 
 Uses QSystemTrayIcon, NOT the KF6 KStatusNotifierItem (which had a Fedora 44
 D-Bus registration bug). Qt's tray registers the SNI *and* exports the context
-menu as a com.canonical.dbusmenu object that plasmashell renders itself — the
+menu as a com.canonical.dbusmenu object that plasmashell renders itself - the
 only thing that actually shows a menu on KWin/Wayland (a parentless QMenu.popup
 never maps). Talks to the main LinuxPop process over a small length-prefixed
 JSON socket, unchanged from the previous implementation.
@@ -17,9 +17,11 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtGui import QIcon, QCursor
 from PySide6.QtCore import QTimer
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from xdg_paths import CACHE_DIR as SOCKET_DIR, CONFIG_DIR  # noqa: E402
+
 ICON_DIR = str(Path(__file__).resolve().parent / "icons")
-SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
-SETTINGS_FILE = Path(os.path.expanduser("~/.config/linuxpop/settings.json"))
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
 
 
 def _tray_icon_style() -> str:
@@ -75,10 +77,10 @@ class TrayQt:
 
         # QSystemTrayIcon registers the SNI and exports `self._menu` as a
         # DBusMenu. plasmashell renders that menu on its own surface (correctly
-        # positioned) when the user activates the item — no client-side popup.
+        # positioned) when the user activates the item - no client-side popup.
         self._tray = QSystemTrayIcon()
         self._tray.setIcon(self._load_icon())
-        self._tray.setToolTip("LinuxPop — clipboard popup assistant")
+        self._tray.setToolTip("LinuxPop - clipboard popup assistant")
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
         self._tray.show()
@@ -205,6 +207,8 @@ class TrayQt:
         a.triggered.connect(lambda: self._emit("about", None))
         a = self._menu.addAction("Support LinuxPop…")
         a.triggered.connect(lambda: self._emit("support", None))
+        a = self._menu.addAction("Contact on GitHub…")
+        a.triggered.connect(lambda: self._open_url("https://github.com/GaimsDevSoftware/linuxpop/issues"))
         self._menu.addSeparator()
         a = self._menu.addAction("Quit LinuxPop")
         a.triggered.connect(lambda: self._emit("quit", None))
@@ -215,6 +219,45 @@ class TrayQt:
                 _send_message(self._client, {"event": event, "value": value})
             except OSError:
                 pass
+
+    def _open_url(self, url: str) -> None:
+        """Open a URL in the user's browser, robustly. xdg-open can fail silently
+        on KDE, so launch the default browser binary directly first."""
+        import subprocess, shutil, os, re
+        execline = ""
+        try:
+            desk = subprocess.run(["xdg-settings", "get", "default-web-browser"],
+                                  capture_output=True, text=True, timeout=3).stdout.strip()
+        except Exception:
+            desk = ""
+        if desk:
+            for d in (os.path.expanduser("~/.local/share/applications"),
+                      "/usr/local/share/applications", "/usr/share/applications"):
+                p = os.path.join(d, desk)
+                if os.path.isfile(p):
+                    try:
+                        for line in open(p):
+                            if line.startswith("Exec="):
+                                execline = re.sub(r" *%[uUfFick]", "", line[5:].strip()); break
+                    except Exception:
+                        pass
+                    if execline:
+                        break
+        try:
+            if execline:
+                subprocess.Popen(["sh", "-c", execline + ' "$0"', url], start_new_session=True); return
+        except Exception:
+            pass
+        for b in ("firefox", "chromium", "chromium-browser", "google-chrome", "brave-browser"):
+            if shutil.which(b):
+                try:
+                    subprocess.Popen([b, url], start_new_session=True); return
+                except Exception:
+                    pass
+        try:
+            subprocess.Popen(["xdg-open", url], start_new_session=True)
+        except Exception:
+            pass
 
     # ─── socket IPC (unchanged protocol) ───
     def _setup_socket(self) -> None:

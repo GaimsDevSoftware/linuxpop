@@ -1,6 +1,6 @@
 """System tray icon (KStatusNotifierItem via separate Qt process) for LinuxPop.
 
-Spawns a lean Qt process that uses KStatusNotifierItem — native KDE/Wayland
+Spawns a lean Qt process that uses KStatusNotifierItem - native KDE/Wayland
 protocol, no XWayland dependency, no GTK thread conflicts.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
+from xdg_paths import CACHE_DIR as SOCKET_DIR
 TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_qt.py")
 
 
@@ -106,7 +106,7 @@ class Tray:
         self._connected = False
 
         if not os.path.isfile(TRAY_SCRIPT):
-            print("[tray] tray_qt.py not found — tray disabled")
+            print("[tray] tray_qt.py not found - tray disabled")
             return
 
         self._start_process()
@@ -189,7 +189,7 @@ class Tray:
             pass  # keepalive
 
     def refresh(self) -> None:
-        """Update tray state from app — called by main.py."""
+        """Update tray state from app - called by main.py."""
         if not self._connected or self._sock is None:
             self._reconnect()
             return
@@ -201,7 +201,7 @@ class Tray:
             self._reconnect()
 
     def reload_icon(self) -> None:
-        """Ask the tray subprocess to re-render its icon — called when the
+        """Ask the tray subprocess to re-render its icon - called when the
         tray_icon_style setting changes, so it updates live (no restart)."""
         if not self._connected or self._sock is None:
             return

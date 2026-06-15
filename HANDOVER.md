@@ -1,4 +1,4 @@
-# LinuxPop — Handover
+# LinuxPop - Handover
 
 PopClip-style text-selection action popup. This note is the state after the
 2026-06-13/14 session on Fedora 44 KDE Plasma 6 / Wayland.
@@ -7,7 +7,7 @@ PopClip-style text-selection action popup. This note is the state after the
 
 | Path | Role | Git |
 |---|---|---|
-| `~/linuxpop-wl/` | **Deployed Fedora/Wayland build — edit HERE.** This is what runs. | local repo, branch `master`, **no remote** |
+| `~/linuxpop-wl/` | **Deployed Fedora/Wayland build - edit HERE.** This is what runs. | local repo, branch `master`, **no remote** |
 | `~/src/linuxpop/` | Mint/upstream codebase | `github.com/GaimsDevSoftware/linuxpop`, work on branch **`design-port`** (pushed); `main` is untouched |
 
 They have **diverged** and do NOT share git history. Fedora work is committed
@@ -26,7 +26,7 @@ kill $(ps -eo pid,args | awk '/[p]ython3 main.py/{print $1}')
 # verify: exactly one main.py + one tray_qt.py child
 ps -eo pid,ppid,args | grep -E '[p]ython3 main.py|[t]ray_qt.py'
 ```
-Note: the kill+relaunch-in-one-command pattern gets reaped (exit 144) — run
+Note: the kill+relaunch-in-one-command pattern gets reaped (exit 144) - run
 kill and launch as **separate** commands. `pgrep -f main.py` matches its own
 cmdline; count with `ps -eo args | grep -c '[p]ython3 main.py'`.
 
@@ -35,7 +35,7 @@ Hotkeys: popup `super+shift+y`, clipboard `ctrl+super+v`, OCR `ctrl+alt+o`.
 ## What this session changed (Fedora, `~/linuxpop-wl` master)
 
 Recent commits (newest first):
-- `13e5870` popup: dismiss on **outside click** (Wayland) — evdev mouse watcher
+- `13e5870` popup: dismiss on **outside click** (Wayland) - evdev mouse watcher
 - `435fc15` ocr: **frictionless region selector** (drag → done, no Accept)
 - `9a139e5` icons: **full colour+glyph set + Settings style toggle**
 - `2c32244` plugin: **Send to Mentor**
@@ -54,7 +54,7 @@ ported; Wayland-only pieces intentionally left out).
 
 ## Key subsystems / where things live
 
-- **Icon system** — `icon_style.py` maps each plugin's declared icon name to a
+- **Icon system** - `icon_style.py` maps each plugin's declared icon name to a
   concept that has BOTH `linuxpop-<concept>.svg` (colour gradient tile) and
   `linuxpop-<concept>-symbolic.svg` (mono glyph, GTK-recolourable, `#f0f0f0`).
   `icon_style.resolve(name)` returns the right variant for the `icon_style`
@@ -62,7 +62,7 @@ ported; Wayland-only pieces intentionally left out).
   `plugin_manager._badge`. Settings combo + live preview in `settings_gui.py`
   next to popup-button-size. 44 SVGs in `icons/`; installed to
   `~/.local/share/icons/hicolor/scalable/apps/` by `plugin_loader._install_all_icons`.
-  To regenerate icons, the generator lives only in shell history — glyph defs
+  To regenerate icons, the generator lives only in shell history - glyph defs
   are inline; re-run from the session transcript if needed.
 - **Colour icons render crisp** because they're SVG; earlier "blurry" reports
   were just detail-at-small-size, fixed by the bold redesign. A `load_surface`
@@ -73,10 +73,10 @@ ported; Wayland-only pieces intentionally left out).
   - X11 path: XRecord watch + xdotool inject (unchanged; used on Mint).
   - **Wayland path** (`_WaylandTriggerWatcher`): reads `/dev/input` keyboards
     (user is in `input` group), maps keycodes via **libxkbcommon ctypes**
-    (`_XkbMapper`, honours the active layout — Norwegian `no(mac)` reads øæå
+    (`_XkbMapper`, honours the active layout - Norwegian `no(mac)` reads øæå
     right), injects via **ydotool**: backspace the trigger + `wl-copy` the
     expansion + **Shift+Insert** to paste. NB: `ydotool type` drops non-ASCII
-    and ydotool **Ctrl chords don't register on KWin** — Shift+Insert does.
+    and ydotool **Ctrl chords don't register on KWin** - Shift+Insert does.
     Branches on `WAYLAND_DISPLAY`. ydotoold runs at `/run/user/1000/.ydotool_socket`.
 - **OCR** (`screen_ocr.py` + `ocr_selector.py`):
   - `is_supported()` accepts spectacle/grim/maim + tesseract. `install_argv()`
@@ -95,9 +95,9 @@ ported; Wayland-only pieces intentionally left out).
 - **Tray** (`tray.py` + `tray_qt.py`): Qt SNI subprocess. `_tray_preexec` sets
   `PR_SET_PDEATHSIG` so the tray dies with the daemon; tray_qt also polls its
   parent PID. Fixes the "multiple ghost tray icons" bug. (Mint uses an
-  in-process GTK tray — this fix is Fedora-only.)
+  in-process GTK tray - this fix is Fedora-only.)
 - **Mentor plugin** (`plugins_repo/send_to_mentor.py`): opens
-  `http://127.0.0.1:<APP_PORT|7000>/?ask=<text>` — Mentor's own `?ask=` hook
+  `http://127.0.0.1:<APP_PORT|7000>/?ask=<text>` - Mentor's own `?ask=` hook
   drops text in the composer and submits to the active chat. Health-checks
   `/api/health` first. Icon = Mentor's eclipse logo (`icons/linuxpop-mentor.svg`,
   copied from `~/odysseus/static/odysseus-icon.svg`). Mentor = the user's
@@ -117,7 +117,7 @@ ported; Wayland-only pieces intentionally left out).
   `wl-copy` present, `xclip`/`maim`/`tesseract` were installed via the OCR
   Install button.
 - SVG previews in the chat `show_widget` tool **strip `<polyline>` and some
-  stroke paths** and corrupt large base64 — preview via small rsvg-rendered
+  stroke paths** and corrupt large base64 - preview via small rsvg-rendered
   base64 PNGs, and trust rsvg/`Gtk.IconTheme` as ground truth for the app.
 
 ## Pending / next

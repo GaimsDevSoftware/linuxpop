@@ -1,0 +1,42 @@
+name: build-deb
+
+# Build a .deb on Ubuntu and attach it to the matching GitHub Release.
+# - On a published release: builds from that tag and uploads to it.
+# - Manually (workflow_dispatch): builds from the default branch and uploads
+#   to the release for the given tag (used for releases made before this
+#   workflow existed, e.g. v0.9.2).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the .deb to (e.g. v0.9.2)"
+        required: true
+        default: "v0.9.2"
+
+permissions:
+  contents: write
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .deb
+        id: build
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          bash packaging/deb/build-deb.sh "$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "deb=linuxpop_${VERSION}_all.deb" >> "$GITHUB_OUTPUT"
+          dpkg-deb -I "linuxpop_${VERSION}_all.deb"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.build.outputs.tag }}
+          files: ${{ steps.build.outputs.deb }}

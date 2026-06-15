@@ -950,7 +950,7 @@ class SettingsDialog:
             "the cursor. The modifier is required so it never collides "
             "with the app's own double-click-to-select-a-word gesture. "
             "Requires watching mouse clicks globally (nothing is logged or "
-            "sent). On Wayland this reaches XWayland windows only — for "
+            "sent). On Wayland this reaches XWayland windows only - for "
             "native Wayland apps, press the popup hotkey instead; it shows "
             "the same menu when nothing is selected.")
         dbl_switch = Gtk.Switch()

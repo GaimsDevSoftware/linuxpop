@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Latent Charge — a single-plate expression of LinuxPop's visual system.
+"""Latent Charge - a single-plate expression of LinuxPop's visual system.
 Rendered at 2x and downsampled (LANCZOS) for crisp edges + type."""
 import math
 from pathlib import Path

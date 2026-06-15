@@ -1,48 +1,69 @@
 # LinuxPop
 
-> A PopClip-inspired floating action popup for Linux.
+> Like PopClip on the Mac, but for Linux.
 
-Select any text on your screen - LinuxPop pops up a small bar of context-aware
-actions right above the selection. Copy, open URLs, run shell commands, ask an
-AI, encode/decode, calculate - all without leaving the keyboard or mouse where
-your work is.
+![LinuxPop in action: select text, a popup of context actions appears, here translating the selection](docs/linuxpop-demo.gif)
 
-Works on X11 (Cinnamon, GNOME on X11, KDE, XFCE, MATE, ...) **and on
-KDE Plasma 6 / Wayland** (Fedora KDE and friends - see
-[docs/FEDORA-KDE.md](docs/FEDORA-KDE.md)). Free, open source, no accounts,
-no telemetry.
+Highlight some text and a little bar of buttons shows up right over it. Copy it, open it, search it, translate it, run it as a command, send it to an AI, encode it, do maths on it. Whatever makes sense for whatever you grabbed. You never have to move your hands away from where you were already working.
 
-> **⚠️ On Linux Mint / Cinnamon (and other X11 desktops): treat 0.9.0 as a beta.**
-> This release's testing and polish focused on KDE Plasma 6 / Wayland. The X11
-> path — including Linux Mint Cinnamon, where LinuxPop started — is preserved
-> but hasn't been fully re-verified on real hardware in this version, so some
-> features may not behave as intended there yet. **Please [report bugs](https://github.com/GaimsDevSoftware/linuxpop/issues)** —
-> feedback is very welcome and directly shapes the road to 1.0.
+It runs on X11 (Cinnamon, GNOME-on-X11, KDE, XFCE, MATE, take your pick) and natively on KDE Plasma 6 / Wayland. Free, open source, and nothing phones home.
+
+> **Heads up if you're on Linux Mint / Cinnamon (or another X11 desktop):** treat 0.9.0 as a beta. Most of the testing and polish this round went into KDE Plasma 6 / Wayland. The X11 side still works (it's where LinuxPop started, after all), but I haven't re-checked every feature on real hardware yet, so you might hit a rough spot or two. If you do, [open an issue](https://github.com/GaimsDevSoftware/linuxpop/issues). That's genuinely the fastest way to get your setup sorted.
 
 ---
 
-## Features
+## What it does
 
-- **Context-aware actions** - different buttons for URLs, shell commands, plain
-  text, paths and emails
-- **Global hotkey** - summon the popup on the current selection from any app
-- **System tray icon** - quick access to settings, plugin manager and toggle
-- **Plugin system** - drop a `.py` file in `~/.config/linuxpop/plugins/` or
-  install from the built-in catalog
-- **Bundled plugins** - Base64, JSON pretty-print, URL encode/decode,
-  calculator, case conversion, slugify, QR codes, in-place translation,
-  send-to-AI, local Ollama AI, run-in-terminal for command-like selections
-- **Double-click trigger** - hold a modifier and double-click a word to pop
-  the action bar (works on native Wayland, not just XWayland)
-- **No data leaves your machine** unless a plugin explicitly does so (e.g.
-  "Send to Claude" opens it via the `claude://` desktop deep link, or your
-  browser as a fallback)
+- **Reads what you selected** and shows the buttons that fit: links, shell commands, file paths, emails, or just plain text.
+- **Global hotkey** to pop the bar on your current selection from any app.
+- **Tray icon** for settings, the plugin manager, and a quick on/off toggle.
+- **Plugins are just `.py` files.** Drop one in `~/.config/linuxpop/plugins/`, or grab one from the built-in list.
+- **Plenty come bundled:** Base64, JSON pretty-print, URL encode/decode, a calculator, case conversion, slugify, QR codes, in-place translate, send-to-AI, local Ollama, and run-in-terminal for things that look like commands.
+- **Double-click a word** (while holding a modifier) to pop the bar. Works on real Wayland, not just XWayland.
+- **Your text stays on your machine** unless a plugin obviously sends it somewhere. The "Send to Claude" button, for example, hands off to Claude via its `claude://` link (or your browser if that isn't set up).
 
 ---
 
 ## Install
 
-### 1. System dependencies
+### Flatpak (recommended)
+
+It's a GPG-signed Flatpak served from its own auto-updating repo, so there's no Flathub account or approval standing in the way. One command:
+
+```sh
+flatpak install --from https://gaimsdevsoftware.github.io/linuxpop-flatpak/linuxpop.flatpakref
+flatpak run io.github.GaimsDevSoftware.LinuxPop
+```
+
+New to Flatpak? Add the Flathub runtimes first:
+`flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo`
+
+Want a single file instead? Grab the `.flatpak` bundle from the
+[latest release](https://github.com/GaimsDevSoftware/linuxpop/releases/latest) and run
+`flatpak install --bundle linuxpop-*.flatpak`. There's a full walkthrough at
+<https://gaimsdevsoftware.github.io/linuxpop-flatpak/>.
+
+In the Flatpak build, "open file/folder" works (it gets read-only access to your home). Screen OCR isn't bundled yet; that's coming in a later release.
+
+### Native packages
+
+**Debian, Ubuntu, Linux Mint:** grab `linuxpop_*_all.deb` from the
+[latest release](https://github.com/GaimsDevSoftware/linuxpop/releases/latest):
+
+```sh
+sudo apt install ./linuxpop_0.9.2_all.deb
+```
+
+**Fedora (COPR):** a native RPM that updates through `dnf`:
+
+```sh
+sudo dnf copr enable gaimsdevsoftware/linuxpop
+sudo dnf install linuxpop
+```
+
+### From source
+
+#### 1. System dependencies
 
 ```sh
 # Ubuntu / Linux Mint / Debian
@@ -58,9 +79,9 @@ sudo pacman -S python python-gobject gtk3 libayatana-appindicator \
     xclip xdotool xdg-utils python-xlib
 ```
 
-Optional: `qrencode` (for the QR plugin), `ollama` (for the local-AI plugin).
+Optional: `qrencode` for the QR plugin, `ollama` for the local-AI plugin.
 
-### 2. Install LinuxPop
+#### 2. Install LinuxPop
 
 ```sh
 git clone https://github.com/GaimsDevSoftware/linuxpop.git ~/linuxpop
@@ -68,8 +89,7 @@ cd ~/linuxpop
 bash install.sh
 ```
 
-`install.sh` sets up autostart and verifies dependencies. Start it now without
-logging out:
+`install.sh` sets up autostart and checks your dependencies. To start it right away without logging out:
 
 ```sh
 python3 ~/linuxpop/main.py
@@ -83,18 +103,17 @@ bash ~/linuxpop/install.sh --uninstall
 
 ---
 
-## Usage
+## Using it
 
-- **Select text in any X11 app** → popup appears above your selection
-- **Hotkey** (default `Super+Shift+Y`) → popup appears at the cursor with the
-  current selection
-- **Esc**, **click outside**, or wait a few seconds → popup goes away
-- **Tray icon** → toggle auto-popup, open Settings, manage Plugins
+- Select text in any app and the popup appears above your selection.
+- Press the hotkey (default `Super+Shift+Y`) and the popup appears at the cursor with whatever's selected.
+- Hit `Esc`, click somewhere else, or just wait a few seconds and it goes away.
+- The tray icon toggles auto-popup, opens Settings, and manages Plugins.
 
 ### Settings
 
-Right-click the tray icon → **Settings**. Or hand-edit
-`~/.config/linuxpop/settings.json`.
+Right-click the tray icon and pick **Settings**, or edit
+`~/.config/linuxpop/settings.json` by hand.
 
 | Key | Default | Description |
 |---|---|---|
@@ -114,7 +133,7 @@ Right-click the tray icon → **Settings**. Or hand-edit
 
 ### Plugins
 
-Open **Plugins…** from the tray menu to install/remove built-in plugins, or
+Open **Plugins…** from the tray menu to add or remove the built-in ones, or
 drop your own `.py` file into `~/.config/linuxpop/plugins/`.
 
 A plugin file just needs a top-level `register(register_plugin)` function:
@@ -141,31 +160,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full plugin API.
 
 ---
 
-## Limitations
+## Known rough edges
 
-- **Linux Mint / Cinnamon & X11 are beta in 0.9.0.** The recent work centred
-  on KDE Plasma 6 / Wayland; the X11 backend (Cinnamon, GNOME-on-X11, XFCE,
-  MATE, …) still works but wasn't fully re-tested on real hardware this cycle.
-  Expect rough edges and please file issues — it's the fastest way to get
-  your setup solid for 1.0.
-- **Wayland support is KDE Plasma only (for now).** LinuxPop has a native
-  Wayland backend for KDE Plasma 6 (selection via `wl-clipboard`, popup
-  placement via `gtk-layer-shell`, cursor position via KWin's scripting API).
-  Other Wayland compositors (GNOME, wlroots) fall back to the X11 path under
-  XWayland. See [docs/FEDORA-KDE.md](docs/FEDORA-KDE.md). On Wayland/KDE the
-  global hotkey uses KGlobalAccel (verify it binds in System Settings →
-  Shortcuts), key injection (paste) goes through `ydotool`, and the
-  active-window blocklist is not yet wired up. Popup placement, hover
-  persistence, and click-outside dismissal all work natively. Anchoring the
-  popup to the selected-text rectangle (rather than the mouse) is available
-  when desktop accessibility / AT-SPI is enabled.
-- **HiDPI** - works, but tested mainly on 2× scaling. File an issue if
-  positioning is off on your setup.
-- **Some panel grabs** - if another app holds an X11 input grab (e.g. an open
-  menu), the popup may not catch outside-clicks instantly.
+- **Mint / Cinnamon and X11 are beta in 0.9.0.** The recent work went into KDE Plasma 6 / Wayland. The X11 backend (Cinnamon, GNOME-on-X11, XFCE, MATE) still runs, but it didn't get a full pass on real hardware this cycle. Expect the odd glitch, and please file issues. It's the quickest path to a solid 1.0.
+- **Wayland support means KDE Plasma for now.** LinuxPop has a real Wayland backend on KDE Plasma 6: selection through `wl-clipboard`, popup placement through `gtk-layer-shell`, cursor position through KWin's scripting API. Other compositors (GNOME, wlroots) drop back to the X11 path under XWayland. There's more detail in [docs/FEDORA-KDE.md](docs/FEDORA-KDE.md). On KDE Wayland the global hotkey runs through KGlobalAccel (check it actually bound under System Settings, Shortcuts), paste goes through `ydotool`, and the active-window blocklist isn't wired up yet. Popup placement, hover persistence, and click-outside dismissal all work natively. You can anchor the popup to the selected text instead of the mouse if you turn on desktop accessibility (AT-SPI).
+- **HiDPI** works, but I've mostly tested it at 2× scaling. File an issue if the popup lands in the wrong spot on your setup.
+- **The odd input grab.** If another app is holding an X11 input grab (an open menu, say), the popup might not catch your outside-click right away.
 
 ---
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

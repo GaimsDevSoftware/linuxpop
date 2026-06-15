@@ -1,10 +1,10 @@
-# Fase 0 spike — popup at cursor on KWin Wayland
+# Fase 0 spike - popup at cursor on KWin Wayland
 
 **Throwaway prototype.** Its only purpose is a go/no-go decision for the
 Fedora KDE plan: on KDE Plasma 6 / Wayland, can LinuxPop show its popup at the
 text cursor, instantly, the way it does on X11?
 
-This proves nothing on X11 — **run it on a real Fedora KDE Plasma 6 Wayland
+This proves nothing on X11 - **run it on a real Fedora KDE Plasma 6 Wayland
 session** (Fedora 41/42 KDE is Wayland by default; F42 dropped the Plasma X11
 session entirely).
 
@@ -29,18 +29,18 @@ python3 spike.py --check full        # 3. the real thing: select text -> popup a
 
 ## How to read the results (the go/no-go)
 
-- **layer** — popup must appear at the top-left-ish (600,400) region. If it
+- **layer** - popup must appear at the top-left-ish (600,400) region. If it
   snaps to a screen edge or ignores the coords, layer-shell positioning is the
   blocker → fall back to "popup at focused window/screen" (the alternative you
   flagged).
-- **cursor** — must print real coordinates. The **latency** is the key number:
+- **cursor** - must print real coordinates. The **latency** is the key number:
   - `< ~50 ms` → great, popup-at-cursor will feel instant. **GO.**
   - `~50–150 ms` → usable but noticeable; consider caching / a resident KWin
     script instead of load-run-per-event.
   - `> ~150 ms` or TIMEOUT → the KWin-script round-trip is too slow/fragile for
     auto-popup → **fall back** to focused-window placement, or make popup
     hotkey-only on Wayland.
-- **full** — the end-to-end experience. Does the popup land near the selection
+- **full** - the end-to-end experience. Does the popup land near the selection
   and feel responsive?
 
 Record the three outcomes (placed correctly y/n, latency ms, full-flow feel)
@@ -55,4 +55,4 @@ and that decides Fase 1–2's positioning strategy.
   KWin script that pushes positions on demand, not load-run-per-event.
 - `wl-paste --watch` covers PRIMARY selection; matches the X11 auto-popup
   trigger. The global hotkey path (KGlobalAccel / XDG GlobalShortcuts portal)
-  is **not** part of this spike — it's lower-risk and handled in Fase 2.
+  is **not** part of this spike - it's lower-risk and handled in Fase 2.

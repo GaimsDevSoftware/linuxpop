@@ -19,7 +19,9 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-USER_ICONS_DIR = Path(os.path.expanduser("~/.config/linuxpop/icons"))
+from xdg_paths import CONFIG_DIR  # noqa: E402
+
+USER_ICONS_DIR = CONFIG_DIR / "icons"
 HICOLOR_APPS = Path.home() / ".local/share/icons/hicolor/scalable/apps"
 
 # How many icons to render per "page". GTK FlowBox is fast enough that
@@ -259,10 +261,11 @@ class IconPicker:
         """Handle the custom linuxpop:// link in the empty-state message."""
         if uri == "linuxpop://open-user-icons":
             USER_ICONS_DIR.mkdir(parents=True, exist_ok=True)
+            argv = (["flatpak-spawn", "--host", "xdg-open", str(USER_ICONS_DIR)]
+                    if os.path.exists("/.flatpak-info")
+                    else ["xdg-open", str(USER_ICONS_DIR)])
             try:
-                subprocess.Popen(
-                    ["xdg-open", str(USER_ICONS_DIR)], start_new_session=True,
-                )
+                subprocess.Popen(argv, start_new_session=True)
             except FileNotFoundError:
                 pass
             return True  # consumed

@@ -49,7 +49,13 @@ def main() -> int:
     name = dbus.service.BusName(BUS_NAME, bus)
     _svc = _Svc(name, OBJ_PATH)
 
-    fd, path = tempfile.mkstemp(suffix=".js", prefix="linuxpop-active-")
+    # Per-user runtime dir, not /tmp (see _kwin_cursor._script path note):
+    # $XDG_RUNTIME_DIR/linuxpop maps to the same host path KWin reads under
+    # Flatpak (--filesystem=xdg-run/linuxpop), avoiding host /tmp access.
+    _rt = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    _dir = os.path.join(_rt, "linuxpop")
+    os.makedirs(_dir, mode=0o700, exist_ok=True)
+    fd, path = tempfile.mkstemp(suffix=".js", prefix="linuxpop-active-", dir=_dir)
     try:
         os.write(fd, _JS.encode("utf-8"))
         os.close(fd)

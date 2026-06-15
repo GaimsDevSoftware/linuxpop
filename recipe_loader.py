@@ -30,8 +30,9 @@ from typing import Callable
 
 from classifier import ContentType
 from plugin_base import Plugin
+from xdg_paths import CONFIG_DIR
 
-RECIPES_DIR = Path(os.path.expanduser("~/.config/linuxpop/recipes"))
+RECIPES_DIR = CONFIG_DIR / "recipes"
 
 _CTYPE_BY_NAME = {
     "plain_text": ContentType.PLAIN_TEXT,
@@ -207,8 +208,13 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
 
         def handler(text: str) -> None:
             cmd = _render(template, text)
+            # In Flatpak, run on the host (the sandbox has the wrong tools and
+            # filesystem); flatpak-spawn --host needs --talk-name=org.freedesktop.Flatpak.
+            argv = (["flatpak-spawn", "--host", "bash", "-c", cmd]
+                    if os.path.exists("/.flatpak-info")
+                    else ["bash", "-c", cmd])
             try:
-                subprocess.Popen(["bash", "-c", cmd], start_new_session=True)
+                subprocess.Popen(argv, start_new_session=True)
             except OSError as exc:
                 subprocess.run(
                     ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",

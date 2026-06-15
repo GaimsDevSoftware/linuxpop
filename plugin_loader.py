@@ -17,10 +17,11 @@ from typing import List
 import actions
 from classifier import ContentType
 from plugin_base import Plugin
+from xdg_paths import CONFIG_DIR
 
 _PLUGINS: List[Plugin] = []
 
-USER_PLUGIN_DIR = Path(os.path.expanduser("~/.config/linuxpop/plugins"))
+USER_PLUGIN_DIR = CONFIG_DIR / "plugins"
 LINUXPOP_DIR = str(Path(__file__).resolve().parent)
 REPO_PLUGIN_DIR = Path(LINUXPOP_DIR) / "plugins_repo"
 ICONS_DIR = Path(LINUXPOP_DIR) / "icons"

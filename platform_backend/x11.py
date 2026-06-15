@@ -106,6 +106,10 @@ class X11Backend(PlatformBackend):
             ["xdotool", "key", "--clearmodifiers", combo], check=False,
         )
 
+    def can_paste(self) -> bool:
+        import shutil
+        return bool(shutil.which("xdotool"))
+
     def type_text(self, text: str) -> None:
         import shutil
         if not shutil.which("xdotool"):

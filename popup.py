@@ -808,7 +808,7 @@ class PopupWindow:
             rest = specs[first:]
             if rest or hidden_count > 0:
                 self._add_expand_chip(rest, hidden_count, max_btns)
-        else:  # 'wrap' — two rows
+        else:  # 'wrap' - two rows
             shown = min(n, 2 * per_row)
             for i, (icon, tip, h) in enumerate(specs[:shown]):
                 self._add_button(icon, tip, h,
@@ -912,7 +912,7 @@ class PopupWindow:
         # Map the window off-screen first so GTK performs a full layout pass
         # and get_preferred_size() returns the real size. We never return to
         # the GLib main loop before setting the real position, so the
-        # compositor never renders a frame at (-10000, -10000) — the first
+        # compositor never renders a frame at (-10000, -10000) - the first
         # visible frame is already at the correct position.
         get_backend().move_popup_window(self.win, -10000, -10000)
         self.win.show_all()
@@ -990,7 +990,7 @@ class PopupWindow:
         # Move to the real position. The window is already mapped (off-screen);
         # this updates the layer-shell margins. The compositor applies the new
         # position on the next Wayland commit, which happens when the main loop
-        # returns — so the window appears directly at the correct spot.
+        # returns - so the window appears directly at the correct spot.
         get_backend().move_popup_window(self.win, target_x, target_y)
         self.win.present()
         # Fresh show: the pointer is at the selection, not on the popup yet.

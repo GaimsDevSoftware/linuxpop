@@ -732,6 +732,12 @@ class WaylandKdeBackend(PlatformBackend):
             print(f"[wayland] cursor query failed: {exc}")
         return 0, 0
 
+    def can_paste(self) -> bool:
+        # ydotool (KWin) / wtype (wlroots) are the only Wayland injectors and
+        # neither is bundled in the Flatpak, so paste-back no-ops there. Let
+        # callers detect this and fall back to "copied to clipboard".
+        return bool(shutil.which("ydotool") or shutil.which("wtype"))
+
     # ---- keystroke injection --------------------------------------------
     #
     # wtype is DEAD on KWin: it drives zwp_virtual_keyboard_v1, which KWin

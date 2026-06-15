@@ -1,4 +1,4 @@
-# LinuxPop — Handoff (2026-06-14, session 2)
+# LinuxPop - Handoff (2026-06-14, session 2)
 
 Continuation of the Fedora 44 KDE Plasma 6 / Wayland work. Read the prior
 `HANDOVER.md` first for the broader project map. This file is **action-oriented**:
@@ -8,24 +8,24 @@ for each open item it says exactly what to do, where, and how to verify.
 `~/.claude/research-cache/` already has notes that directly answer items 4 & 5.
 **Read these before doing any new web search** (and per global instructions, read
 `INDEX.md` first):
-- **`plasma6-klipper-actions-and-global-command-shortcuts.md`** — has the EXACT,
+- **`plasma6-klipper-actions-and-global-command-shortcuts.md`** - has the EXACT,
   verified terminal-launcher command for KDE and the shell-quoting gotcha. → item 4.
-- **`kwin-wayland-window-focus-typing.md`** — confirms wtype is dead on KWin and
+- **`kwin-wayland-window-focus-typing.md`** - confirms wtype is dead on KWin and
   ydotool is the validated keystroke path, plus the KWin-script window-raise
   pattern. → item 5 (chord injection) and Wayland focus handoff.
 - The new deep-research report (item 2, run `wf_31cee9ac-98f`) layers on top of
-  these — once cached it should be cross-linked in `INDEX.md`.
+  these - once cached it should be cross-linked in `INDEX.md`.
 
 ---
 
-## Two codebases (critical — don't mix them up)
+## Two codebases (critical - don't mix them up)
 
 | Path | Role | Git |
 |---|---|---|
-| `~/linuxpop-wl/` | **Deployed Fedora/Wayland build — this is what RUNS.** Edit here. | local repo, branch `master`, **no remote** |
+| `~/linuxpop-wl/` | **Deployed Fedora/Wayland build - this is what RUNS.** Edit here. | local repo, branch `master`, **no remote** |
 | `~/src/linuxpop/` | Mint/upstream, on GitHub | `github.com/GaimsDevSoftware/linuxpop`, currently on branch `feature/platform-backend` |
 
-Restart (kill + launch as **separate** Bash calls — combined gets reaped, exit 144):
+Restart (kill + launch as **separate** Bash calls - combined gets reaped, exit 144):
 ```bash
 kill $(ps -eo pid,args | awk '/[p]ython3 main.py/{print $1}')
 cd ~/linuxpop-wl && (nohup python3 main.py >/tmp/linuxpop.log 2>&1 &)
@@ -39,18 +39,18 @@ NOT `~/linuxpop-wl/plugins_repo/`. Edit the repo copy, then sync to the config d
 
 ## What already landed this session (context)
 
-- **`~/linuxpop-wl` master `2de0be3`** — popup fixes (committed, awaiting user's
+- **`~/linuxpop-wl` master `2de0be3`** - popup fixes (committed, awaiting user's
   visual OK): (1) off-screen-measure so the popup no longer lands at 0,0 and the
   click-watcher no longer kills it instantly (the "dead buttons" bug); (2)
   `_glyph_image()` recolours our `linuxpop-*-symbolic` glyphs at load time so they
   aren't near-white-on-light (the "faint glyphs" bug).
 - **`~/src/linuxpop` PR #1** (`feature/platform-backend` → `design-port`, commit
-  `f49f1c7`) — lifts the `platform_backend/` package (X11+Wayland unification) into
+  `f49f1c7`) - lifts the `platform_backend/` package (X11+Wayland unification) into
   the GitHub repo. **OPEN, not merged, and stale** (see item 3).
 
 ---
 
-# OPEN ITEMS — how we take care of each
+# OPEN ITEMS - how we take care of each
 
 ## 1. Confirm the popup fixes look right on screen  ⏳ needs the user
 **Where:** running app (`~/linuxpop-wl`, already restarted).
@@ -91,13 +91,13 @@ cd /home/robert/src/linuxpop && git add popup.py \
   && git commit -m "popup: carry Wayland 0,0 + glyph fixes into the merge" \
   && git push
 ```
-Then re-check the PR diff. **Do NOT merge yet** — the user tests on their Mint/X11
+Then re-check the PR diff. **Do NOT merge yet** - the user tests on their Mint/X11
 machine first (the X11 backend path is unverified on real hardware).
 **Merge path:** `feature/platform-backend` → `design-port` → (after Mint test) →
 `main`. PR: https://github.com/GaimsDevSoftware/linuxpop/pull/1
 **Done when:** PR diff is clean, user has tested on Mint, then merge.
 
-## 4. NEW FEATURE — "Run in terminal" plugin for COMMAND text  📋 (user wants this)
+## 4. NEW FEATURE - "Run in terminal" plugin for COMMAND text  📋 (user wants this)
 **Why it's missing:** `classifier.ContentType.COMMAND` exists and tags shell
 commands (e.g. `wpctl set-volume …`), but **no plugin registers for COMMAND**, so
 command selections have no run action.
@@ -107,15 +107,15 @@ from `plugins_repo/calculator.py`.
 **📓 Cached research to use:** `~/.claude/research-cache/plasma6-klipper-actions-and-global-command-shortcuts.md`.
 Klipper's own verified "Run in terminal" action is literally
 `konsole --hold -e /bin/sh -c %s` where `%s` is **auto shell-quoted** (KMacroExpander)
-— i.e. don't add your own quotes. That's our reference invocation.
+- i.e. don't add your own quotes. That's our reference invocation.
 **Spec:**
 - `Plugin(name="run-in-terminal", icon="utilities-terminal-symbolic",
   tooltip="Run in terminal", handler=_run, content_types=(ContentType.COMMAND,),
   priority=30)`.
-- `_run(text)`: **show a confirmation dialog first** (RCE safety — reuse the guard
+- `_run(text)`: **show a confirmation dialog first** (RCE safety - reuse the guard
   shape `recipe_loader.py` already uses for `run_command` recipes; grep it for the
   notify-send/refuse pattern). On confirm, launch the terminal **without building a
-  shell string yourself** — pass the command as a single argv element so the shell
+  shell string yourself** - pass the command as a single argv element so the shell
   quotes it, mirroring Klipper: `["konsole", "--hold", "-e", "/bin/sh", "-c", text]`
   via `subprocess.Popen` (NOT `shell=True`). Fall back chain:
   `konsole` → `x-terminal-emulator` → `$TERMINAL` → `gnome-terminal`/`xterm`.
@@ -131,7 +131,7 @@ repo + config dir.
   asked if this is possible). The report should say whether AT-SPI
   `getRangeExtents`/`getCharacterExtents` can give screen-coord selection bounds on
   KWin Wayland and across toolkits. NOTE: AT-SPI is currently **OFF**
-  (`editable_atspi_listener_enabled=false` in settings) — turning it on is the
+  (`editable_atspi_listener_enabled=false` in settings) - turning it on is the
   likely prerequisite. Implement as a fallback chain: AT-SPI selection bounds →
   text-input cursor rect → current mouse-pointer behaviour. Positioning lives in
   `popup.py::_present_near`; the selection/pointer comes from
@@ -143,7 +143,7 @@ repo + config dir.
   `ydotoold` user daemon + `/dev/uinput` udev rule + user in `input` group + optional
   `YDOTOOL_SOCKET`) is the validated path. Enter = `ydotool key 28:1 28:0`. So the fix
   is likely "make ydotool/ydotoold the primary chord path and drop wtype for chords"
-  in `wayland_kde.send_key`/`paste` — confirm against the new deep-research report
+  in `wayland_kde.send_key`/`paste` - confirm against the new deep-research report
   (it may prefer the RemoteDesktop/InputCapture portal for a sandbox-clean route),
   then implement. Same note also has the KWin-script window-raise pattern if focus
   handoff before paste is needed.

@@ -7,6 +7,8 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
+from xdg_paths import CONFIG_DIR
+
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -154,8 +156,8 @@ def _force_to_front(window: Gtk.Window) -> None:
             pass
 
 REPO_DIR = Path(__file__).resolve().parent / "plugins_repo"
-USER_PLUGIN_DIR = Path(os.path.expanduser("~/.config/linuxpop/plugins"))
-USER_RECIPE_DIR = Path(os.path.expanduser("~/.config/linuxpop/recipes"))
+USER_PLUGIN_DIR = CONFIG_DIR / "plugins"
+USER_RECIPE_DIR = CONFIG_DIR / "recipes"
 
 
 def _target_dir(entry: dict) -> Path:

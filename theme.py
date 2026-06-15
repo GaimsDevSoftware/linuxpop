@@ -761,7 +761,7 @@ _LIGHT_REMAP = {
     "#161a24": "#f0f2f7",  # sidebar bg
     "#141823": "#e0e4ee",  # notebook header
     "#14171f": "#ebeef4",  # check/radio bg
-    "#3d4456": "#d4d8e2",  # switch track (off) — light grey in light mode
+    "#3d4456": "#d4d8e2",  # switch track (off) - light grey in light mode
     "#4a5266": "#a8b0c0",  # disabled text
     "#5a6378": "#7a8090",  # placeholder text
     # Pango-markup greys that several dialogs hard-code for dim/muted

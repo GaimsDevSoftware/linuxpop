@@ -1,4 +1,4 @@
-# Fedora KDE Plasma — utsatt backlog
+# Fedora KDE Plasma - utsatt backlog
 
 Ting vi bevisst har skjøvet ut av hovedløpet (Fase 0–5) for KDE/Wayland-porten.
 Ikke blokkere, men verdt å plukke fra når vi har tid. Kryss av / flytt opp i en
@@ -22,9 +22,9 @@ Hovedplanen og fasene ligger i tasklisten; dette er det som *ikke* er i den.
       måler for høy markør-latens (>~150 ms). Holder ett script i live som pusher
       posisjon på forespørsel.
 - [ ] **`ydotool` som alternativ til `wtype`** for auto-paste, hvis `wtype` ikke
-      dekker alle apper (ydotool krever uinput-daemon — mer oppsett).
+      dekker alle apper (ydotool krever uinput-daemon - mer oppsett).
 - [ ] **HiDPI / fraksjonell skalering** grundig testet på Plasma (X11-versjonen er
-      mest testet på 2× skalering — se README «Limitations»).
+      mest testet på 2× skalering - se README «Limitations»).
 
 ## Pakking (sekundært til Flatpak/Flathub)
 
@@ -54,7 +54,7 @@ Hovedplanen og fasene ligger i tasklisten; dette er det som *ikke* er i den.
       kan vise fallback fordi install.sh ikke kjøres ved rsync-deploy; sørg for at
       ikonet ligger i ikon-søkestien ved ekte installasjon/pakking.
 
-## Bevisst IKKE støttet (ikke backlog — avklart bortvalg)
+## Bevisst IKKE støttet (ikke backlog - avklart bortvalg)
 
 - Auto-oppdatering i appen (hver store håndterer det selv).
 - Telemetri (ingen, noensinne).

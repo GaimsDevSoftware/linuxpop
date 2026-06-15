@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LinuxPop installer — sets up autostart for the current user.
+# LinuxPop installer - sets up autostart for the current user.
 # Usage: bash install.sh           # install
 #        bash install.sh --uninstall
 

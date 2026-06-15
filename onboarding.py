@@ -25,7 +25,7 @@ VIOLET = (0.486, 0.227, 0.929)  # #7C3AED
 PINK = (0.925, 0.282, 0.600)    # #EC4899
 GREEN = (0.204, 0.780, 0.349)   # #34C759
 AMBER = (0.97, 0.70, 0.30)
-INK = (0.105, 0.130, 0.184)     # #1c2231 — dark text on the light stage
+INK = (0.105, 0.130, 0.184)     # #1c2231 - dark text on the light stage
 MUTE = (0.62, 0.66, 0.74)
 STAGE = (0.985, 0.990, 1.0)     # near-white card the scenes sit on
 STAGE_BORDER = (0.86, 0.88, 0.93)
@@ -130,7 +130,7 @@ def _mascot(cr, cx, cy, s=1.0, look=(0.0, 0.0), blink=0.0,
     cr.set_source_rgba(0, 0, 0, 0.10)
     cr.fill()
     cr.restore()
-    # body — a rounded blob with the brand gradient + a little popup-tail
+    # body - a rounded blob with the brand gradient + a little popup-tail
     bw, bh = 31, 28
     cr.move_to(0, bh + 9)                       # tail tip (popup pointer)
     cr.line_to(-8, bh - 3)
@@ -763,14 +763,14 @@ def _build_pages(settings):
                               for p in clip_key.split("+") if p.strip()]
     return [
         dict(title="Select text, get instant actions",
-             body="Highlight anything in any app — a link, an error, a "
-                  "paragraph — and LinuxPop pops up a little bar of actions "
+             body="Highlight anything in any app - a link, an error, a "
+                  "paragraph - and LinuxPop pops up a little bar of actions "
                   "made for what you picked.",
              draw=_draw_how),
         dict(title="Summon it your way",
              body=f"It appears automatically when you select text. Or press "
                   f"<b>{_fmt(popup_key)}</b> anywhere, and "
-                  f"<b>{_fmt(clip_key)}</b> for clipboard history — which "
+                  f"<b>{_fmt(clip_key)}</b> for clipboard history - which "
                   f"also keeps your snippets, so a short trigger expands "
                   f"into the whole text as you type.",
              draw=_draw_summon),
@@ -779,7 +779,7 @@ def _build_pages(settings):
                   "one-click install extras: send-to-AI, transforms, QR codes, "
                   "word count, search shortcuts and more.",
              draw=_draw_plugins),
-        dict(title="Build your own — no code needed",
+        dict(title="Build your own - no code needed",
              body="In <b>Plugins → Custom</b>, the recipe builder lets you "
                   "snap together your own action: match some text, then run a "
                   "command or open a URL. That's a real plugin.",

@@ -2,7 +2,7 @@
 Type=Application
 Name=LinuxPop
 GenericName=Floating action popup
-Comment=Context-aware popup actions for selected text — PopClip for Linux
+Comment=Context-aware popup actions for selected text, like PopClip for Linux
 Icon=io.github.GaimsDevSoftware.LinuxPop
 Exec=linuxpop
 Terminal=false

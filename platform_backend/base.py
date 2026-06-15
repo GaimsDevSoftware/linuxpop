@@ -92,6 +92,13 @@ class PlatformBackend(abc.ABC):
         """Send the paste chord. Default is Ctrl+V; backends may override."""
         self.send_key("ctrl+v")
 
+    def can_paste(self) -> bool:
+        """Whether this backend can actually inject a paste keystroke.
+        False when the required injector is missing (notably the Flatpak
+        sandbox on Wayland, which has no ydotool/wtype) - callers then leave
+        the result on the clipboard and tell the user to paste manually."""
+        return True
+
     # ---- opening URLs ----------------------------------------------------
     @abc.abstractmethod
     def open_url(self, url: str) -> None:

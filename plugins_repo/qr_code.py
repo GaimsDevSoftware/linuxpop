@@ -13,8 +13,9 @@ from pathlib import Path
 
 from classifier import ContentType
 from plugin_base import Plugin
+from xdg_paths import CACHE_DIR
 
-QR_CACHE = Path(os.path.expanduser("~/.cache/linuxpop/qr"))
+QR_CACHE = CACHE_DIR / "qr"
 MAX_CACHED = 20
 
 
