@@ -215,7 +215,10 @@ modules:
     build-commands:
       # 1. Copy the Python sources into the runtime
       - mkdir -p /app/share/linuxpop
-      - cp -r *.py icons plugins_repo recipes_repo /app/share/linuxpop/ 2>/dev/null || true
+      # NB: platform_backend/ is a package dir (X11 + Wayland/KDE backends)
+      # — `*.py` alone misses it and the app dies with ModuleNotFoundError.
+      # No `|| true` here: a missing source should fail the build loudly.
+      - cp -r *.py platform_backend icons plugins_repo /app/share/linuxpop/
 
       # 2. Wrapper script on PATH
       - install -Dm755 packaging/flatpak/linuxpop.wrapper /app/bin/linuxpop
