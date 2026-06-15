@@ -30,7 +30,7 @@ _SUPPORT_BUTTONS = [
     # May 2026 because no real account existed behind any of them,
     # so the buttons led to 404s. (GitHub still shows its own
     # Sponsor button via .github/FUNDING.yml - that goes straight
-    # to paypal.me/linuxpop too.) To add another channel later,
+    # to paypal.me/gaimsdev too.) To add another channel later,
     # add its key here AND the default URL in settings.py.
     ("support_paypal_url",   "emblem-favorite-symbolic",
      "Support on PayPal",        "suggested-action"),
