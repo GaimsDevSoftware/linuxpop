@@ -12,6 +12,13 @@ KDE Plasma 6 / Wayland** (Fedora KDE and friends - see
 [docs/FEDORA-KDE.md](docs/FEDORA-KDE.md)). Free, open source, no accounts,
 no telemetry.
 
+> **⚠️ On Linux Mint / Cinnamon (and other X11 desktops): treat 0.9.0 as a beta.**
+> This release's testing and polish focused on KDE Plasma 6 / Wayland. The X11
+> path — including Linux Mint Cinnamon, where LinuxPop started — is preserved
+> but hasn't been fully re-verified on real hardware in this version, so some
+> features may not behave as intended there yet. **Please [report bugs](https://github.com/GaimsDevSoftware/linuxpop/issues)** —
+> feedback is very welcome and directly shapes the road to 1.0.
+
 ---
 
 ## Features
@@ -136,6 +143,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full plugin API.
 
 ## Limitations
 
+- **Linux Mint / Cinnamon & X11 are beta in 0.9.0.** The recent work centred
+  on KDE Plasma 6 / Wayland; the X11 backend (Cinnamon, GNOME-on-X11, XFCE,
+  MATE, …) still works but wasn't fully re-tested on real hardware this cycle.
+  Expect rough edges and please file issues — it's the fastest way to get
+  your setup solid for 1.0.
 - **Wayland support is KDE Plasma only (for now).** LinuxPop has a native
   Wayland backend for KDE Plasma 6 (selection via `wl-clipboard`, popup
   placement via `gtk-layer-shell`, cursor position via KWin's scripting API).

@@ -108,6 +108,11 @@
           <li>Step-by-step custom-button wizard</li>
           <li>Light and premium dark themes</li>
         </ul>
+        <p>
+          Note: this beta focused on KDE Plasma 6 / Wayland. X11 desktops
+          (including Linux Mint Cinnamon) work but aren't fully re-verified
+          yet in 0.9.0 — bug reports are very welcome.
+        </p>
       </description>
     </release>
   </releases>
