@@ -19,6 +19,19 @@ from PySide6.QtCore import QTimer
 
 ICON_DIR = str(Path(__file__).resolve().parent / "icons")
 SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
+SETTINGS_FILE = Path(os.path.expanduser("~/.config/linuxpop/settings.json"))
+
+
+def _tray_icon_style() -> str:
+    """User's chosen tray-icon style: 'color' (coloured badge, default),
+    'light' (light monochrome - for dark panels), or 'dark' (dark
+    monochrome - for light panels)."""
+    try:
+        d = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        v = str(d.get("tray_icon_style", "color")).strip().lower()
+        return v if v in ("color", "light", "dark") else "color"
+    except Exception:
+        return "color"
 
 # ─── Wire helpers ───────────────────────────────────────────────────
 
@@ -96,16 +109,23 @@ class TrayQt:
 
     # ─── icon ───
     def _load_icon(self) -> QIcon:
-        # Use the COLOURED brand badge for the tray. It's legible on both
-        # light and dark panels with no recolouring.
-        #
-        # Why not the monochrome symbolic icon: it relies on the panel
-        # recolouring it to the panel's foreground. plasmashell does NOT
-        # recolour custom (non-Breeze) symbolic icons - verified live: even
-        # with IconName set it rendered solid black, invisible on a dark
-        # panel. And the app's own colour scheme can't be trusted to pick a
-        # colour either (e.g. a light Breeze scheme under a dark Plasma panel
-        # theme like WhiteSur-alt). A self-coloured badge sidesteps both.
+        """Tray icon per the user's `tray_icon_style` setting.
+
+        Auto-recolouring isn't reliable on KDE (plasmashell won't recolour a
+        custom symbolic icon - verified it stays solid black; and the app's
+        colour scheme can differ from the panel theme, e.g. light Breeze
+        under dark WhiteSur-alt), so the user picks:
+          color -> the coloured brand badge; legible on any panel (default)
+          light -> light monochrome glyph; for DARK panels
+          dark  -> dark monochrome glyph; for LIGHT panels
+        """
+        style = _tray_icon_style()
+        if style in ("light", "dark"):
+            color = "#f4f5f6" if style == "light" else "#2a2e32"
+            ic = self._render_symbolic(color)
+            if ic is not None and not ic.isNull():
+                return ic
+            # fall through to the coloured badge if rendering failed
         for name in ("linuxpop", "linuxpop-tray-symbolic"):
             p = Path(ICON_DIR) / f"{name}.svg"
             if p.is_file():
@@ -114,6 +134,32 @@ class TrayQt:
                     return ic
         return (QIcon.fromTheme("linuxpop")
                 or QIcon.fromTheme("applications-internet"))
+
+    def _render_symbolic(self, color: str) -> QIcon | None:
+        """Render the monochrome symbolic tray SVG (fill="currentColor") in
+        `color`, as a multi-size QIcon. Used for the light/dark styles so the
+        glyph is a fixed, panel-appropriate colour the user chose."""
+        p = Path(ICON_DIR) / "linuxpop-tray-symbolic.svg"
+        if not p.is_file():
+            return None
+        try:
+            from PySide6.QtSvg import QSvgRenderer
+            from PySide6.QtGui import QImage, QPixmap, QPainter
+            from PySide6.QtCore import QByteArray, Qt
+            svg = p.read_text(encoding="utf-8").replace("currentColor", color)
+            renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+            icon = QIcon()
+            for size in (16, 22, 24, 32, 48, 64):
+                img = QImage(size, size, QImage.Format_ARGB32)
+                img.fill(Qt.transparent)
+                painter = QPainter(img)
+                renderer.render(painter)
+                painter.end()
+                icon.addPixmap(QPixmap.fromImage(img))
+            return icon
+        except Exception as exc:  # noqa: BLE001
+            print(f"[tray-qt] symbolic render failed: {exc}", flush=True)
+            return None
 
     def _install_icon(self) -> None:
         import shutil
@@ -230,6 +276,12 @@ class TrayQt:
         cmd = msg.get("cmd")
         if cmd == "set_watcher_active":
             self._toggle_action.setChecked(bool(msg.get("value", True)))
+        elif cmd == "reload_icon":
+            # Settings changed the tray_icon_style; re-render live.
+            try:
+                self._tray.setIcon(self._load_icon())
+            except Exception as exc:  # noqa: BLE001
+                print(f"[tray-qt] reload_icon failed: {exc}", flush=True)
         elif cmd == "quit":
             self._running = False
         elif cmd == "ping":

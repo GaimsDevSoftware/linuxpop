@@ -200,6 +200,16 @@ class Tray:
             self._connected = False
             self._reconnect()
 
+    def reload_icon(self) -> None:
+        """Ask the tray subprocess to re-render its icon — called when the
+        tray_icon_style setting changes, so it updates live (no restart)."""
+        if not self._connected or self._sock is None:
+            return
+        try:
+            _send_message(self._sock, {"cmd": "reload_icon"})
+        except OSError:
+            self._connected = False
+
     def poll(self) -> None:
         """Read any pending messages from the tray subprocess.
         

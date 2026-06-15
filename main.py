@@ -539,6 +539,12 @@ class App:
                 self.ignore_ws = bool(self.settings.get("ignore_whitespace_only"))
                 self.popup._initial_grace_ms = int(self.settings.get("auto_hide_initial_ms"))
                 self.popup._leave_grace_ms = int(self.settings.get("auto_hide_leave_ms"))
+                # Live-update the tray icon if the user changed its style.
+                if self.tray is not None:
+                    try:
+                        self.tray.reload_icon()
+                    except Exception:
+                        pass
                 if self.watcher is not None:
                     self.watcher.set_debounce_ms(
                         int(self.settings.get("selection_debounce_ms"))
