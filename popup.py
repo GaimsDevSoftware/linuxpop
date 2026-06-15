@@ -634,6 +634,7 @@ class PopupWindow:
         y: int,
         content_type: ContentType,
         editable: bool = True,
+        rect: tuple[int, int, int, int] | None = None,
     ) -> None:
         self._current_text = text
         self._clear_buttons()
@@ -727,7 +728,7 @@ class PopupWindow:
 
         specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]
         self._present_buttons(specs, hidden_count, max_btns)
-        self._present_near(x, y)
+        self._present_near(x, y, rect=rect)
 
     def _add_overflow_chip(
         self, hidden: int, cap: int, row: Gtk.Box | None = None,
@@ -890,11 +891,21 @@ class PopupWindow:
         self._present_buttons(specs, 0, 0)
         self._present_near(x, y)
 
-    def _present_near(self, x: int, y: int) -> None:
+    def _present_near(
+        self, x: int, y: int,
+        rect: tuple[int, int, int, int] | None = None,
+    ) -> None:
         """Render the popup near physical screen coords (x, y) and arm
         the tracking/auto-hide machinery. Extracted from show_for so
         both show_for() and show_actions() share the same positioning
-        + lifecycle code path."""
+        + lifecycle code path.
+
+        When `rect` (x, y, w, h in screen pixels - the selected-text
+        bounding box from AT-SPI) is supplied, the popup centres
+        horizontally on the selection and sits just above its top edge
+        (dropping below the bottom edge when there's no room above),
+        instead of being placed relative to the mouse pointer. Falls back
+        to the (x, y) pointer behaviour when `rect` is None."""
         self._bar.show_all()
         self._outer.show_all()
 
@@ -913,44 +924,67 @@ class PopupWindow:
 
         # X11 root coords come in physical pixels; GTK move() takes logical.
         # Convert via the monitor's scale factor before doing layout math.
+        # Wayland/KDE pointer + AT-SPI screen coords are already logical
+        # (same space as the monitor geometry), so don't divide by scale -
+        # doing so would place the popup at half the real position.
+        is_logical = get_backend().pointer_is_logical
         screen = self.win.get_screen()
         display = screen.get_display()
-        monitor = display.get_monitor_at_point(int(x), int(y))
-        scale = monitor.get_scale_factor() if monitor else 1
-        if get_backend().pointer_is_logical:
-            # Wayland/KDE: cursor coords are already in logical pixels (same
-            # space as the monitor geometry), so don't divide by scale -
-            # doing so would place the popup at half the cursor position.
-            lx, ly = float(x), float(y)
+
+        # Anchor point: the selection centre when we have its rect,
+        # otherwise the mouse pointer.
+        if rect is not None:
+            rx, ry, rw, rh = rect
+            anchor_x, anchor_y = rx + rw / 2, ry + rh / 2
         else:
-            lx = x / scale
-            ly = y / scale
+            anchor_x, anchor_y = x, y
+        monitor = display.get_monitor_at_point(int(anchor_x), int(anchor_y))
+        scale = monitor.get_scale_factor() if monitor else 1
 
-        # Cursor Y is the mouse position, which sits in the middle of the
-        # selected line. We need to clear the whole line (~24 px tall in
-        # most fonts) plus a small visual gap, otherwise the popup lands
-        # on top of the text it's supposed to act on.
-        _LINE_CLEARANCE = 28
-        _BELOW_GAP = 32  # used when there isn't room above
-        if get_backend().pointer_is_logical:
-            # Wayland: we only have the pointer, which sits inside/under the
-            # selection rather than above it. Lift the popup further so it
-            # clears the copied text instead of covering it.
-            _LINE_CLEARANCE = 64
-            _BELOW_GAP = 56
+        def _lg(v: float) -> float:
+            return float(v) if is_logical else v / scale
 
-        # Place the popup horizontally centered on (lx,ly), clearly above ly
-        target_x = int(lx - w / 2)
-        target_y = int(ly - h - _LINE_CLEARANCE)
+        if rect is not None:
+            # Anchor to the selection box: centre horizontally on it and
+            # sit just above its top edge. We know the real edge here, so a
+            # small gap is enough (no need for the pointer path's guesswork
+            # lift). `below_y` drops past the bottom edge if there's no room.
+            lcx = _lg(rx + rw / 2)
+            ltop = _lg(ry)
+            lbot = _lg(ry + rh)
+            _GAP = 10
+            target_x = int(lcx - w / 2)
+            target_y = int(ltop - h - _GAP)
+            below_y = int(lbot + _GAP)
+            lx, ly = lcx, (ltop + lbot) / 2.0
+        else:
+            lx = _lg(x)
+            ly = _lg(y)
+            # Cursor Y is the mouse position, which sits in the middle of the
+            # selected line. We need to clear the whole line (~24 px tall in
+            # most fonts) plus a small visual gap, otherwise the popup lands
+            # on top of the text it's supposed to act on.
+            _LINE_CLEARANCE = 28
+            _BELOW_GAP = 32  # used when there isn't room above
+            if is_logical:
+                # Wayland: we only have the pointer, which sits inside/under
+                # the selection rather than above it. Lift the popup further
+                # so it clears the copied text instead of covering it.
+                _LINE_CLEARANCE = 64
+                _BELOW_GAP = 56
+            # Place the popup horizontally centered on (lx,ly), above ly
+            target_x = int(lx - w / 2)
+            target_y = int(ly - h - _LINE_CLEARANCE)
+            below_y = int(ly + _BELOW_GAP)
 
         # Keep on-screen (geom is also in logical coords)
         if monitor is not None:
             geom = monitor.get_geometry()
             target_x = max(geom.x + 4, min(target_x, geom.x + geom.width - w - 4))
             if target_y < geom.y + 4:
-                # Not enough room above: show below the selection instead,
-                # with the same generous gap so we don't overlap downward.
-                target_y = int(ly + _BELOW_GAP)
+                # Not enough room above: show below the selection/pointer
+                # instead, with a gap so we don't overlap downward.
+                target_y = below_y
             target_y = min(target_y, geom.y + geom.height - h - 4)
 
         # Move to the real position. The window is already mapped (off-screen);
