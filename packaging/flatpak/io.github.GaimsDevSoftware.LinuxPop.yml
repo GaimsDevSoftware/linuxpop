@@ -25,7 +25,7 @@
 #     Neither ships in GNOME Platform 46, so both are built from source
 #     below with real upstream URL + sha256.
 #
-#   NOT bundled — ydotool (key injection / paste chords):
+#   NOT bundled - ydotool (key injection / paste chords):
 #     ydotool needs /dev/uinput + the ydotoold daemon, which a Flatpak
 #     sandbox cannot provide, so the binary would be inert here. wtype is
 #     also dead on KWin (no zwp_virtual_keyboard_v1). In-sandbox paste
@@ -35,7 +35,7 @@
 #
 #   RUNTIME VERSION: org.gnome.Platform//49 (GNOME 46 is EOL). 49 was
 #     verified to ship GTK3, the Handy-1 typelib, and python3-gi on Python
-#     3.13 — the bundled Python wheels are cp313 to match. Re-check the
+#     3.13 - the bundled Python wheels are cp313 to match. Re-check the
 #     latest supported GNOME runtime at submission time.
 
 app-id: io.github.GaimsDevSoftware.LinuxPop
@@ -195,7 +195,7 @@ modules:
         sha256: 03f6fab9219220f041c74aeaa2939ff0062bd5c364ba9ce037197f4c6d498cd9
 
   # ----- gtk-layer-shell -----
-  # Positions the popup as a Wayland layer-shell surface — the Wayland/KDE
+  # Positions the popup as a Wayland layer-shell surface - the Wayland/KDE
   # backend can't place a plain GTK window. introspection=true so the
   # GtkLayerShell-0.1 typelib is available to PyGObject; vapi off to avoid
   # a vala/vapigen build dep. Builds against the runtime's GTK3.
@@ -213,7 +213,7 @@ modules:
         sha256: 88c3a3e0a5300532f3d368d5df64838a87f1fb85273f22d41df0a6b8d0ec59c6
 
   # ----- wl-clipboard -----
-  # wl-copy / wl-paste — selection + clipboard capture on Wayland, the way
+  # wl-copy / wl-paste - selection + clipboard capture on Wayland, the way
   # the X11 backend uses xclip. Pure meson, only needs wayland-client +
   # wayland-protocols from the SDK.
   - name: wl-clipboard
@@ -304,7 +304,7 @@ modules:
       # 1. Copy the Python sources into the runtime
       - mkdir -p /app/share/linuxpop
       # NB: platform_backend/ is a package dir (X11 + Wayland/KDE backends)
-      # — `*.py` alone misses it and the app dies with ModuleNotFoundError.
+      # - `*.py` alone misses it and the app dies with ModuleNotFoundError.
       # No `|| true` here: a missing source should fail the build loudly.
       - cp -r *.py platform_backend icons plugins_repo /app/share/linuxpop/
 

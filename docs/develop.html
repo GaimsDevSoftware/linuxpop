@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Build your own plugin — LinuxPop</title>
+  <title>Build your own plugin - LinuxPop</title>
   <meta name="description" content="Two ways to extend LinuxPop: a no-code wizard for URL/command/notify actions, or a 20-line Python plugin for anything more. Full API reference inside.">
   <link rel="icon" href="assets/icons/linuxpop.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
@@ -35,7 +35,7 @@
 
   <div class="callout">
     <strong>TL;DR:</strong> if you want to "open this text in URL X" or "run this shell command on this text",
-    use the <a href="#wizard">wizard</a> — 30 seconds, zero code. For anything else,
+    use the <a href="#wizard">wizard</a> - 30 seconds, zero code. For anything else,
     the <a href="#python">Python API</a> is one decorator and a function.
   </div>
 
@@ -59,20 +59,20 @@
 
   <h3>Fields explained</h3>
 
-  <p><strong>Internal name</strong> — alphanumeric + hyphens. Becomes the filename and the plugin's ID.<br>
+  <p><strong>Internal name</strong> - alphanumeric + hyphens. Becomes the filename and the plugin's ID.<br>
   Example: <code>wikipedia-search</code></p>
 
-  <p><strong>Button label</strong> — what the popup tooltip shows.<br>
+  <p><strong>Button label</strong> - what the popup tooltip shows.<br>
   Example: <code>Search Wikipedia</code></p>
 
-  <p><strong>Icon</strong> — type a name from your icon theme, or click <em>Browse…</em> to pick from
+  <p><strong>Icon</strong> - type a name from your icon theme, or click <em>Browse…</em> to pick from
   3,800+ symbolic icons with live search. Want your own brand mark? Drop an
-  <code>.svg</code> or <code>.png</code> in <code>~/.config/linuxpop/icons/</code> — it's searchable
+  <code>.svg</code> or <code>.png</code> in <code>~/.config/linuxpop/icons/</code> - it's searchable
   the next time you open the picker.</p>
 
-  <p><strong>When clicked</strong> — pick one of the four action types.</p>
+  <p><strong>When clicked</strong> - pick one of the four action types.</p>
 
-  <p><strong>Template</strong> — the actual payload. Use these variables:</p>
+  <p><strong>Template</strong> - the actual payload. Use these variables:</p>
 
   <pre><code>{text}        the raw selection
 {text_url}    URL-encoded (use this in href="...?q={text_url}")
@@ -83,7 +83,7 @@
 
   <p>Click any variable chip under the field to insert it at the cursor.</p>
 
-  <p><strong>Show on</strong> — which content types should trigger this button. Leaving all unchecked
+  <p><strong>Show on</strong> - which content types should trigger this button. Leaving all unchecked
   means the button is always shown.</p>
 
   <h3>Example recipes</h3>
@@ -120,13 +120,13 @@ Show on:   Plain text</code></pre>
 
   <h3>Where it's saved</h3>
   <p>Each recipe is one JSON file in <code>~/.config/linuxpop/recipes/&lt;name&gt;.json</code>.
-  Share a recipe by sending the JSON — the recipient drops it in their recipes folder
+  Share a recipe by sending the JSON - the recipient drops it in their recipes folder
   and it shows up next reload.</p>
 
   <h2 id="python">Path 2 · Python plugin</h2>
 
-  <p>For anything the wizard can't express — HTTP calls, multi-step workflows, GUI dialogs,
-  reading files — write a Python file in <code>~/.config/linuxpop/plugins/</code>.</p>
+  <p>For anything the wizard can't express - HTTP calls, multi-step workflows, GUI dialogs,
+  reading files - write a Python file in <code>~/.config/linuxpop/plugins/</code>.</p>
 
   <h3>Minimal example</h3>
 
@@ -170,11 +170,11 @@ def register(register_plugin) -&gt; None:
 
   <h3>ContentType values</h3>
   <ul>
-    <li><code>ContentType.PLAIN_TEXT</code> — anything that's not classified more specifically</li>
-    <li><code>ContentType.URL</code> — looks like <code>https://…</code>, <code>www.x.com</code>, <code>github.com/foo</code></li>
-    <li><code>ContentType.EMAIL</code> — <code>name@domain.tld</code></li>
-    <li><code>ContentType.PATH</code> — starts with <code>/</code>, <code>~/</code>, <code>./</code></li>
-    <li><code>ContentType.COMMAND</code> — first token looks like a shell command (<code>git</code>, <code>sudo</code>, <code>ls</code>, …)</li>
+    <li><code>ContentType.PLAIN_TEXT</code> - anything that's not classified more specifically</li>
+    <li><code>ContentType.URL</code> - looks like <code>https://…</code>, <code>www.x.com</code>, <code>github.com/foo</code></li>
+    <li><code>ContentType.EMAIL</code> - <code>name@domain.tld</code></li>
+    <li><code>ContentType.PATH</code> - starts with <code>/</code>, <code>~/</code>, <code>./</code></li>
+    <li><code>ContentType.COMMAND</code> - first token looks like a shell command (<code>git</code>, <code>sudo</code>, <code>ls</code>, …)</li>
   </ul>
 
   <h3>Tips</h3>
@@ -186,7 +186,7 @@ def register(register_plugin) -&gt; None:
         so the user can paste them.</li>
     <li><strong>Use <code>notify-send</code></strong> for any user feedback. LinuxPop's popup closes
         when the handler returns; notifications are the natural way to confirm.</li>
-    <li><strong>Don't <code>sys.path.insert</code></strong> — <code>plugin_loader</code> puts the LinuxPop
+    <li><strong>Don't <code>sys.path.insert</code></strong> - <code>plugin_loader</code> puts the LinuxPop
         directory on <code>sys.path</code> already.</li>
   </ul>
 
@@ -200,7 +200,7 @@ my_value = config.get("my_plugin_key", "default")</code></pre>
 
   <p>To make a setting visible in the LinuxPop Settings dialog, add a default to
   <code>settings.py</code>'s <code>DEFAULTS</code> dict and a row in <code>settings_gui.py</code>.
-  (Drop your file in the catalogue with a PR — we'll wire it up.)</p>
+  (Drop your file in the catalogue with a PR - we'll wire it up.)</p>
 
   <h2 id="share">Sharing your plugin</h2>
 

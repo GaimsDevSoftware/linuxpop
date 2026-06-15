@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
-  <!-- Clipboard with a stack of pages (history) — symbolic / monochrome -->
+  <!-- Clipboard with a stack of pages (history) - symbolic / monochrome -->
   <g fill="#f0f0f0" fill-rule="evenodd">
     <!-- Back page -->
     <path d="M3.5,3 H10.5 A1,1 0 0 1 11.5,4 V13 A1,1 0 0 1 10.5,14 H3.5

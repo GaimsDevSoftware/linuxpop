@@ -1,8 +1,8 @@
 # LinuxPop browser extensions
 
 Cross-browser MV3 extensions that replace the Tampermonkey/Violentmonkey
-userscript path. Same job — receive prompts from the LinuxPop daemon's
-local HTTP bridge and inject them into the focused AI chat editor —
+userscript path. Same job - receive prompts from the LinuxPop daemon's
+local HTTP bridge and inject them into the focused AI chat editor -
 but installed via the browser's own add-on store, so users don't need
 a third-party userscript manager.
 
@@ -15,7 +15,7 @@ side-effect free:
 - **Nothing leaves your computer.** Outbound network is restricted to
   `http://127.0.0.1:876{6,7,8}` (your own LinuxPop daemon on
   loopback) by the manifest's `host_permissions`. The browser
-  enforces this — any `fetch()` to elsewhere is blocked.
+  enforces this - any `fetch()` to elsewhere is blocked.
 - **Zero `permissions`.** No `tabs`, no `scripting`, no `history`,
   no `cookies`, no `storage`, no `webRequest`. Open
   `about:debugging` (Firefox) or `chrome://extensions` (Chrome) and
@@ -69,14 +69,14 @@ Then in Firefox:
    LinuxPop daemon is running. Watch the console for `[linuxpop-ext]`
    log lines.
 
-The add-on stays loaded until Firefox restarts — fine for iteration,
+The add-on stays loaded until Firefox restarts - fine for iteration,
 not for daily use.
 
 ## Firefox: AMO submission
 
 Mozilla's add-on store. Free, days-to-weeks human review.
 
-1. **Validate locally** — `web-ext lint --source-dir=build/` (install:
+1. **Validate locally** - `web-ext lint --source-dir=build/` (install:
    `sudo npm install -g web-ext`). Catches manifest issues, missing
    icons, CSP problems before AMO does.
 2. **Replace the placeholder icons** in `firefox/icons/` with real
@@ -84,15 +84,15 @@ Mozilla's add-on store. Free, days-to-weeks human review.
    `rsvg-convert` against the repo's `icons/linuxpop.svg`.
 3. **Upload** `dist/linuxpop-firefox.zip` at
    https://addons.mozilla.org/developers/addon/submit/
-4. **Source code** — AMO accepts the ZIP as-is when no minification
+4. **Source code** - AMO accepts the ZIP as-is when no minification
    or bundler is used. Our `content.js` is plain JS so no separate
    source upload. If we ever add a build step (e.g. WXT/Vite), the
    un-minified source has to be uploaded alongside per AMO policy
    (`extensionworkshop.com/documentation/publish/source-code-submission/`).
-5. **Privacy policy** — Mozilla no longer hosts the policy; you link
+5. **Privacy policy** - Mozilla no longer hosts the policy; you link
    to your own. A one-paragraph "no data leaves your machine"
    statement on the project's GitHub Pages is enough.
-6. **Review-notes box** — write this verbatim before submitting (it
+6. **Review-notes box** - write this verbatim before submitting (it
    pre-empts the post-March-2026 reviewer alert against AI-assistant
    extensions harvesting chat history):
 
@@ -103,7 +103,7 @@ Mozilla's add-on store. Free, days-to-weeks human review.
    > user-supplied text into the composer**, never reads conversation
    > history. No external network traffic. No telemetry. Source:
    > https://github.com/GaimsDevSoftware/linuxpop
-7. **Wait** — first submission is human-reviewed; days to weeks.
+7. **Wait** - first submission is human-reviewed; days to weeks.
    Updates that don't change permissions often go through in hours.
 
 ## Chrome (roadmap)
@@ -120,7 +120,7 @@ Chrome Web Store specifics:
 
 - $5 one-time developer fee
 - Review timeline: 1-7 days for first submission, often hours after
-- $5 is the only fee — no per-user or per-version cost
+- $5 is the only fee - no per-user or per-version cost
 - Brave / Edge / Opera / Vivaldi all accept the same CRX
 
 ## Why we still ship the userscript
@@ -132,7 +132,7 @@ the repo and supported. Two reasons:
    set.** Tampermonkey + the userscript file gives them visibility and
    easy disable.
 2. **Distribution chain redundancy.** If AMO ever de-lists the
-   extension (unlikely but possible — there's been a couple
+   extension (unlikely but possible - there's been a couple
    high-profile rejections of localhost-talking extensions in 2024),
    the userscript path keeps users covered.
 

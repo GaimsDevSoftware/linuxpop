@@ -361,10 +361,10 @@ def _send_via_paste_wayland(service: str, url: str, window_terms: list[str],
             time.sleep(0.25)
 
         # Keystroke injection (wtype/ydotool) cannot deliver Ctrl+V on this KWin
-        # Wayland session — the compositor doesn't pass injected modifier chords
+        # Wayland session - the compositor doesn't pass injected modifier chords
         # to clients (verified: even Ctrl+A doesn't register). So we never fake a
         # paste (which could land in the wrong window). The prompt is on the
-        # clipboard and the chat is focused; the user presses Ctrl+V — their real
+        # clipboard and the chat is focused; the user presses Ctrl+V - their real
         # keyboard works fine. (Install the browser userscript for hands-free
         # insertion; this path is the no-setup fallback.)
         print(f"[send_to_ai] wl-paste {service}: ready={ready} "
@@ -372,7 +372,7 @@ def _send_via_paste_wayland(service: str, url: str, window_terms: list[str],
               flush=True)
         subprocess.run(["notify-send", "--hint=byte:transient:1", "-t", "6000",
                         "-i", "applications-internet", f"{service}: press Ctrl+V",
-                        "Your selection is on the clipboard — press Ctrl+V in the "
+                        "Your selection is on the clipboard - press Ctrl+V in the "
                         "chat box, then Enter to send."], check=False)
         time.sleep(45.0)   # keep the prompt on the clipboard while they paste
         _restore()
@@ -510,7 +510,7 @@ _SERVICES = {
         # Claude Desktop registers the claude:// scheme and ?q= prefills the
         # composer directly. (The web https://claude.ai/?q= was disabled, but the
         # desktop deep link still works.) Preferred over paste/userscript when
-        # the app is installed — no server, no userscript, no keystroke paste.
+        # the app is installed - no server, no userscript, no keystroke paste.
         deeplink="claude://claude.ai/new",
         deeplink_focus_kw="claude",
         mode="paste",
@@ -797,7 +797,7 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
         return
 
     # If the browser userscript has never registered (no install marker), the
-    # chat page would open but nothing would inject the text — exactly the
+    # chat page would open but nothing would inject the text - exactly the
     # "nothing reaches Claude's box" symptom. Fall back to the paste path, which
     # needs no browser extension. Auto-upgrades to true userscript injection the
     # moment the user installs it and loads a matched site (which sets the marker).
@@ -879,7 +879,7 @@ def _send_via_userscript(service: str, spec: dict, text: str) -> None:
 # The flawless path on KDE when the service ships a desktop app that registers a
 # URL scheme: the deep link prefills the composer via ?q= directly. No bridge,
 # no userscript, and no keystroke injection for the text (impossible on this
-# KWin/Wayland session anyway — injected modifier chords never reach apps).
+# KWin/Wayland session anyway - injected modifier chords never reach apps).
 # Submitting needs one Enter; Enter is a SINGLE keycode (28), which ydotool can
 # deliver even though Ctrl+V can't. Mirrors our krunner-claude runner.
 
@@ -982,7 +982,7 @@ def _send_via_deeplink(service: str, spec: dict, text: str) -> None:
         time.sleep(0.3)
         _focus_window_kw(kw)
         if submit:
-            # Retry a few times — the composer mounts after the deep link opens.
+            # Retry a few times - the composer mounts after the deep link opens.
             for i in range(5):
                 time.sleep(0.7 + i * 0.45)
                 _focus_window_kw(kw)
@@ -1042,7 +1042,7 @@ def _send(spec: dict):
 
         # Desktop deep link is the most reliable path on KDE/Wayland when the
         # service's app registers a URL scheme (e.g. Claude Desktop's claude://):
-        # ?q= prefills the composer directly — no server, userscript, or paste.
+        # ?q= prefills the composer directly - no server, userscript, or paste.
         # Explicit API mode still wins; everything else defers to the deep link.
         if mode != "api" and spec.get("deeplink") and _scheme_registered(spec["deeplink"]):
             _send_via_deeplink(spec["service"], spec, text)

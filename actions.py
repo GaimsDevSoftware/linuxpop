@@ -177,7 +177,7 @@ def replace_selection(new_text: str) -> None:
         subprocess.run(
             ["notify-send", "--hint=byte:transient:1", "-t", "3000",
              "-i", "edit-paste", "Copied to clipboard",
-             "Auto-paste isn't available here — press Ctrl+V to paste."],
+             "Auto-paste isn't available here - press Ctrl+V to paste."],
             check=False,
         )
 

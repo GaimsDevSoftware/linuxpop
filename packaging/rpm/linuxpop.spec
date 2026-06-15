@@ -18,7 +18,7 @@ Requires:       python3-xlib
 Requires:       xdotool
 Requires:       xclip
 Requires:       xdg-utils
-# Optional features — present on most desktops, pulled in when available:
+# Optional features - present on most desktops, pulled in when available:
 Recommends:     wl-clipboard
 Recommends:     ydotool
 Recommends:     qrencode
@@ -26,8 +26,8 @@ Recommends:     espeak-ng
 
 %description
 LinuxPop shows a floating popup of context-aware actions right above selected
-text — search, open URLs/paths, send to an AI assistant, encode/decode,
-translate, run shell commands — plus a clipboard manager and a no-code custom
+text - search, open URLs/paths, send to an AI assistant, encode/decode,
+translate, run shell commands - plus a clipboard manager and a no-code custom
 button wizard. Runs on KDE Plasma 6 / Wayland (native popup positioning) and on
 X11 desktops.
 
@@ -35,7 +35,7 @@ X11 desktops.
 %autosetup -n %{name}-%{version}
 
 %build
-# Pure Python — nothing to compile.
+# Pure Python - nothing to compile.
 
 %install
 appdir=%{buildroot}%{_datadir}/%{name}

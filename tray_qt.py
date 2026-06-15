@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""LinuxPop tray icon — Qt QSystemTrayIcon (StatusNotifierItem + DBusMenu).
+"""LinuxPop tray icon - Qt QSystemTrayIcon (StatusNotifierItem + DBusMenu).
 
 Uses QSystemTrayIcon, NOT the KF6 KStatusNotifierItem (which had a Fedora 44
 D-Bus registration bug). Qt's tray registers the SNI *and* exports the context
-menu as a com.canonical.dbusmenu object that plasmashell renders itself — the
+menu as a com.canonical.dbusmenu object that plasmashell renders itself - the
 only thing that actually shows a menu on KWin/Wayland (a parentless QMenu.popup
 never maps). Talks to the main LinuxPop process over a small length-prefixed
 JSON socket, unchanged from the previous implementation.
@@ -75,10 +75,10 @@ class TrayQt:
 
         # QSystemTrayIcon registers the SNI and exports `self._menu` as a
         # DBusMenu. plasmashell renders that menu on its own surface (correctly
-        # positioned) when the user activates the item — no client-side popup.
+        # positioned) when the user activates the item - no client-side popup.
         self._tray = QSystemTrayIcon()
         self._tray.setIcon(self._load_icon())
-        self._tray.setToolTip("LinuxPop — clipboard popup assistant")
+        self._tray.setToolTip("LinuxPop - clipboard popup assistant")
         self._tray.setContextMenu(self._menu)
         self._tray.activated.connect(self._on_activated)
         self._tray.show()

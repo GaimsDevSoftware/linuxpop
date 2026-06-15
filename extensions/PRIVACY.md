@@ -1,4 +1,4 @@
-# LinuxPop browser extension — privacy policy
+# LinuxPop browser extension - privacy policy
 
 **Effective date:** 2026-05-30
 **Applies to:** LinuxPop Send-to-AI bridge (Firefox, Chrome and
@@ -89,7 +89,7 @@ and confirm:
 - `host_permissions: ["http://127.0.0.1:8766/*", "http://127.0.0.1:8767/*", "http://127.0.0.1:8768/*"]`
 - `content_scripts.matches`: only the four chat hosts above
 
-If any of those don't match what you see, that's a bug — please open
+If any of those don't match what you see, that's a bug - please open
 an issue on GitHub.
 
 ## Changes to this policy
