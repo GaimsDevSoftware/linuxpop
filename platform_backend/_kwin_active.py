@@ -20,12 +20,15 @@ import dbus  # noqa: E402
 import dbus.service  # noqa: E402
 from dbus.mainloop.glib import DBusGMainLoop  # noqa: E402
 
-BUS_NAME = "org.linuxpop.ActiveWin"
+# App-id-prefixed so a Flatpak sandbox auto-allows owning it (see the note in
+# _kwin_cursor.py). Harmless outside Flatpak. _JS uses the constant to stay
+# in sync.
+BUS_NAME = "io.github.GaimsDevSoftware.LinuxPop.ActiveWin"
 OBJ_PATH = "/win"
 # KWin 6 renamed activeClient -> activeWindow; fall back for older builds.
 _JS = (
     'var c = workspace.activeWindow || workspace.activeClient;'
-    'callDBus("org.linuxpop.ActiveWin", "/win", "org.linuxpop.ActiveWin", '
+    f'callDBus("{BUS_NAME}", "{OBJ_PATH}", "{BUS_NAME}", '
     '"Report", c ? String(c.resourceClass) : "", c ? String(c.caption) : "");'
 )
 

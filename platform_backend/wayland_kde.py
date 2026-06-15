@@ -31,6 +31,20 @@ from .base import PlatformBackend
 
 _LAYER = None
 
+
+def _kwin_subprocess_env() -> dict:
+    """Environment for the `python3 -m platform_backend._kwin_*` helper
+    subprocesses. Puts the package root on PYTHONPATH so the child can
+    import platform_backend even when its cwd isn't the app directory -
+    notably inside a Flatpak sandbox, where it otherwise dies with
+    ModuleNotFoundError and the cursor/active-window query silently fails
+    (popup then falls back to the top-left corner)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = dict(os.environ)
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = root + (os.pathsep + existing if existing else "")
+    return env
+
 # Linux input-event codes (linux/input-event-codes.h) keyed by the
 # xdotool-style key names the rest of the app emits. Used to build
 # ydotool `key` CODE:STATE tokens. Letters/digits are lower-cased on
@@ -92,7 +106,7 @@ class WaylandSelectionWatcher:
             return
         self._stop.clear()
         self._thread = threading.Thread(
-            target=self._run, daemon=True, name="linuxpop-clickwatch")
+            target=self._run, daemon=True, name="linuxpop-wl-watch")
         self._thread.start()
 
     def stop(self) -> None:
@@ -703,6 +717,7 @@ class WaylandKdeBackend(PlatformBackend):
             out = subprocess.run(
                 [sys.executable, "-m", "platform_backend._kwin_cursor"],
                 capture_output=True, text=True, timeout=3.0,
+                env=_kwin_subprocess_env(),
             )
             parts = out.stdout.strip().split()
             if len(parts) == 2:
@@ -828,6 +843,7 @@ class WaylandKdeBackend(PlatformBackend):
             out = subprocess.run(
                 [sys.executable, "-m", "platform_backend._kwin_active"],
                 capture_output=True, text=True, timeout=3.0,
+                env=_kwin_subprocess_env(),
             )
             cls, _, caption = out.stdout.strip().partition("\t")
             return [s.lower() for s in (cls, caption) if s]

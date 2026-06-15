@@ -49,16 +49,25 @@ command: linuxpop
 
 finish-args:
   - --share=ipc
-  - --socket=x11
-  - --socket=fallback-x11
+  # Dual X11/Wayland: the Flathub-recommended combo is wayland + fallback-x11
+  # (NOT a plain x11 socket alongside them). fallback-x11 grants X11 only when
+  # there's no Wayland session, so the X11 backend still works under XWayland.
   - --socket=wayland              # KDE Plasma 6 Wayland backend
+  - --socket=fallback-x11         # X11 / XWayland backend
   - --share=network               # AI plugins (ChatGPT URL prefill, Ollama, etc.)
-  - --filesystem=home             # plugin install + recipes + snippets in ~/.config/linuxpop
+  # No filesystem perms: the app's ~/.config/linuxpop + ~/.cache/linuxpop
+  # resolve to the sandbox's private per-app XDG dirs automatically (the
+  # linter flags explicit grants for these as unnecessary). xdg-open of
+  # selected paths/URLs goes through the OpenURI portal.
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher    # system tray
-  - --talk-name=org.freedesktop.portal.OpenURI   # xdg-open via portal
-  - --talk-name=org.kde.KWin                     # Wayland: cursorPos + active window via KWin scripting
-  - --talk-name=org.kde.kglobalaccel             # Wayland: global hotkey registration
+  # KDE-specific buses needed for the native Wayland backend (cursor position
+  # + active window via KWin scripting, global hotkeys via KGlobalAccel).
+  # These trip the Flathub linter and need an exception request in the
+  # submission PR - there is no portal equivalent for KWin scripting / global
+  # shortcuts that LinuxPop relies on.
+  - --talk-name=org.kde.KWin
+  - --talk-name=org.kde.kglobalaccel
   - --device=dri                  # GTK rendering
 
 cleanup:
@@ -208,6 +217,19 @@ modules:
       - type: archive
         url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.3.0.tar.gz
         sha256: b4dc560973f0cd74e02f817ffa2fd44ba645a4f1ea94b7b9614dacc9f895f402
+
+  # ----- python3-dbus (dbus-python) -----
+  # The Wayland/KDE backend uses dbus-python for KGlobalAccel (global
+  # hotkeys) and KWin scripting over D-Bus; it is NOT in the GNOME runtime,
+  # so without it global hotkeys + KWin cursor/active-window queries fail in
+  # the sandbox ("No module named 'dbus'"). dbus-gmain is vendored in the
+  # tarball, so the meson build needs no network.
+  - name: python3-dbus
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus-python/dbus-python-1.3.2.tar.gz
+        sha256: ad67819308618b5069537be237f8e68ca1c7fcc95ee4a121fe6845b1418248f8
 
   # ----- LinuxPop itself -----
   - name: linuxpop
