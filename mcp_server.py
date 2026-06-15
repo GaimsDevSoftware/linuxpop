@@ -44,7 +44,7 @@ from pathlib import Path
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "linuxpop"
-SERVER_VERSION = "0.9.0"
+SERVER_VERSION = "0.9.1"
 
 # Log to a file so the user can debug without stdout-noise corrupting
 # the JSON-RPC stream the MCP client is reading.

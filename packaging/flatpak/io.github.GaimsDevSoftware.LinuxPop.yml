@@ -61,20 +61,18 @@ finish-args:
   # selected paths/URLs goes through the OpenURI portal.
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher    # system tray
-  # KDE-specific buses needed for the native Wayland backend (cursor position
-  # + active window via KWin scripting, global hotkeys via KGlobalAccel).
-  # These trip the Flathub linter and need an exception request in the
-  # submission PR - there is no portal equivalent for KWin scripting / global
-  # shortcuts that LinuxPop relies on.
+  - --talk-name=org.kde.kglobalaccel    # global hotkey (linter-accepted)
+  # The ONE finish-arg that needs a Flathub exception. The native Wayland
+  # popup anchors at the cursor / selection via KWin scripting
+  # (workspace.cursorPos). Wayland exposes NO protocol or XDG portal for a
+  # client's global pointer position, and KWin scripting is the only source on
+  # Plasma - hence the talk-name. Requested explicitly in the submission PR.
   - --talk-name=org.kde.KWin
-  - --talk-name=org.kde.kglobalaccel
-  # Shared /tmp so host-side KWin can read the tiny cursor-position script
-  # the Wayland backend writes (KWin's loadScript takes a file PATH, and a
-  # sandbox-private /tmp gives KWin a path it can't open -> popup lands at
-  # 0,0). The script is short-lived and unloaded immediately. This needs a
-  # Flathub exception alongside the KWin talk-name (no portal exposes the
-  # global cursor position).
-  - --filesystem=/tmp
+  # App-scoped runtime dir (NOT host /tmp) for the tiny, short-lived script
+  # KWin's loadScript() reads by path: $XDG_RUNTIME_DIR/linuxpop maps to the
+  # same host path KWin can open, so no broad /tmp grant is needed and the
+  # host-tmp linter error is gone.
+  - --filesystem=xdg-run/linuxpop:create
   - --device=dri                  # GTK rendering
 
 cleanup:
