@@ -96,13 +96,20 @@ class TrayQt:
 
     # ─── icon ───
     def _load_icon(self) -> QIcon:
+        # Prefer the themed symbolic NAME: that way Qt sends the SNI host
+        # (plasmashell) an IconName it can recolor to match the PANEL theme.
+        # Loading the SVG by file path instead makes Qt rasterise it to a
+        # fixed pixmap (currentColor -> black), which the panel can't recolor
+        # and which is near-invisible on a dark panel.
+        themed = QIcon.fromTheme("linuxpop-tray-symbolic")
+        if themed is not None and not themed.isNull():
+            return themed
         for name in ("linuxpop-tray-symbolic", "linuxpop"):
             p = Path(ICON_DIR) / f"{name}.svg"
             if p.is_file():
                 ic = QIcon(str(p))
                 if not ic.isNull():
                     return ic
-        # Fall back to a themed name so we never show a blank item.
         return (QIcon.fromTheme("linuxpop")
                 or QIcon.fromTheme("applications-internet"))
 
