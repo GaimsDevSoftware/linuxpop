@@ -68,6 +68,13 @@ finish-args:
   # shortcuts that LinuxPop relies on.
   - --talk-name=org.kde.KWin
   - --talk-name=org.kde.kglobalaccel
+  # Shared /tmp so host-side KWin can read the tiny cursor-position script
+  # the Wayland backend writes (KWin's loadScript takes a file PATH, and a
+  # sandbox-private /tmp gives KWin a path it can't open -> popup lands at
+  # 0,0). The script is short-lived and unloaded immediately. This needs a
+  # Flathub exception alongside the KWin talk-name (no portal exposes the
+  # global cursor position).
+  - --filesystem=/tmp
   - --device=dri                  # GTK rendering
 
 cleanup:
