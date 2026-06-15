@@ -96,15 +96,17 @@ class TrayQt:
 
     # ─── icon ───
     def _load_icon(self) -> QIcon:
-        # Prefer the themed symbolic NAME: that way Qt sends the SNI host
-        # (plasmashell) an IconName it can recolor to match the PANEL theme.
-        # Loading the SVG by file path instead makes Qt rasterise it to a
-        # fixed pixmap (currentColor -> black), which the panel can't recolor
-        # and which is near-invisible on a dark panel.
-        themed = QIcon.fromTheme("linuxpop-tray-symbolic")
-        if themed is not None and not themed.isNull():
-            return themed
-        for name in ("linuxpop-tray-symbolic", "linuxpop"):
+        # Use the COLOURED brand badge for the tray. It's legible on both
+        # light and dark panels with no recolouring.
+        #
+        # Why not the monochrome symbolic icon: it relies on the panel
+        # recolouring it to the panel's foreground. plasmashell does NOT
+        # recolour custom (non-Breeze) symbolic icons - verified live: even
+        # with IconName set it rendered solid black, invisible on a dark
+        # panel. And the app's own colour scheme can't be trusted to pick a
+        # colour either (e.g. a light Breeze scheme under a dark Plasma panel
+        # theme like WhiteSur-alt). A self-coloured badge sidesteps both.
+        for name in ("linuxpop", "linuxpop-tray-symbolic"):
             p = Path(ICON_DIR) / f"{name}.svg"
             if p.is_file():
                 ic = QIcon(str(p))
