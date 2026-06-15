@@ -127,6 +127,10 @@ class _Bubble:
         self._pointer_in_bubble = False
         self._combo_open = False
         self._click_watcher = None
+        # Set once the window is destroyed so late idle callbacks from an
+        # in-flight re-translation worker don't touch dead widgets and a
+        # racing timeout+outside-click can't destroy the window twice.
+        self._dead = False
 
         _install_css()
         self.win = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
@@ -287,10 +291,17 @@ class _Bubble:
 
     # ---- result + interaction -------------------------------------------
     def _set_result(self, translated: str, src: str) -> None:
+        if self._dead:
+            return
         src_label = _LABEL_BY_CODE.get(src, src or "?")
         self._src_lbl.set_text(src_label)
         self._text_lbl.set_text(translated or "(no translation)")
         self._last_translation = translated or ""
+
+    def _set_error(self, msg: str) -> None:
+        if self._dead:
+            return
+        self._text_lbl.set_text(msg)
 
     def _on_copy(self, *_):
         try:
@@ -310,7 +321,7 @@ class _Bubble:
             try:
                 translated, src = _translate_text(self._original, code)
             except Exception as exc:  # noqa: BLE001
-                GLib.idle_add(self._text_lbl.set_text, f"(error: {exc})")
+                GLib.idle_add(self._set_error, f"(error: {exc})")
                 return
             GLib.idle_add(self._set_result, translated, src)
         threading.Thread(target=_work, daemon=True,
@@ -322,6 +333,9 @@ class _Bubble:
         return False
 
     def dismiss(self) -> None:
+        if self._dead:
+            return
+        self._dead = True
         if self._dismiss_id is not None:
             GLib.source_remove(self._dismiss_id)
             self._dismiss_id = None

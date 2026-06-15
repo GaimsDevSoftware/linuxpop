@@ -516,6 +516,15 @@ class WaylandDoubleClickWatcher:
 
     def stop(self) -> None:
         self._stop.set()
+        # Join briefly so the /dev/input fds are closed (in _run's finally)
+        # before the caller drops this watcher and possibly starts a fresh
+        # one on the next toggle. The read loop wakes at most every ~0.3 s,
+        # so this returns quickly; bounded timeout keeps a wedged thread
+        # from blocking the settings toggle indefinitely.
+        t = self._thread
+        if t is not None and t.is_alive():
+            t.join(timeout=0.6)
+        self._thread = None
 
     def _required_mod_name(self) -> str:
         """The configured modifier name, read fresh each click so changing
