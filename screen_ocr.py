@@ -290,6 +290,16 @@ def run_ocr_to_clipboard() -> None:
     tray menu. Captures a region, OCRs it, puts the result on the
     clipboard, and shows the result text in the popup (so it lands as
     a selection the rest of LinuxPop's actions can pick up)."""
+    if os.path.exists("/.flatpak-info"):
+        # Screen OCR needs a screenshot tool + tesseract; neither is in the
+        # Flatpak (and Wayland capture would need the Screenshot portal). Don't
+        # show the distro "install ..." hint to a Flatpak user - just say so.
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "4000",
+             "-i", "dialog-information", "LinuxPop OCR",
+             "Screen OCR isn't available in the Flatpak build of LinuxPop."],
+            check=False)
+        return
     ok_sup, reason = is_supported()
     if not ok_sup:
         subprocess.run(

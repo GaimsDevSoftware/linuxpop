@@ -19,9 +19,12 @@ def _speak(text: str) -> None:
     if shutil.which("espeak"):
         subprocess.Popen(["espeak", "--", text], start_new_session=True)
         return
+    if shutil.which("espeak-ng"):
+        subprocess.Popen(["espeak-ng", "--", text], start_new_session=True)
+        return
     subprocess.run(
-        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Speak - missing dependency",
-         "Install spd-say (speech-dispatcher) or espeak"],
+        ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error", "Speak",
+         "No text-to-speech engine is available."],
         check=False,
     )
 

@@ -54,6 +54,7 @@ finish-args:
   # there's no Wayland session, so the X11 backend still works under XWayland.
   - --socket=wayland              # KDE Plasma 6 Wayland backend
   - --socket=fallback-x11         # X11 / XWayland backend
+  - --socket=pulseaudio           # text-to-speech (espeak-ng) audio output
   - --share=network               # AI plugins (ChatGPT URL prefill, Ollama, etc.)
   # No filesystem perms: the app's ~/.config/linuxpop + ~/.cache/linuxpop
   # resolve to the sandbox's private per-app XDG dirs automatically (the
@@ -73,6 +74,11 @@ finish-args:
   # same host path KWin can open, so no broad /tmp grant is needed and the
   # host-tmp linter error is gone.
   - --filesystem=xdg-run/linuxpop:create
+  # Read-only home so the "open file/folder" action can hand the selected
+  # path to the OpenURI portal (xdg-open needs to open the file to pass its
+  # fd; with no filesystem access the portal call silently no-ops). Read-only
+  # is sufficient - the launched handler runs host-side with its own access.
+  - --filesystem=home:ro
   - --device=dri                  # GTK rendering
 
 cleanup:
@@ -257,6 +263,41 @@ modules:
         sha256: e3ef7027b41e4e55fadb56e3b3257dc8ee92154b639fe67fc4c8e05e9d976c60
 
   # ----- LinuxPop itself -----
+  # ----- QR code generator (qr_code plugin) -----
+  - name: qrencode
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/fukuchi/libqrencode/archive/refs/tags/v4.1.1.tar.gz
+        sha256: 5385bc1b8c2f20f3b91d258bf8ccc8cf62023935df2d2676b5b67049f31a049c
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
+  # ----- Text-to-speech (speak plugin): pcaudiolib (audio backend) + espeak-ng -----
+  - name: pcaudiolib
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/espeak-ng/pcaudiolib/archive/refs/tags/1.2.tar.gz
+        sha256: 44b9d509b9eac40a0c61585f756d76a7b555f732e8b8ae4a501c8819c59c6619
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
+  - name: espeak-ng
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.51.tar.gz
+        sha256: f0e028f695a8241c4fa90df7a8c8c5d68dcadbdbc91e758a97e594bbb0a3bdbf
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
   - name: linuxpop
     buildsystem: simple
     build-commands:

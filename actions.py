@@ -170,6 +170,16 @@ def replace_selection(new_text: str) -> None:
     import time as _t
     _t.sleep(0.05)
     backend.paste()
+    if not backend.can_paste():
+        # No keystroke injector (e.g. the Flatpak sandbox on Wayland has no
+        # ydotool/wtype): the result is on the clipboard but wasn't pasted in
+        # place. Tell the user so they aren't left wondering why nothing changed.
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "3000",
+             "-i", "edit-paste", "Copied to clipboard",
+             "Auto-paste isn't available here — press Ctrl+V to paste."],
+            check=False,
+        )
 
 
 def _desktop_env() -> dict:
