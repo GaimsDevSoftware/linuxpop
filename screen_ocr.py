@@ -145,6 +145,81 @@ def _portal_screenshot(out_path: Path) -> bool:
     return out_path.is_file() and out_path.stat().st_size > 0
 
 
+def _host_has(binary: str) -> bool:
+    """Is `binary` on the host's PATH? (In Flatpak the capture tools live on
+    the host, not in the sandbox.)"""
+    try:
+        r = subprocess.run(
+            ["flatpak-spawn", "--host", "sh", "-c", f"command -v {binary}"],
+            capture_output=True, text=True, timeout=5)
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _host_capture_region(out_path: Path) -> bool:
+    """Flatpak: drive the HOST's region-capture tool (the same spectacle / grim
+    / maim flow a native install uses) through flatpak-spawn, instead of the
+    clunkier Screenshot portal. The capture lands in $XDG_RUNTIME_DIR/linuxpop,
+    which is bind-mounted to the identical host path, then we move it to
+    out_path. Returns False (so the caller can fall back to the portal) when no
+    host tool is present or the user cancelled."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    shared_dir = Path(runtime) / "linuxpop"
+    try:
+        shared_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    shared = shared_dir / f"ocr-region-{os.getpid()}.png"
+    try:
+        shared.unlink()
+    except OSError:
+        pass
+    sp = str(shared)
+
+    def host(*argv, timeout):
+        try:
+            return subprocess.run(["flatpak-spawn", "--host", *argv],
+                                  capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    ok = False
+    if _host_has("spectacle"):
+        # -r region, -b background (no GUI window), -n no notification: a
+        # direct rectangular drag, exactly like a native KDE install.
+        host("spectacle", "-r", "-b", "-n", "-o", sp, timeout=120)
+        ok = shared.is_file() and shared.stat().st_size > 0
+    elif _host_has("grim") and _host_has("slurp"):
+        geom = host("slurp", timeout=60)
+        if geom and geom.returncode == 0 and geom.stdout.strip():
+            host("grim", "-g", geom.stdout.strip(), sp, timeout=30)
+            ok = shared.is_file() and shared.stat().st_size > 0
+    elif _host_has("maim"):
+        host("maim", "-s", sp, timeout=60)
+        ok = shared.is_file() and shared.stat().st_size > 0
+    elif _host_has("gnome-screenshot"):
+        host("gnome-screenshot", "--area", "--file", sp, timeout=60)
+        ok = shared.is_file() and shared.stat().st_size > 0
+    else:
+        return False  # no host capture tool; caller tries the portal
+    if not ok:
+        try:
+            shared.unlink()
+        except OSError:
+            pass
+        return False
+    try:
+        shutil.move(sp, str(out_path))
+    except OSError:
+        try:
+            shutil.copyfile(sp, str(out_path))
+            shared.unlink()
+        except OSError:
+            return False
+    return out_path.is_file() and out_path.stat().st_size > 0
+
+
 def _has_capture_tool() -> bool:
     """True if we can capture a region. Inside Flatpak we go through the XDG
     Screenshot portal (no binary needed). Otherwise we need spectacle/grim
@@ -210,6 +285,11 @@ def _capture_region(out_path: Path) -> bool:
     drawn rectangle and write it as a PNG. Returns False if the user
     cancelled or the tool errored out."""
     if _in_flatpak():
+        # Prefer the native host tools (spectacle region drag, etc.) via
+        # flatpak-spawn; only fall back to the Screenshot portal if the host
+        # has no capture tool at all.
+        if _host_capture_region(out_path):
+            return True
         return _portal_screenshot(out_path)
     if shutil.which("spectacle"):
         # KDE's capture tool. Its rectangular-region selector works
