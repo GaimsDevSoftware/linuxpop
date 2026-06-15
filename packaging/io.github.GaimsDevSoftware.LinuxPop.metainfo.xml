@@ -96,6 +96,16 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.9.6" date="2026-06-15">
+      <description>
+        <p>The editing buttons work in the Flatpak again. Select all, Cut,
+        Paste, Backspace and paste-and-send all press real keys, and on
+        KDE Wayland that needs a tool the sandbox does not carry, so they had
+        been doing nothing. They now reach the host's key-injection tool the
+        same way the terminal and file actions do, so the buttons behave like
+        a normal install.</p>
+      </description>
+    </release>
     <release version="0.9.5" date="2026-06-15">
       <description>
         <p>Screen OCR feels like it used to again. The Flatpak build had been
