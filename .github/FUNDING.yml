@@ -1,6 +1,7 @@
 # GitHub uses this file to render a Sponsor button at the top of the
-# repo page. PayPal.me is the primary donation channel — set up in
-# May 2026 specifically for LinuxPop contributors.
+# repo page. PayPal.me is the primary donation channel for GaimsDev.
+# (GitHub only accepts the username here and builds paypal.me/<name>;
+# locale params like ?country.x=NO live in the in-app link, not here.)
 #
 # Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
-paypal: linuxpop
+paypal: gaimsdev
