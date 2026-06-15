@@ -284,7 +284,7 @@ DEFAULTS: dict[str, Any] = {
     # (each is independent - show only the ones you've actually set up).
     # Conventional defaults are pre-filled assuming the GitHub org name
     # matches the upstream repo; update or blank out as needed.
-    "support_paypal_url":   "https://paypal.me/linuxpop",
+    "support_paypal_url":   "https://paypal.me/gaimsdev",
     # 'Skip short auto-popup selections' filter. Off by default to
     # match PopClip out of the box (no minimum-size knob there). When
     # on, the watcher silently drops selections shorter than
