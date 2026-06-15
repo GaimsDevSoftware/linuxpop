@@ -23,9 +23,13 @@ no telemetry.
 - **Plugin system** - drop a `.py` file in `~/.config/linuxpop/plugins/` or
   install from the built-in catalog
 - **Bundled plugins** - Base64, JSON pretty-print, URL encode/decode,
-  calculator, case conversion, slugify, QR codes, send-to-AI, local Ollama AI
+  calculator, case conversion, slugify, QR codes, in-place translation,
+  send-to-AI, local Ollama AI, run-in-terminal for command-like selections
+- **Double-click trigger** - hold a modifier and double-click a word to pop
+  the action bar (works on native Wayland, not just XWayland)
 - **No data leaves your machine** unless a plugin explicitly does so (e.g.
-  "Send to Claude" opens a browser)
+  "Send to Claude" opens it via the `claude://` desktop deep link, or your
+  browser as a fallback)
 
 ---
 
@@ -95,6 +99,11 @@ Right-click the tray icon → **Settings**. Or hand-edit
 | `min_selection_length` | `1` | Ignore selections shorter than this |
 | `terminal_keep_open` | `true` | Keep terminal open after running a command |
 | `ai_paste_delay_seconds` | `2.5` | Wait before auto-pasting into a chat AI |
+| `double_click_popup_enabled` | `false` | Hold a modifier + double-click a word to pop the bar |
+| `double_click_modifier` | `ctrl` | Modifier for the double-click trigger (`ctrl`/`alt`/`super`/`shift`) |
+| `translate_target_lang` | `en` | Target language for the Translate plugin (ISO code) |
+| `editable_atspi_listener_enabled` | `false` | Use AT-SPI for editable detection + selection geometry |
+| `popup_anchor_to_selection` | `true` | Anchor popup to the selection rect (needs AT-SPI enabled) |
 
 ### Plugins
 
@@ -131,10 +140,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full plugin API.
   Wayland backend for KDE Plasma 6 (selection via `wl-clipboard`, popup
   placement via `gtk-layer-shell`, cursor position via KWin's scripting API).
   Other Wayland compositors (GNOME, wlroots) fall back to the X11 path under
-  XWayland. See [docs/FEDORA-KDE.md](docs/FEDORA-KDE.md). On Wayland/KDE a few
-  things are still rough: the global hotkey uses KGlobalAccel (verify it binds
-  in System Settings → Shortcuts), Esc-to-dismiss and click-outside are softer
-  than on X11, and the active-window blocklist is disabled.
+  XWayland. See [docs/FEDORA-KDE.md](docs/FEDORA-KDE.md). On Wayland/KDE the
+  global hotkey uses KGlobalAccel (verify it binds in System Settings →
+  Shortcuts), key injection (paste) goes through `ydotool`, and the
+  active-window blocklist is not yet wired up. Popup placement, hover
+  persistence, and click-outside dismissal all work natively. Anchoring the
+  popup to the selected-text rectangle (rather than the mouse) is available
+  when desktop accessibility / AT-SPI is enabled.
 - **HiDPI** - works, but tested mainly on 2× scaling. File an issue if
   positioning is off on your setup.
 - **Some panel grabs** - if another app holds an X11 input grab (e.g. an open
