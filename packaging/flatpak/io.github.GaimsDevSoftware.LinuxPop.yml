@@ -198,6 +198,12 @@ modules:
   # wayland-protocols from the SDK.
   - name: wl-clipboard
     buildsystem: meson
+    config-opts:
+      # Shell completions auto-detect absolute /usr paths (fish in
+      # particular), which fail to install into the /app prefix in the
+      # build sandbox. The app only needs the wl-copy/wl-paste binaries.
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
     sources:
       - type: archive
         url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.3.0.tar.gz

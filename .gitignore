@@ -35,3 +35,4 @@ extensions/firefox/build/
 extensions/firefox/dist/
 extensions/chrome/build/
 extensions/chrome/dist/
+packaging/flatpak/shared-modules/
