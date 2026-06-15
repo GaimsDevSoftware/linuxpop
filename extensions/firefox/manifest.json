@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LinuxPop Send-to-AI bridge",
-  "version": "0.1.0",
+  "version": "0.9.0",
 
   "description": "Privacy-respecting bridge between the LinuxPop Linux desktop daemon and AI chat sites. Only writes user-supplied text into the focused composer; never reads conversation history. The only network destination is your own LinuxPop daemon on 127.0.0.1. Zero telemetry. Source: https://github.com/GaimsDevSoftware/linuxpop",
 

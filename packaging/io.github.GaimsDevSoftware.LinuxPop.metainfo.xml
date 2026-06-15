@@ -96,15 +96,17 @@
   <content_rating type="oars-1.1" />
 
   <releases>
-    <release version="0.1.0" date="2026-05-20">
+    <release version="0.9.0" date="2026-06-15">
       <description>
         <p>First public release.</p>
         <ul>
-          <li>Selection-driven popup with context classifier</li>
-          <li>17 built-in plugins + JSON-defined recipe system</li>
+          <li>Selection-driven popup of context-aware actions</li>
+          <li>Runs on X11 and on KDE Plasma 6 / Wayland</li>
+          <li>Built-in plugins + a JSON-defined recipe system</li>
+          <li>In-place translation bubble with a language picker</li>
           <li>Clipboard manager and snippets</li>
           <li>Step-by-step custom-button wizard</li>
-          <li>Premium dark theme</li>
+          <li>Light and premium dark themes</li>
         </ul>
       </description>
     </release>
