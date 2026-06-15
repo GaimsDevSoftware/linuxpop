@@ -118,7 +118,7 @@ PKGBUILD is one of the cheapest packages you can write:
 ```sh
 # /aur/linuxpop/PKGBUILD
 pkgname=linuxpop
-pkgver=0.1.0
+pkgver=0.9.0
 pkgrel=1
 pkgdesc="Floating popup of context-aware actions for selected text"
 arch=('any')

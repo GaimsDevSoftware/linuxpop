@@ -180,7 +180,7 @@ tracked((0, 1232), "FIG. 01   THE MARK   ·   CAPSULE · TAIL · TRIAD", F_MONO(
 tracked((200, 196), "LINUXPOP", F_GEOM(17), INK, 9)
 tracked((200, 224), "VISUAL  SYSTEM", F_MONO(13.5), INK2, 7)
 tracked((1800, 196), "PLATE  I  /  IV", F_MONO(15), INK2, 6, anchor_left=False)
-tracked((1800, 224), "EST. 0.1.0", F_MONO(13.5), INK2, 6, anchor_left=False)
+tracked((1800, 224), "EST. 0.9.0", F_MONO(13.5), INK2, 6, anchor_left=False)
 d.line([(px(200), px(286)), (px(1800), px(286))], fill=HAIR, width=max(1, S))
 
 # ---- 4. charge spectrum (calibrated band) ------------------------------
