@@ -30,8 +30,9 @@ from typing import Callable
 
 from classifier import ContentType
 from plugin_base import Plugin
+from xdg_paths import CONFIG_DIR
 
-RECIPES_DIR = Path(os.path.expanduser("~/.config/linuxpop/recipes"))
+RECIPES_DIR = CONFIG_DIR / "recipes"
 
 _CTYPE_BY_NAME = {
     "plain_text": ContentType.PLAIN_TEXT,

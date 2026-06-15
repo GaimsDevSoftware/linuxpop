@@ -128,9 +128,11 @@ HISTORY_SIZE = _history_size()
 CAPTURE_IMAGES = _capture_images()
 POLL_INTERVAL = _poll_interval()
 
-CACHE_DIR = Path(os.path.expanduser("~/.cache/linuxpop/clipboard"))
+from xdg_paths import CACHE_DIR as _LP_CACHE, CONFIG_DIR as _LP_CONFIG
+
+CACHE_DIR = _LP_CACHE / "clipboard"
 HISTORY_FILE = CACHE_DIR / "history.json"
-SNIPPETS_FILE = Path(os.path.expanduser("~/.config/linuxpop/snippets.json"))
+SNIPPETS_FILE = _LP_CONFIG / "snippets.json"
 IMAGES_DIR = CACHE_DIR / "images"
 
 

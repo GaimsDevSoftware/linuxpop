@@ -96,6 +96,15 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.9.4" date="2026-06-15">
+      <description>
+        <p>Your settings finally stick. In the Flatpak build the app was saving
+        its settings, custom buttons, snippets and clipboard history to a
+        temporary folder that the sandbox wiped on every restart, so things like
+        switching off a search button never held. It now writes to its own
+        permanent folder, so whatever you change stays changed.</p>
+      </description>
+    </release>
     <release version="0.9.3" date="2026-06-15">
       <description>
         <p>Flatpak: screen OCR is back (bundled tesseract + Screenshot portal);

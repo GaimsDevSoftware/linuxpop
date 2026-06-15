@@ -19,7 +19,9 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-USER_ICONS_DIR = Path(os.path.expanduser("~/.config/linuxpop/icons"))
+from xdg_paths import CONFIG_DIR  # noqa: E402
+
+USER_ICONS_DIR = CONFIG_DIR / "icons"
 HICOLOR_APPS = Path.home() / ".local/share/icons/hicolor/scalable/apps"
 
 # How many icons to render per "page". GTK FlowBox is fast enough that

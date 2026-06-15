@@ -42,13 +42,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from xdg_paths import CACHE_DIR, CONFIG_DIR  # noqa: E402
+
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "linuxpop"
-SERVER_VERSION = "0.9.3"
+SERVER_VERSION = "0.9.4"
 
 # Log to a file so the user can debug without stdout-noise corrupting
 # the JSON-RPC stream the MCP client is reading.
-_LOG_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
+_LOG_DIR = CACHE_DIR
 _LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     filename=str(_LOG_DIR / "mcp.log"),
@@ -109,8 +112,7 @@ def _read_json(path: Path):
 def tool_get_clipboard_history(args: dict) -> dict:
     limit = int((args or {}).get("limit", 25))
     limit = max(1, min(limit, 200))
-    history_path = Path(os.path.expanduser(
-        "~/.cache/linuxpop/clipboard/history.json"))
+    history_path = CACHE_DIR / "clipboard" / "history.json"
     raw = _read_json(history_path) or []
     items = []
     for entry in raw[:limit]:
@@ -128,8 +130,7 @@ def tool_get_clipboard_history(args: dict) -> dict:
 
 
 def tool_list_snippets(_args: dict) -> dict:
-    snippets_path = Path(os.path.expanduser(
-        "~/.config/linuxpop/snippets.json"))
+    snippets_path = CONFIG_DIR / "snippets.json"
     raw = _read_json(snippets_path) or []
     items = []
     for entry in raw:
@@ -149,8 +150,7 @@ def tool_expand_snippet(args: dict) -> dict:
     name = (args or {}).get("name", "")
     if not name:
         raise ValueError("'name' is required")
-    snippets_path = Path(os.path.expanduser(
-        "~/.config/linuxpop/snippets.json"))
+    snippets_path = CONFIG_DIR / "snippets.json"
     snippets = _read_json(snippets_path) or []
     match = None
     for s in snippets:
@@ -168,7 +168,7 @@ def tool_expand_snippet(args: dict) -> dict:
 
 
 def tool_list_recipes(_args: dict) -> dict:
-    recipes_dir = Path(os.path.expanduser("~/.config/linuxpop/recipes"))
+    recipes_dir = CONFIG_DIR / "recipes"
     items = []
     if recipes_dir.is_dir():
         for f in sorted(recipes_dir.glob("*.json")):

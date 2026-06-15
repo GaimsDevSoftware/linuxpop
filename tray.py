@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
+from xdg_paths import CACHE_DIR as SOCKET_DIR
 TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_qt.py")
 
 

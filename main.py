@@ -39,13 +39,13 @@ from editable_detect import is_focus_editable, focused_selection_rect
 from platform_backend import get_backend
 from popup import PopupWindow
 from settings import get_settings
+from xdg_paths import CACHE_DIR, CONFIG_DIR
 
-__version__ = "0.9.3"
+__version__ = "0.9.4"
 
-CACHE_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
 LOG_FILE = CACHE_DIR / "linuxpop.log"
 LOCK_FILE = CACHE_DIR / "linuxpop.lock"
-FIRST_RUN_MARKER = Path(os.path.expanduser("~/.config/linuxpop/.first-run-done"))
+FIRST_RUN_MARKER = CONFIG_DIR / ".first-run-done"
 
 # Held for the lifetime of the process; the kernel releases the flock when
 # the fd is closed (i.e. when we exit, even ungracefully). Storing it at
@@ -724,8 +724,8 @@ def main(argv: list[str] | None = None) -> int:
         # curated default bundle from a clean state.
         for marker in (
             FIRST_RUN_MARKER,
-            Path(os.path.expanduser("~/.config/linuxpop/.default-plugins-seeded")),
-            Path(os.path.expanduser("~/.config/linuxpop/.default-recipes-seeded")),
+            CONFIG_DIR / ".default-plugins-seeded",
+            CONFIG_DIR / ".default-recipes-seeded",
         ):
             try:
                 marker.unlink(missing_ok=True)

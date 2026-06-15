@@ -11,7 +11,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-CONFIG_DIR = Path(os.path.expanduser("~/.config/linuxpop"))
+from xdg_paths import CONFIG_DIR
+
 CONFIG_PATH = CONFIG_DIR / "settings.json"
 
 DEFAULTS: dict[str, Any] = {

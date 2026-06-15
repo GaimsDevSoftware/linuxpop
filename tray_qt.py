@@ -17,9 +17,11 @@ from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtGui import QIcon, QCursor
 from PySide6.QtCore import QTimer
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from xdg_paths import CACHE_DIR as SOCKET_DIR, CONFIG_DIR  # noqa: E402
+
 ICON_DIR = str(Path(__file__).resolve().parent / "icons")
-SOCKET_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
-SETTINGS_FILE = Path(os.path.expanduser("~/.config/linuxpop/settings.json"))
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
 
 
 def _tray_icon_style() -> str:
