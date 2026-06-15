@@ -231,6 +231,26 @@ modules:
         url: https://dbus.freedesktop.org/releases/dbus-python/dbus-python-1.3.2.tar.gz
         sha256: ad67819308618b5069537be237f8e68ca1c7fcc95ee4a121fe6845b1418248f8
 
+  # ----- PySide6 (Qt6) for the system-tray subprocess -----
+  # tray_qt.py uses QSystemTrayIcon (StatusNotifierItem + DBusMenu) and
+  # QtSvg to recolour the tray glyph. The GNOME runtime has no Qt, so bundle
+  # PySide6-Essentials (Core/Gui/Widgets/DBus/Svg + platform plugins) and
+  # its shiboken6 runtime. abi3 wheels -> run on the runtime's Python 3.13.
+  # Without this the tray subprocess dies ("could not connect") in-sandbox.
+  - name: python3-pyside6
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps
+          shiboken6-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+          pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/c7/9b/e0355d8897b5c150770f1d95718aad17d432fcc9c035c04f3f58427d4693/shiboken6-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+        sha256: 9a8bccfafc8805254cabcfa1edfaf55cd52889f4998c91ad0d9a4433fb1bcdbe
+      - type: file
+        url: https://files.pythonhosted.org/packages/5c/49/0e1237c4400bec7e335d2c4eeb49bc40d9fd88a9ac44ca9083ce1abdc308/pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_34_x86_64.whl
+        sha256: e3ef7027b41e4e55fadb56e3b3257dc8ee92154b639fe67fc4c8e05e9d976c60
+
   # ----- LinuxPop itself -----
   - name: linuxpop
     buildsystem: simple
