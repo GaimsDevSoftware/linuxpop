@@ -2,6 +2,8 @@
 
 > A PopClip-inspired floating action popup for Linux.
 
+![LinuxPop in action — select text, a popup of context actions appears, here translating the selection](docs/linuxpop-demo.gif)
+
 Select any text on your screen - LinuxPop pops up a small bar of context-aware
 actions right above the selection. Copy, open URLs, run shell commands, ask an
 AI, encode/decode, calculate - all without leaving the keyboard or mouse where
