@@ -33,13 +33,17 @@
 #     work); until then the Wayland paste path degrades to "copy + press
 #     Ctrl+V yourself". Outside Flatpak the host's ydotool is used.
 #
-#   RUNTIME VERSION: this targets org.gnome.Platform//46. Verify at build
-#     time that the chosen runtime still ships GTK3 + that 46 is not EOL on
-#     Flathub; bump to a current GNOME runtime if needed.
+#   RUNTIME VERSION: org.gnome.Platform//49 (GNOME 46 is EOL). 49 was
+#     verified to ship GTK3, the Handy-1 typelib, and python3-gi on Python
+#     3.13 — the bundled Python wheels are cp313 to match. Re-check the
+#     latest supported GNOME runtime at submission time.
 
 app-id: io.github.GaimsDevSoftware.LinuxPop
 runtime: org.gnome.Platform
-runtime-version: '46'
+# GNOME 46 went EOL (2025-04); 49 is current and verified to still ship
+# GTK3 (libgtk-3 + Gtk-3.0 typelib), the Handy-1 typelib, and python3-gi
+# (Python 3.13). The bundled Python wheels below must match cp313.
+runtime-version: '49'
 sdk: org.gnome.Sdk
 command: linuxpop
 
@@ -164,11 +168,11 @@ modules:
     buildsystem: simple
     build-commands:
       - pip3 install --prefix=/app --no-build-isolation --no-deps
-          pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+          pillow-12.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
     sources:
       - type: file
-        url: https://files.pythonhosted.org/packages/ac/10/c67e20445a707f7a610699bba4fe050583b688d8cd2d202572b257f46600/pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-        sha256: 5e84b6cc6a4a3d76c153a6b19270b3526a5a8ed6b09501d3af891daa2a9de7d6
+        url: https://files.pythonhosted.org/packages/a8/68/b93e09e5e8549019e61acf49f65b1a8530765a7f812c77a7461bca7e4494/pillow-12.2.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
+        sha256: 03f6fab9219220f041c74aeaa2939ff0062bd5c364ba9ce037197f4c6d498cd9
 
   # ----- gtk-layer-shell -----
   # Positions the popup as a Wayland layer-shell surface — the Wayland/KDE
