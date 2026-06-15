@@ -41,7 +41,7 @@ from popup import PopupWindow
 from settings import get_settings
 from xdg_paths import CACHE_DIR, CONFIG_DIR
 
-__version__ = "0.9.4"
+__version__ = "0.9.5"
 
 LOG_FILE = CACHE_DIR / "linuxpop.log"
 LOCK_FILE = CACHE_DIR / "linuxpop.lock"

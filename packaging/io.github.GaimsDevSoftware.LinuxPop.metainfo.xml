@@ -96,6 +96,16 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.9.5" date="2026-06-15">
+      <description>
+        <p>Screen OCR feels like it used to again. The Flatpak build had been
+        routing capture through the desktop's screenshot portal, which on KDE
+        popped Spectacle's full window and an extra confirm step. It now freezes
+        the screen and lets you drag one rectangle, the same quick flow as a
+        normal install, by driving the host's own capture tool. Recognition
+        still runs on the bundled engine, no setup needed.</p>
+      </description>
+    </release>
     <release version="0.9.4" date="2026-06-15">
       <description>
         <p>Your settings finally stick. In the Flatpak build the app was saving
