@@ -223,6 +223,22 @@ _MOCK_CSS = b"""
     font-family: monospace;
     color: #a5b4fc;
 }
+/* The step tiles and preview cards are dark by design (they echo the
+   premium popup mockup), so their text/icons must be light explicitly -
+   otherwise in the LIGHT app theme the labels inherit dark text and end
+   up dark-on-dark / unreadable. */
+.lp-step-tile label,
+.lp-preview-card label {
+    color: #e8ecf4;
+}
+.lp-step-tile .dim-label,
+.lp-preview-card .dim-label {
+    color: #aeb6c7;
+}
+.lp-step-tile image,
+.lp-preview-card image {
+    color: #c7cedd;
+}
 """
 _css_installed = False
 
