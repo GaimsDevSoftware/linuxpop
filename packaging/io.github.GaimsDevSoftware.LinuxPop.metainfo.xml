@@ -96,6 +96,14 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.9.3" date="2026-06-15">
+      <description>
+        <p>Flatpak: screen OCR is back (bundled tesseract + Screenshot portal);
+        run-in-terminal and run-command now run on the host via flatpak-spawn;
+        open file/folder works for any path; dropped the home filesystem grant
+        that was blocking the app from saving its own settings.</p>
+      </description>
+    </release>
     <release version="0.9.2" date="2026-06-15">
       <description>
         <p>Flatpak fixes: "open file/folder" now works (read-only home access);

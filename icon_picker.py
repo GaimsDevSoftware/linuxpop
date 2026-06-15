@@ -259,10 +259,11 @@ class IconPicker:
         """Handle the custom linuxpop:// link in the empty-state message."""
         if uri == "linuxpop://open-user-icons":
             USER_ICONS_DIR.mkdir(parents=True, exist_ok=True)
+            argv = (["flatpak-spawn", "--host", "xdg-open", str(USER_ICONS_DIR)]
+                    if os.path.exists("/.flatpak-info")
+                    else ["xdg-open", str(USER_ICONS_DIR)])
             try:
-                subprocess.Popen(
-                    ["xdg-open", str(USER_ICONS_DIR)], start_new_session=True,
-                )
+                subprocess.Popen(argv, start_new_session=True)
             except FileNotFoundError:
                 pass
             return True  # consumed

@@ -207,8 +207,13 @@ def _build_handler(recipe: dict) -> Callable[[str], None]:
 
         def handler(text: str) -> None:
             cmd = _render(template, text)
+            # In Flatpak, run on the host (the sandbox has the wrong tools and
+            # filesystem); flatpak-spawn --host needs --talk-name=org.freedesktop.Flatpak.
+            argv = (["flatpak-spawn", "--host", "bash", "-c", cmd]
+                    if os.path.exists("/.flatpak-info")
+                    else ["bash", "-c", cmd])
             try:
-                subprocess.Popen(["bash", "-c", cmd], start_new_session=True)
+                subprocess.Popen(argv, start_new_session=True)
             except OSError as exc:
                 subprocess.run(
                     ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-i", "dialog-error",

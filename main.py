@@ -40,7 +40,7 @@ from platform_backend import get_backend
 from popup import PopupWindow
 from settings import get_settings
 
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 
 CACHE_DIR = Path(os.path.expanduser("~/.cache/linuxpop"))
 LOG_FILE = CACHE_DIR / "linuxpop.log"

@@ -74,11 +74,17 @@ finish-args:
   # same host path KWin can open, so no broad /tmp grant is needed and the
   # host-tmp linter error is gone.
   - --filesystem=xdg-run/linuxpop:create
-  # Read-only home so the "open file/folder" action can hand the selected
-  # path to the OpenURI portal (xdg-open needs to open the file to pass its
-  # fd; with no filesystem access the portal call silently no-ops). Read-only
-  # is sufficient - the launched handler runs host-side with its own access.
-  - --filesystem=home:ro
+  # NOTE: no broad home/host filesystem grant. "Open file/folder" runs the
+  # host's xdg-open via flatpak-spawn --host (see actions.open_path), so it
+  # opens any selected path without home access - and the app keeps its own
+  # writable per-app config dir (a home grant would flip $HOME to the real,
+  # here read-only, home and break settings writes).
+  - --env=TESSDATA_PREFIX=/app/share/tessdata   # bundled OCR language data (eng+nor)
+  # "Run in terminal" / run-command actions execute the user's command on the
+  # HOST through flatpak-spawn --host. Running it inside the sandbox would hit
+  # the wrong tools and filesystem. This is a broad permission, but it is
+  # exactly what the feature does, and LinuxPop is self-distributed (not Flathub).
+  - --talk-name=org.freedesktop.Flatpak
   - --device=dri                  # GTK rendering
 
 cleanup:
@@ -297,6 +303,47 @@ modules:
       - /include
       - /lib/pkgconfig
       - '*.la'
+
+  # ----- Screen OCR: leptonica + tesseract + language data (eng, nor) -----
+  # Capture happens through the XDG Screenshot portal (no screenshot binary
+  # needed in the sandbox); these provide the recognition engine.
+  - name: leptonica
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.85.0/leptonica-1.85.0.tar.gz
+        sha256: 3745ae3bf271a6801a2292eead83ac926e3a9bc1bf622e9cd4dd0f3786e17205
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
+  - name: tesseract
+    buildsystem: autotools
+    config-opts:
+      - --disable-openmp
+      - --disable-legacy
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.0.tar.gz
+        sha256: f2fb34ca035b6d087a42875a35a7a5c4155fa9979c6132365b1e5a28ebc3fc11
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - '*.la'
+
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 eng.traineddata /app/share/tessdata/eng.traineddata
+      - install -Dm644 nor.traineddata /app/share/tessdata/nor.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/main/nor.traineddata
+        sha256: 0451eb4f8049ae78196806bf878a389a2f40f1386fe038568cf4441226ba6ef2
 
   - name: linuxpop
     buildsystem: simple

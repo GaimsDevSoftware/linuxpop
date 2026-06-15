@@ -89,9 +89,68 @@ def install_command() -> str:
             "tesseract-ocr-nor maim")
 
 
+def _in_flatpak() -> bool:
+    return os.path.exists("/.flatpak-info")
+
+
+def _portal_screenshot(out_path: Path) -> bool:
+    """Capture a region via the XDG Screenshot portal (interactive). On KDE
+    this opens Spectacle's region selector; the portal hands back the saved
+    image URI, which we copy to out_path. This is how OCR captures inside the
+    Flatpak sandbox, where no screenshot binary is on PATH."""
+    try:
+        import urllib.parse
+        import dbus
+        from dbus.mainloop.glib import DBusGMainLoop
+        from gi.repository import GLib
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[ocr] screenshot portal unavailable: %s", exc)
+        return False
+    got: dict[str, str] = {}
+    try:
+        DBusGMainLoop(set_as_default=True)
+        bus = dbus.SessionBus()
+        portal = bus.get_object("org.freedesktop.portal.Desktop",
+                                "/org/freedesktop/portal/desktop")
+        iface = dbus.Interface(portal, "org.freedesktop.portal.Screenshot")
+        loop = GLib.MainLoop()
+
+        def _on_response(response, results):
+            if int(response) == 0 and "uri" in results:
+                got["uri"] = str(results["uri"])
+            loop.quit()
+
+        req_path = iface.Screenshot(
+            "", {"interactive": dbus.Boolean(True),
+                 "handle_token": "linuxpop_ocr_%d" % os.getpid()})
+        bus.add_signal_receiver(
+            _on_response, signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request", path=str(req_path))
+        # Generous timeout: the user is drawing a box by hand.
+        GLib.timeout_add(180000, lambda: (loop.quit(), False)[1])
+        loop.run()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("[ocr] screenshot portal call failed: %s", exc)
+        return False
+    uri = got.get("uri")
+    if not uri:
+        return False  # user cancelled, or no result
+    src = uri[7:] if uri.startswith("file://") else uri
+    src = urllib.parse.unquote(src)
+    try:
+        shutil.copyfile(src, str(out_path))
+    except OSError as exc:
+        log.warning("[ocr] could not read portal screenshot %s: %s", src, exc)
+        return False
+    return out_path.is_file() and out_path.stat().st_size > 0
+
+
 def _has_capture_tool() -> bool:
-    """True if any supported region-capture tool is on PATH. spectacle and
-    grim work natively on Wayland; maim/gnome-screenshot are the X11 path."""
+    """True if we can capture a region. Inside Flatpak we go through the XDG
+    Screenshot portal (no binary needed). Otherwise we need spectacle/grim
+    (Wayland) or maim/gnome-screenshot (X11) on PATH."""
+    if _in_flatpak():
+        return True
     return bool(shutil.which("spectacle") or shutil.which("grim")
                 or shutil.which("maim") or shutil.which("gnome-screenshot"))
 
@@ -114,6 +173,8 @@ def install_argv() -> "list[str] | None":
     we don't recognise the package manager. A capture tool is only added
     when none is present - KDE already ships spectacle, so on most Wayland
     desktops only tesseract is missing."""
+    if _in_flatpak():
+        return None  # can't install host packages from the sandbox; OCR is bundled
     ids = _distro_id()
 
     def has(needles: tuple) -> bool:
@@ -148,6 +209,8 @@ def _capture_region(out_path: Path) -> bool:
     """Use whichever region-capture tool is installed to grab a user-
     drawn rectangle and write it as a PNG. Returns False if the user
     cancelled or the tool errored out."""
+    if _in_flatpak():
+        return _portal_screenshot(out_path)
     if shutil.which("spectacle"):
         # KDE's capture tool. Its rectangular-region selector works
         # natively on Wayland (maim is X11-only and grim needs wlroots),
@@ -290,16 +353,6 @@ def run_ocr_to_clipboard() -> None:
     tray menu. Captures a region, OCRs it, puts the result on the
     clipboard, and shows the result text in the popup (so it lands as
     a selection the rest of LinuxPop's actions can pick up)."""
-    if os.path.exists("/.flatpak-info"):
-        # Screen OCR needs a screenshot tool + tesseract; neither is in the
-        # Flatpak (and Wayland capture would need the Screenshot portal). Don't
-        # show the distro "install ..." hint to a Flatpak user - just say so.
-        subprocess.run(
-            ["notify-send", "--hint=byte:transient:1", "-t", "4000",
-             "-i", "dialog-information", "LinuxPop OCR",
-             "Screen OCR isn't available in the Flatpak build of LinuxPop."],
-            check=False)
-        return
     ok_sup, reason = is_supported()
     if not ok_sup:
         subprocess.run(
