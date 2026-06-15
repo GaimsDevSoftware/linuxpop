@@ -35,10 +35,10 @@ from gi.repository import GLib, Gtk  # noqa: E402
 import plugin_loader
 import theme
 from classifier import classify
-from editable_detect import is_focus_editable
+from editable_detect import is_focus_editable, focused_selection_rect
+from platform_backend import get_backend
 from popup import PopupWindow
 from settings import get_settings
-from watcher import SelectionWatcher
 
 __version__ = "0.1.0"
 
@@ -114,146 +114,27 @@ def _setup_logging(debug: bool) -> None:
     root.addHandler(stream_handler)
 
 
-def _check_x11_or_exit() -> None:
-    """LinuxPop relies on X11 APIs (xclip selection, Xlib pointer, X11 grabs).
-
-    Three possible session states:
-      - Pure X11 (DISPLAY set, no WAYLAND_DISPLAY): fully supported.
-      - XWayland (both DISPLAY and WAYLAND_DISPLAY set): native Wayland
-        apps don't write to X PRIMARY, so auto-popup won't fire for most
-        apps. We log a loud warning + notify but still start, because
-        some legacy X11 apps and the hotkey path still work.
-      - Pure Wayland (no DISPLAY, only WAYLAND_DISPLAY): refuse to start.
-    """
-    has_x11 = bool(os.environ.get("DISPLAY"))
-    has_wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
-
-    if not has_x11 and has_wayland:
-        msg = (
-            "LinuxPop requires an X11 session - you appear to be running Wayland.\n"
-            "Log in to an 'Xorg' session from your display manager."
-        )
-        print(msg, file=sys.stderr)
-        try:
-            subprocess.run(
-                ["notify-send", "--hint=byte:transient:1", "-t", "3000",  "-u", "critical",
-                 "LinuxPop cannot start", msg.replace("\n", " ")],
-                check=False,
-            )
-        except FileNotFoundError:
-            pass
-        sys.exit(2)
-    if not has_x11:
-        print("DISPLAY is not set - LinuxPop needs an X11 display.", file=sys.stderr)
-        sys.exit(2)
-    if has_wayland and has_x11:
-        # XWayland session. Native Wayland apps (most modern GTK/Qt) won't
-        # mirror selection to X PRIMARY, so auto-popup will silently miss
-        # most selections. Warn loudly once at startup.
-        warning = (
-            "Running under XWayland: PRIMARY-selection auto-popup will only "
-            "fire for legacy X11 apps. The global hotkey still works everywhere "
-            "the X11 grab is honoured. For full functionality, use an Xorg session."
-        )
-        print(f"[linuxpop] WARNING: {warning}", file=sys.stderr)
-        try:
-            subprocess.run(
-                ["notify-send", "--hint=byte:transient:1", "-t", "6000", "-u", "normal",
-                 "-i", "linuxpop",
-                 "LinuxPop: limited under XWayland", warning],
-                check=False,
-            )
-        except FileNotFoundError:
-            pass
-
-
 def _read_selection(source: str) -> str:
-    sel = "primary" if source.lower() == "primary" else "clipboard"
-    try:
-        out = subprocess.run(
-            ["xclip", "-selection", sel, "-o"],
-            capture_output=True,
-            timeout=0.5,
-        )
-        return out.stdout.decode("utf-8", errors="replace")
-    except (OSError, subprocess.SubprocessError):
-        return ""
-
-
-# Reused Xlib connection for pointer queries. Opening a fresh Display() per
-# call adds ~5-15 ms of XOpenDisplay roundtrip - which the hotkey path hits
-# on every press. Cached at module scope; we never close it (it lives for
-# the process lifetime, like the main GTK connection).
-_pointer_dpy = None
+    return get_backend().read_selection(source)
 
 
 def _pointer_position() -> tuple[int, int]:
-    global _pointer_dpy
-    from Xlib import display
-    if _pointer_dpy is None:
-        _pointer_dpy = display.Display()
-    try:
-        data = _pointer_dpy.screen().root.query_pointer()
-        return data.root_x, data.root_y
-    except Exception:
-        # Connection may have been broken by an X server restart - drop it
-        # so the next call opens a fresh one instead of permanently failing.
-        try:
-            _pointer_dpy.close()
-        except Exception:
-            pass
-        _pointer_dpy = None
-        raise
+    return get_backend().pointer_position()
 
 
 def _active_window_blocked(patterns: list[str]) -> bool:
-    """Return True if the currently-focused window's title or WM_CLASS
-    matches any of the user's block patterns. Case-insensitive substring
-    match. Empty / unset pattern list short-circuits - no X calls when
-    nothing is blocked.
-
-    Window title via `xdotool getwindowname`; WM_CLASS via xprop because
-    `xdotool getwindowclassname` is missing in several distro builds
-    (Mint/Debian ship one that returns 'Unknown command'). xprop is in
-    x11-utils, present on every X11 desktop.
-    """
+    """Return True if the focused window's title or class matches any of the
+    user's block patterns (case-insensitive substring). The backend supplies
+    the haystacks (X11: xdotool+xprop; Wayland: none yet)."""
     if not patterns:
         return False
-    try:
-        wid = subprocess.run(
-            ["xdotool", "getactivewindow"],
-            capture_output=True, text=True, timeout=0.3,
-        ).stdout.strip()
-        if not wid:
-            return False
-        haystacks: list[str] = []
-        # Window title via xdotool
-        try:
-            out = subprocess.run(
-                ["xdotool", "getwindowname", wid],
-                capture_output=True, text=True, timeout=0.3,
-            ).stdout.strip()
-            if out:
-                haystacks.append(out.lower())
-        except (OSError, subprocess.SubprocessError):
-            pass
-        # WM_CLASS via xprop (xdotool's getwindowclassname is missing on
-        # some distros - silently returns nothing and breaks the gate).
-        try:
-            out = subprocess.run(
-                ["xprop", "-id", wid, "WM_CLASS"],
-                capture_output=True, text=True, timeout=0.3,
-            ).stdout.strip()
-            if out:
-                haystacks.append(out.lower())
-        except (OSError, subprocess.SubprocessError):
-            pass
-        for p in patterns:
-            p_lc = (p or "").strip().lower()
-            if p_lc and any(p_lc in h for h in haystacks):
-                return True
-    except (OSError, subprocess.SubprocessError):
+    haystacks = get_backend().active_window_haystacks()
+    if not haystacks:
         return False
+    for p in patterns:
+        p_lc = (p or "").strip().lower()
+        if p_lc and any(p_lc in h for h in haystacks):
+            return True
     return False
 
 
@@ -343,7 +224,19 @@ class App:
         # classes in from settings without circular imports.
         extra_ro = tuple(self.settings.get("readonly_app_classes") or [])
         editable = is_focus_editable(extra_readonly_classes=extra_ro)
-        self.popup.show_for(text, x, y, ctype, editable=editable)
+        # Try to anchor the popup to the selected-text rectangle (via
+        # AT-SPI screen-coord extents) instead of the mouse pointer. Returns
+        # None - and we fall back to (x, y) - whenever AT-SPI is off /
+        # unavailable / the app exposes no selection geometry, so this is a
+        # zero-regression enhancement. Gated behind popup_anchor_to_selection.
+        rect = None
+        if bool(self.settings.get("popup_anchor_to_selection")):
+            try:
+                rect = focused_selection_rect()
+            except Exception as exc:  # noqa: BLE001
+                log.info("[anchor] selection-rect lookup failed: %s", exc)
+                rect = None
+        self.popup.show_for(text, x, y, ctype, editable=editable, rect=rect)
 
     def show_popup_now(self) -> None:
         # Stamped so a "had to press the hotkey 3 times" report comes
@@ -389,16 +282,10 @@ class App:
 
         def _send_keys(combo: str) -> "Callable[[], None]":
             def _fire() -> None:
-                if shutil.which("xdotool"):
-                    subprocess.run(
-                        ["xdotool", "key", "--clearmodifiers", combo],
-                        check=False,
-                    )
+                get_backend().send_key(combo)
             return _fire
 
         def _paste_then_enter() -> None:
-            if not shutil.which("xdotool"):
-                return
             # Borrow the editing_actions submit-key heuristic so this
             # entry follows the same rule as the regular Paste & Enter
             # plugin: plain Return for terminals / search bars / chat
@@ -413,17 +300,11 @@ class App:
                 submit_key = ea._submit_keystroke_for_focus()
             except Exception:
                 submit_key = "Return"
-            subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", "ctrl+v"],
-                check=False,
-            )
+            get_backend().paste()
             # Brief settle so Electron / React inputs commit the paste's
             # text state before the submit key is interpreted.
             time.sleep(0.08)
-            subprocess.run(
-                ["xdotool", "key", "--clearmodifiers", submit_key],
-                check=False,
-            )
+            get_backend().send_key(submit_key)
 
         items: list[tuple[str, str, "Callable[[], None]"]] = []
         items.append((
@@ -452,10 +333,10 @@ class App:
         enabled = bool(self.settings.get("double_click_popup_enabled", False))
         if enabled:
             if self.dblclick_watcher is None:
-                from mouse_watcher import DoubleClickWatcher
-                self.dblclick_watcher = DoubleClickWatcher(
+                self.dblclick_watcher = get_backend().make_double_click_watcher(
                     self._on_global_double_click)
-            self.dblclick_watcher.start()
+            if self.dblclick_watcher is not None:
+                self.dblclick_watcher.start()
         elif self.dblclick_watcher is not None:
             self.dblclick_watcher.stop()
             self.dblclick_watcher = None
@@ -496,9 +377,9 @@ class App:
                 return
             GLib.idle_add(self._show_for_text, text, x, y)
 
-        self.watcher = SelectionWatcher(
+        self.watcher = get_backend().make_selection_watcher(
             on_selection,
-            debounce_ms=int(self.settings.get("selection_debounce_ms")),
+            int(self.settings.get("selection_debounce_ms")),
         )
         self.watcher.start()
         self._watcher_active = True
@@ -530,10 +411,9 @@ class App:
             log.info("hotkey disabled in settings")
             self._bound_hotkey = ""
             return
-        from hotkey import Hotkey
         use_polling = bool(self.settings.get("hotkey_use_polling", False))
-        self.hotkey = Hotkey(hotkey_str, self.show_popup_now,
-                             use_polling=use_polling)
+        self.hotkey = get_backend().make_hotkey(hotkey_str, self.show_popup_now,
+                                                use_polling=use_polling)
         self.hotkey.start()
         self._bound_hotkey = hotkey_str
         self._bound_use_polling = use_polling
@@ -551,10 +431,9 @@ class App:
         except Exception:
             log.exception("ocr support probe failed")
             return
-        from hotkey import Hotkey
         use_polling = bool(self.settings.get("hotkey_use_polling", False))
-        self.ocr_hotkey = Hotkey(hotkey_str, self._on_ocr_hotkey,
-                                 use_polling=use_polling)
+        self.ocr_hotkey = get_backend().make_hotkey(hotkey_str, self._on_ocr_hotkey,
+                                                    use_polling=use_polling)
         self.ocr_hotkey.start()
         log.info("[ocr] hotkey '%s' bound (polling=%s)",
                  hotkey_str, use_polling)
@@ -578,10 +457,9 @@ class App:
             log.info("clipboard hotkey disabled in settings")
             self._bound_clipboard_hotkey = ""
             return
-        from hotkey import Hotkey
         use_polling = bool(self.settings.get("hotkey_use_polling", False))
-        self.clipboard_hotkey = Hotkey(hotkey_str, self._on_clipboard_hotkey,
-                                       use_polling=use_polling)
+        self.clipboard_hotkey = get_backend().make_hotkey(
+            hotkey_str, self._on_clipboard_hotkey, use_polling=use_polling)
         self.clipboard_hotkey.start()
         self._bound_clipboard_hotkey = hotkey_str
 
@@ -614,6 +492,11 @@ class App:
 
     # ---- tray + dialogs ------------------------------------------------------
 
+    def _poll_tray(self) -> bool:
+        if self.tray is not None:
+            self.tray.poll()
+        return True  # keep timeout alive
+
     def _start_tray(self) -> None:
         from tray import Tray
         self.tray = Tray(
@@ -626,6 +509,7 @@ class App:
             on_open_support=self.open_support,
             on_quit=self.quit,
         )
+        GLib.timeout_add(200, self._poll_tray)
 
     def open_support(self) -> None:
         try:
@@ -655,6 +539,12 @@ class App:
                 self.ignore_ws = bool(self.settings.get("ignore_whitespace_only"))
                 self.popup._initial_grace_ms = int(self.settings.get("auto_hide_initial_ms"))
                 self.popup._leave_grace_ms = int(self.settings.get("auto_hide_leave_ms"))
+                # Live-update the tray icon if the user changed its style.
+                if self.tray is not None:
+                    try:
+                        self.tray.reload_icon()
+                    except Exception:
+                        pass
                 if self.watcher is not None:
                     self.watcher.set_debounce_ms(
                         int(self.settings.get("selection_debounce_ms"))
@@ -688,6 +578,12 @@ class App:
                     self._bound_clipboard_hotkey = ""
                     if new_clip:
                         self._start_clipboard_hotkey()
+                # Bind the OCR hotkey if it just became usable - e.g. the
+                # user installed tesseract via the Settings Install button -
+                # so it starts working without a daemon restart.
+                if ((self.settings.get("ocr_hotkey") or "").strip()
+                        and self.ocr_hotkey is None):
+                    self._start_ocr_hotkey()
                 # Live-apply the double-click watcher toggle.
                 self._maybe_start_dblclick_watcher()
                 log.info("settings reloaded")
@@ -725,7 +621,8 @@ class App:
         about = Gtk.AboutDialog()
         about.set_program_name("LinuxPop")
         about.set_version(__version__)
-        about.set_comments("A PopClip-inspired floating action popup for Linux (X11).")
+        about.set_comments("A PopClip-inspired floating action popup for Linux "
+                           f"({get_backend().name}).")
         about.set_license_type(Gtk.License.MIT_X11)
         about.set_logo_icon_name("linuxpop")
         about.set_icon_name("linuxpop")
@@ -760,13 +657,22 @@ class App:
         # the dialog for some reason.
         def _open_welcome():
             try:
-                from welcome import show_welcome_dialog
-                show_welcome_dialog(
+                from onboarding import show_onboarding
+                show_onboarding(
                     self.settings,
                     on_open_plugins=self.open_plugins,
                 )
             except Exception:
-                log.exception("welcome dialog failed; falling back to notify-send")
+                log.exception("onboarding failed; falling back to welcome dialog")
+                try:
+                    from welcome import show_welcome_dialog
+                    show_welcome_dialog(
+                        self.settings,
+                        on_open_plugins=self.open_plugins,
+                    )
+                    return False
+                except Exception:
+                    log.exception("welcome dialog failed; falling back to notify")
                 try:
                     subprocess.run(
                         ["notify-send", "--hint=byte:transient:1",  "-i", "linuxpop", "-t", "8000",
@@ -799,7 +705,7 @@ class App:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="linuxpop",
-        description="PopClip-inspired floating action popup for Linux (X11).",
+        description="PopClip-inspired floating action popup for Linux (X11 + KDE Wayland).",
     )
     p.add_argument("--version", action="version", version=f"LinuxPop {__version__}")
     p.add_argument("--no-tray", action="store_true",
@@ -827,7 +733,7 @@ def main(argv: list[str] | None = None) -> int:
                 pass
 
     _setup_logging(args.debug)
-    _check_x11_or_exit()
+    get_backend().check_session()
     # Single-instance guard - refuses to start a second copy. Run BEFORE
     # any GTK init or hotkey grabs so the second copy exits before
     # interfering with the existing instance.
@@ -845,6 +751,18 @@ def main(argv: list[str] | None = None) -> int:
         get_settings().get("theme", "dark") or "dark")
 
     app = App(enable_tray=not args.no_tray)
+
+    # Start the Send-to-AI userscript bridge at launch so its install URL
+    # (http://127.0.0.1:<port>/linuxpop.user.js) is always reachable and prompts
+    # are served the moment a send fires. Best-effort; never fatal.
+    try:
+        import bridge_server
+        _bp = bridge_server.start(
+            int(get_settings().get("ai_userscript_bridge_port", 8766) or 8766))
+        log.info("send-to-ai bridge: http://127.0.0.1:%d/linuxpop.user.js", _bp)
+    except Exception as exc:  # noqa: BLE001
+        log.info("send-to-ai bridge not started: %s", exc)
+
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     log.info("LinuxPop %s running (tray=%s, hotkey=%s, watcher=%s)",
              __version__,

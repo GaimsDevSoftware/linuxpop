@@ -4,79 +4,123 @@
     "title": "Editing - Cut, Paste, Backspace, Select All",
     "description": "PopClip's bread-and-butter buttons. Cut/Paste/Delete operate on the selection; Select All expands it. Sends Ctrl+X / Ctrl+V / Backspace / Ctrl+A via xdotool.",
     "category": "Productivity",
-    "tags": ["editing", "essentials"]
+    "tags": [
+      "editing",
+      "essentials"
+    ],
+    "icon": "edit-cut-symbolic"
   },
   {
     "file": "formatting.py",
     "title": "Formatting - Bold, Italic, Underline",
     "description": "Rich-text formatting via Ctrl+B / Ctrl+I / Ctrl+U. Works in Google Docs, Word, LibreOffice, Notion, Obsidian and most webmail composers.",
     "category": "Productivity",
-    "tags": ["editing", "rich-text"]
+    "tags": [
+      "editing",
+      "rich-text"
+    ],
+    "icon": "format-text-bold-symbolic"
   },
   {
     "file": "large_type.py",
     "title": "Large type",
     "description": "Show the selection in giant fullscreen text. Useful for reading a number aloud, showing a code across the room, or enlarging tiny menu items.",
     "category": "Productivity",
-    "tags": ["accessibility", "display"]
+    "tags": [
+      "accessibility",
+      "display"
+    ],
+    "icon": "zoom-in-symbolic"
   },
   {
     "file": "clipboard_history.py",
     "title": "Clipboard history & snippets",
     "description": "Recent clipboard entries (text + images) plus saved snippets with triggers, placeholders, and variables. The picker is the home of both.",
     "category": "Snippets & Clipboard",
-    "tags": ["clipboard", "snippets", "essentials"]
+    "tags": [
+      "clipboard",
+      "snippets",
+      "essentials"
+    ],
+    "icon": "linuxpop-clipboard-symbolic"
   },
   {
     "file": "wordcount.py",
     "title": "Word and character count",
     "description": "Shows word, character and line counts as a desktop notification",
     "category": "Productivity",
-    "tags": ["text", "utility"]
+    "tags": [
+      "text",
+      "utility"
+    ],
+    "icon": "linuxpop-wordcount-symbolic"
   },
   {
     "file": "calculator.py",
     "title": "Calculator",
     "description": "Evaluates math expressions in the selection (sqrt, sin, pi, ...)",
     "category": "Productivity",
-    "tags": ["math", "utility"]
+    "tags": [
+      "math",
+      "utility"
+    ],
+    "icon": "linuxpop-calculator-symbolic"
   },
   {
     "file": "case_convert.py",
     "title": "Case converter",
     "description": "UPPERCASE, lowercase, Title Case and slugify",
     "category": "Productivity",
-    "tags": ["text", "case"]
+    "tags": [
+      "text",
+      "case"
+    ],
+    "icon": "linuxpop-case-upper-symbolic"
   },
   {
     "file": "speak.py",
     "title": "Speak aloud",
     "description": "Reads the selection out loud via spd-say or espeak",
     "category": "Productivity",
-    "tags": ["utility", "accessibility"]
+    "tags": [
+      "utility",
+      "accessibility"
+    ],
+    "icon": "audio-speakers-symbolic"
   },
   {
     "file": "text_transformations.py",
     "title": "Text transformations bundle",
     "description": "Reverse, sort lines, deduplicate, trim, strip HTML, remove diacritics, ASCII-only, swap case - 8 buttons in one plugin",
     "category": "Productivity",
-    "tags": ["text", "utility"]
+    "tags": [
+      "text",
+      "utility"
+    ],
+    "icon": "object-flip-horizontal-symbolic"
   },
   {
     "file": "qr_code.py",
     "title": "QR code",
     "description": "Generates a QR code from text or a URL (requires qrencode)",
     "category": "Productivity",
-    "tags": ["url", "qr"]
+    "tags": [
+      "url",
+      "qr"
+    ],
+    "icon": "linuxpop-qr-symbolic"
   },
-
   {
     "kind": "recipe",
     "file": "google-search.json",
     "title": "Search Google",
     "description": "Opens Google with the selection pre-filled - auto-submits",
     "category": "Web shortcuts",
-    "tags": ["web", "search"]
+    "tags": [
+      "web",
+      "search"
+    ],
+    "icon": "system-search-symbolic"
   },
   {
     "kind": "recipe",
@@ -84,7 +128,12 @@
     "title": "Define this word",
     "description": "Looks up a dictionary definition via Google's 'define' search - the fastest way to clarify an unfamiliar word",
     "category": "Web shortcuts",
-    "tags": ["web", "dictionary", "essentials"]
+    "tags": [
+      "web",
+      "dictionary",
+      "essentials"
+    ],
+    "icon": "accessories-dictionary-symbolic"
   },
   {
     "kind": "recipe",
@@ -92,23 +141,33 @@
     "title": "Search Wikipedia",
     "description": "English Wikipedia full-text search",
     "category": "Web shortcuts",
-    "tags": ["web"]
+    "tags": [
+      "web"
+    ],
+    "icon": "linuxpop-wikipedia"
   },
   {
     "kind": "recipe",
     "file": "google-translate.json",
     "title": "Google Translate to English",
-    "description": "Auto-detect source language → translate to English",
+    "description": "Auto-detect source language \u2192 translate to English",
     "category": "Web shortcuts",
-    "tags": ["web", "text"]
+    "tags": [
+      "web",
+      "text"
+    ],
+    "icon": "preferences-desktop-locale-symbolic"
   },
   {
     "kind": "recipe",
     "file": "google-maps.json",
     "title": "Look up in Google Maps",
-    "description": "Address, place name or coordinates → Maps search",
+    "description": "Address, place name or coordinates \u2192 Maps search",
     "category": "Web shortcuts",
-    "tags": ["web"]
+    "tags": [
+      "web"
+    ],
+    "icon": "mark-location-symbolic"
   },
   {
     "kind": "recipe",
@@ -116,7 +175,10 @@
     "title": "Search YouTube",
     "description": "Quick YouTube search for the selection",
     "category": "Web shortcuts",
-    "tags": ["web"]
+    "tags": [
+      "web"
+    ],
+    "icon": "linuxpop-youtube"
   },
   {
     "kind": "recipe",
@@ -124,7 +186,11 @@
     "title": "Search Stack Overflow",
     "description": "Looks up the selection on Stack Overflow",
     "category": "Web shortcuts",
-    "tags": ["web", "developer"]
+    "tags": [
+      "web",
+      "developer"
+    ],
+    "icon": "help-faq-symbolic"
   },
   {
     "kind": "recipe",
@@ -132,7 +198,11 @@
     "title": "Search MDN web docs",
     "description": "Mozilla Developer Network - HTML/CSS/JS reference",
     "category": "Web shortcuts",
-    "tags": ["web", "developer"]
+    "tags": [
+      "web",
+      "developer"
+    ],
+    "icon": "applications-development-symbolic"
   },
   {
     "kind": "recipe",
@@ -140,7 +210,11 @@
     "title": "Search GitHub",
     "description": "Code search across GitHub",
     "category": "Web shortcuts",
-    "tags": ["web", "developer"]
+    "tags": [
+      "web",
+      "developer"
+    ],
+    "icon": "applications-development-symbolic"
   },
   {
     "kind": "recipe",
@@ -148,7 +222,11 @@
     "title": "PyPI package lookup",
     "description": "Opens https://pypi.org/project/<your-selection>/",
     "category": "Web shortcuts",
-    "tags": ["web", "developer"]
+    "tags": [
+      "web",
+      "developer"
+    ],
+    "icon": "package-x-generic-symbolic"
   },
   {
     "kind": "recipe",
@@ -156,64 +234,112 @@
     "title": "npm package lookup",
     "description": "Opens https://www.npmjs.com/package/<your-selection>",
     "category": "Web shortcuts",
-    "tags": ["web", "developer"]
+    "tags": [
+      "web",
+      "developer"
+    ],
+    "icon": "package-x-generic-symbolic"
   },
-
   {
     "file": "send_to_ai.py",
     "title": "Send to chat AI",
     "description": "Copies text and opens Claude/ChatGPT/Gemini/Perplexity/Google AI - no setup, no API keys",
     "category": "AI",
-    "tags": ["ai", "web"]
+    "tags": [
+      "ai",
+      "web"
+    ],
+    "icon": "linuxpop-google-ai"
   },
   {
     "file": "ollama_ai.py",
     "title": "Local AI (Ollama)",
     "description": "Explain, summarize, translate, rewrite - runs locally via Ollama (free, offline). Requires Ollama with a model installed.",
     "category": "AI",
-    "tags": ["ai", "local", "offline"]
+    "tags": [
+      "ai",
+      "local",
+      "offline"
+    ],
+    "icon": "help-about-symbolic"
   },
-
   {
     "file": "base64_codec.py",
     "title": "Base64 encode/decode",
     "description": "Encodes or decodes selected text as Base64 and copies the result",
     "category": "Developer",
-    "tags": ["text", "encoding"]
+    "tags": [
+      "text",
+      "encoding"
+    ],
+    "icon": "linuxpop-base64-encode-symbolic"
   },
   {
     "file": "json_format.py",
     "title": "JSON pretty-print",
     "description": "Pretty-prints JSON and copies it to the clipboard",
     "category": "Developer",
-    "tags": ["json", "developer"]
+    "tags": [
+      "json",
+      "developer"
+    ],
+    "icon": "linuxpop-json-symbolic"
   },
   {
     "file": "url_encode.py",
     "title": "URL encode/decode",
     "description": "Percent-encodes or decodes text for use in URLs",
     "category": "Developer",
-    "tags": ["url", "encoding"]
+    "tags": [
+      "url",
+      "encoding"
+    ],
+    "icon": "linuxpop-url-encode-symbolic"
   },
   {
     "file": "dev_hashes.py",
     "title": "Hashes and JWT decode",
     "description": "SHA-256, MD5 and JWT payload decode - output to clipboard with a notification",
     "category": "Developer",
-    "tags": ["developer", "encoding"]
+    "tags": [
+      "developer",
+      "encoding"
+    ],
+    "icon": "security-high-symbolic"
   },
   {
     "file": "converters.py",
     "title": "Timestamp and color converters",
-    "description": "Auto-detects Unix epoch ↔ ISO 8601, #hex ↔ rgb(r,g,b)",
+    "description": "Auto-detects Unix epoch \u2194 ISO 8601, #hex \u2194 rgb(r,g,b)",
     "category": "Developer",
-    "tags": ["developer", "utility"]
+    "tags": [
+      "developer",
+      "utility"
+    ],
+    "icon": "preferences-system-time-symbolic"
   },
   {
     "file": "html_entities.py",
     "title": "HTML entity encode/decode",
-    "description": "<p>café & \"co\"</p> ↔ &lt;p&gt;café &amp; &quot;co&quot;&lt;/p&gt;",
+    "description": "<p>caf\u00e9 & \"co\"</p> \u2194 &lt;p&gt;caf\u00e9 &amp; &quot;co&quot;&lt;/p&gt;",
     "category": "Developer",
-    "tags": ["text", "web", "encoding"]
+    "tags": [
+      "text",
+      "web",
+      "encoding"
+    ],
+    "icon": "text-html-symbolic"
+  },
+  {
+    "file": "send_to_mentor.py",
+    "title": "Send to Mentor",
+    "description": "Send the selection to the active chat in Mentor (your local Odysseus fork)",
+    "category": "AI",
+    "tags": [
+      "ai",
+      "mentor",
+      "local"
+    ],
+    "icon": "linuxpop-mentor"
   }
 ]

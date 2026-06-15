@@ -1,18 +1,1 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-  <!-- Stylized "W" on a paper-coloured rounded square. Original mark,
-       not a copy of the Wikipedia puzzle-globe logo. -->
-  <rect x="0" y="0" width="24" height="24" rx="5" fill="#ffffff"/>
-  <rect x="0.5" y="0.5" width="23" height="23" rx="4.5"
-        fill="none" stroke="#dcdcdc" stroke-width="1"/>
-  <!-- The "W": three sloped strokes -->
-  <g fill="none" stroke="#202122" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M4.5,7 L8,17 L12,9.5 L16,17 L19.5,7"/>
-  </g>
-  <!-- Subtle serif tick on each leg, hinting "encyclopedia" without
-       copying the official wordmark. -->
-  <g fill="#202122">
-    <rect x="3.6" y="6.4" width="2.1" height="1.2" rx="0.4"/>
-    <rect x="18.3" y="6.4" width="2.1" height="1.2" rx="0.4"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8A93A0"/><stop offset="1" stop-color="#565E6B"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="12" fill="url(#g)"/><rect x="2.75" y="2.75" width="42.5" height="42.5" rx="11.3" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="1.2"/><path d="M9 15 L15.5 34 L24 21 L32.5 34 L39 15" fill="none" stroke="#fff" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"/></svg>

@@ -24,25 +24,10 @@ from plugin_base import Plugin
 
 
 def _send_keys(combo: str) -> None:
-    if not shutil.which("xdotool"):
-        subprocess.run(
-            ["notify-send", "--hint=byte:transient:1", "-t", "3000",
-             "-u", "critical", "-i", "dialog-error",
-             "LinuxPop",
-             "xdotool is not installed - required for the editing actions. "
-             "Install with: sudo apt install xdotool"],
-            check=False,
-        )
-        return
-    try:
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", combo],
-            check=False, timeout=2.0,
-        )
-    except subprocess.TimeoutExpired:
-        # xdotool stuck - extremely rare but a hung worker is worse
-        # than a missed action; just bail silently.
-        pass
+    # Key injection goes through the platform backend: xdotool on X11,
+    # wtype on Wayland/KDE. The backend handles a missing tool itself.
+    from platform_backend import get_backend
+    get_backend().send_key(combo)
 
 
 def _cut(_text: str) -> None:
@@ -71,30 +56,10 @@ def _submit_keystroke_for_focus() -> str:
     Return submits, or whether we need Ctrl+Return. Default is plain
     Return - it's the right answer for terminals, search bars,
     address bars, Claude/ChatGPT/Gemini web, single-line chat boxes."""
-    if not shutil.which("xdotool"):
-        return "Return"
-    try:
-        out = subprocess.run(
-            ["xdotool", "getactivewindow"],
-            capture_output=True, text=True, timeout=0.5,
-        )
-        wid = (out.stdout or "").strip()
-        if not wid:
-            return "Return"
-    except (OSError, subprocess.SubprocessError):
-        return "Return"
-    if not shutil.which("xprop"):
-        return "Return"
-    try:
-        out = subprocess.run(
-            ["xprop", "-id", wid, "WM_CLASS"],
-            capture_output=True, text=True, timeout=0.5,
-        )
-        wm_class = (out.stdout or "").lower()
-    except (OSError, subprocess.SubprocessError):
-        return "Return"
+    from platform_backend import get_backend
+    blob = " ".join(get_backend().active_window_haystacks())
     for needle in _NEWLINE_ENTER_CLASSES:
-        if needle in wm_class:
+        if needle in blob:
             return "ctrl+Return"
     return "Return"
 

@@ -177,12 +177,24 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
     if not buf.get_text(s, e, True):
         _set_placeholder()
 
-    def _on_focus_in(_w, _e):
+    def _clear_placeholder() -> None:
         if view._placeholder_active:
             view._setting_placeholder = True
             buf.set_text("")
             view._placeholder_active = False
             view._setting_placeholder = False
+
+    def _on_key_press(_w, event):
+        # Clear the hint the moment the user types something that produces
+        # text (letters, digits, space, Ctrl+V...), but keep it for pure
+        # navigation/modifier keys - and, crucially, while the field is
+        # merely focused. Clearing on focus-in used to wipe the hint the
+        # instant the dialog opened (the TextView grabs focus on show), so
+        # the example only reappeared after a focus-out/in cycle such as a
+        # right-click. keyval_to_unicode is non-zero exactly for the keys
+        # that put a character in the buffer.
+        if view._placeholder_active and Gdk.keyval_to_unicode(event.keyval):
+            _clear_placeholder()
         return False
 
     def _on_focus_out(_w, _e):
@@ -191,7 +203,7 @@ def _attach_textarea_placeholder(view: Gtk.TextView, placeholder_text: str) -> N
             _set_placeholder()
         return False
 
-    view.connect("focus-in-event", _on_focus_in)
+    view.connect("key-press-event", _on_key_press)
     view.connect("focus-out-event", _on_focus_out)
 
 
@@ -431,6 +443,43 @@ class HotkeyRecorder(Gtk.Button):
         return True
 
 
+#: Per-row leading icon for the Settings rows, so each gets a coloured tile in
+#: the same style as the Plugin Manager. Titles must match set_title() exactly;
+#: anything unmapped falls back to a generic gear (never a broken glyph).
+_SETTING_ICONS = {
+    "Theme": "applications-graphics-symbolic",
+    "Popup button size": "view-fullscreen-symbolic",
+    "Maximum buttons in the popup": "view-grid-symbolic",
+    "When actions overflow": "view-more-symbolic",
+    "Popup hotkey": "preferences-desktop-keyboard-shortcuts-symbolic",
+    "Screen OCR hotkey": "camera-photo-symbolic",
+    "Auto-popup on selection": "edit-select-all-symbolic",
+    "Modifier+double-click for the edit menu": "input-mouse-symbolic",
+    "Modifier key": "input-keyboard-symbolic",
+    "Force all plugins modifier": "view-grid-symbolic",
+    "Start at login": "system-run-symbolic",
+    "Clipboard history": "edit-copy-symbolic",
+    "Optional clipboard shortcut": "edit-paste-symbolic",
+    "Snippet triggers (text expansion)": "document-edit-symbolic",
+    "Don't expand triggers in these apps or sites": "security-high-symbolic",
+    "Snippet variables": "view-list-symbolic",
+    "Shell expansion in snippets": "utilities-terminal-symbolic",
+    "Skip short auto-popup selections": "format-justify-left-symbolic",
+    "Don't show in these apps or pages": "security-medium-symbolic",
+    "How to send the text": "mail-send-symbolic",
+    "Browser bridge": "network-server-symbolic",
+    "Per-service method (advanced)": "applications-system-symbolic",
+    "Auto-submit after paste": "go-next-symbolic",
+    "Search engine": "edit-find-symbolic",
+    "Custom search URL": "insert-link-symbolic",
+    "Trigger hotkey on first press": "media-playback-start-symbolic",
+    "MCP server (advanced)": "network-server-symbolic",
+    "Reset settings to defaults": "view-refresh-symbolic",
+    "Keep terminal open after running": "utilities-terminal-symbolic",
+    "Need a userscript manager?": "help-about-symbolic",
+}
+
+
 class SettingsDialog:
     def __init__(self, on_changed: Callable[[], None] | None = None) -> None:
         self._on_changed = on_changed
@@ -476,6 +525,7 @@ class SettingsDialog:
         # Settings stays focused on configuration.
 
         win.add(page)
+        self._decorate_badges(page)
         win.show_all()
         # Subtitle wrap must be patched AFTER show_all() so the realised
         # label widgets exist to flip.
@@ -485,6 +535,47 @@ class SettingsDialog:
 
     def _on_destroy(self, *_):
         self._window = None
+
+    # ---- coloured icon badges (matches the Plugin Manager) -------------------
+    def _badge(self, icon_name: str | None, color_index: int) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        box.set_size_request(32, 32)
+        box.set_valign(Gtk.Align.CENTER)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_margin_end(8)
+        ctx = box.get_style_context()
+        ctx.add_class("lp-badge")
+        ctx.add_class(f"lp-badge-{color_index % 4}")
+        it = Gtk.IconTheme.get_default()
+        name = icon_name if (icon_name and it.has_icon(icon_name)) \
+            else "emblem-system-symbolic"
+        img = Gtk.Image.new_from_icon_name(name, Gtk.IconSize.BUTTON)
+        img.set_pixel_size(17)
+        img.get_style_context().add_class("lp-badge-glyph")
+        box.pack_start(img, True, True, 0)
+        box.show_all()
+        return box
+
+    def _decorate_badges(self, root: Gtk.Widget) -> None:
+        """Give each settings row a coloured icon tile so Settings reads as the
+        same family as the Plugin Manager. Walks the realised row tree, skipping
+        the inside of each row (so expander sub-rows aren't decorated)."""
+        rows: list[Gtk.Widget] = []
+
+        def walk(w):
+            if isinstance(w, (Handy.ActionRow, Handy.ExpanderRow)):
+                rows.append(w)
+                return
+            if isinstance(w, Gtk.Container):
+                w.forall(lambda c, *_a: walk(c), None)
+
+        walk(root)
+        for i, r in enumerate(rows):
+            icon = _SETTING_ICONS.get(r.get_title() or "")
+            try:
+                r.add_prefix(self._badge(icon, i))
+            except Exception:
+                pass
 
     # ---- groups --------------------------------------------------------------
 
@@ -539,7 +630,10 @@ class SettingsDialog:
         size_row.set_title("Popup button size")
         size_row.set_subtitle(
             "How big each action button in the popup is, in pixels. "
-            "16 is small and dense; 32 is roomy and easy to click.")
+            "16 is small and dense; 32 is roomy and easy to click. "
+            "Tip: smaller buttons also fit more actions on a single row "
+            "before the popup has to wrap or expand (see ‘When actions "
+            "overflow’ below).")
         size_adj = Gtk.Adjustment(
             value=int(self._settings.get("popup_button_size", 22) or 22),
             lower=16, upper=32, step_increment=1, page_increment=4,
@@ -562,6 +656,82 @@ class SettingsDialog:
         size_row.add(size_spin)
         size_row.set_activatable_widget(size_spin)
         group.add(size_row)
+
+        # ----- Plugin icon style: colourful tiles vs uniform mono glyphs -----
+        icon_row = Handy.ActionRow()
+        icon_row.set_title("Plugin icon style")
+        icon_row.set_subtitle(
+            "Colourful tiles, or uniform mono glyphs that match the plain "
+            "edit icons. Applies to the popup and Plugin Manager.")
+        icon_combo = Gtk.ComboBoxText()
+        icon_combo.append("color", "Colourful tiles")
+        icon_combo.append("glyph", "Simple glyphs")
+        _cur_style = (self._settings.get("icon_style") or "color")
+        if _cur_style not in ("color", "glyph"):
+            _cur_style = "color"
+        icon_combo.set_active_id(_cur_style)
+        icon_combo.set_valign(Gtk.Align.CENTER)
+        icon_row.add(icon_combo)
+        icon_row.set_activatable_widget(icon_combo)
+        group.add(icon_row)
+
+        # Live preview strip: sample icons rendered in the chosen style.
+        icon_preview = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                               spacing=12)
+        icon_preview.set_halign(Gtk.Align.CENTER)
+        icon_preview.set_margin_top(8)
+        icon_preview.set_margin_bottom(12)
+
+        def _rebuild_icon_preview(style: str) -> None:
+            for ch in icon_preview.get_children():
+                ch.destroy()
+            try:
+                import icon_style as _ist
+                concepts = _ist.PREVIEW_CONCEPTS
+            except Exception:
+                concepts = []
+            for concept in concepts:
+                nm = (f"linuxpop-{concept}-symbolic" if style == "glyph"
+                      else f"linuxpop-{concept}")
+                im = Gtk.Image.new_from_icon_name(nm, Gtk.IconSize.DND)
+                im.set_pixel_size(30)
+                icon_preview.pack_start(im, False, False, 0)
+            icon_preview.show_all()
+
+        _rebuild_icon_preview(_cur_style)
+        group.add(icon_preview)
+
+        def _on_icon_style_changed(combo: Gtk.ComboBoxText) -> None:
+            style = combo.get_active_id() or "color"
+            self._save_key("icon_style", style)
+            _rebuild_icon_preview(style)
+        icon_combo.connect("changed", _on_icon_style_changed)
+
+        # ----- Tray icon: coloured badge vs mono glyph for light/dark panels -----
+        tray_row = Handy.ActionRow()
+        tray_row.set_title("Tray icon")
+        tray_row.set_subtitle(
+            "The colour badge is visible on any panel. The mono styles let you "
+            "match your panel manually (KDE won't recolour it automatically): "
+            "Light for a dark panel, Dark for a light panel.")
+        tray_combo = Gtk.ComboBoxText()
+        tray_combo.append("color", "Colour (any panel)")
+        tray_combo.append("light", "Light mono (dark panels)")
+        tray_combo.append("dark", "Dark mono (light panels)")
+        _cur_tray = (self._settings.get("tray_icon_style") or "color")
+        if _cur_tray not in ("color", "light", "dark"):
+            _cur_tray = "color"
+        tray_combo.set_active_id(_cur_tray)
+        tray_combo.set_valign(Gtk.Align.CENTER)
+        tray_row.add(tray_combo)
+        tray_row.set_activatable_widget(tray_combo)
+        group.add(tray_row)
+
+        def _on_tray_icon_changed(combo: Gtk.ComboBoxText) -> None:
+            # _save_key fires the on_changed chain -> main.py tells the tray
+            # subprocess to re-render its icon live (no restart needed).
+            self._save_key("tray_icon_style", combo.get_active_id() or "color")
+        tray_combo.connect("changed", _on_tray_icon_changed)
 
         # Max buttons per popup: how many actions can show before the
         # popup wraps to a second row and (past 2 rows) drops to a
@@ -590,6 +760,33 @@ class SettingsDialog:
         count_row.add(count_spin)
         count_row.set_activatable_widget(count_spin)
         group.add(count_row)
+
+        # Overflow mode: what the popup does when more actions match than fit
+        # on a single line. Bounded by the cap above.
+        ov_row = Handy.ActionRow()
+        ov_row.set_title("When actions overflow")
+        ov_row.set_subtitle(
+            "How the popup handles more actions than fit on one line. "
+            "‘One row + expand arrow’ stays compact and reveals the rest on "
+            "click; ‘Wrap’ uses two rows; ‘One row only’ hides extras behind "
+            "a +N chip.")
+        ov_combo = Gtk.ComboBoxText()
+        ov_combo.set_valign(Gtk.Align.CENTER)
+        for _key, _label in (
+            ("expand", "One row + expand arrow"),
+            ("wrap", "Wrap to two rows"),
+            ("cap", "One row only (+N chip)"),
+        ):
+            ov_combo.append(_key, _label)
+        ov_combo.set_active_id(
+            (self._settings.get("popup_overflow_mode") or "expand"))
+        ov_combo.connect(
+            "changed",
+            lambda c: self._save_key(
+                "popup_overflow_mode", c.get_active_id() or "expand"))
+        ov_row.add(ov_combo)
+        ov_row.set_activatable_widget(ov_combo)
+        group.add(ov_row)
 
         return group
 
@@ -635,53 +832,92 @@ class SettingsDialog:
             ocr_ok, ocr_reason = False, "screen_ocr module not available"
         if ocr_ok:
             ocr_row.set_subtitle(
-                "Press this anywhere to draw a rectangle on screen. "
-                "Text inside the rectangle is OCR'd by tesseract and "
-                "lands on the clipboard.")
+                "Draw a box anywhere; the text inside is copied as text.")
         else:
-            ocr_row.set_subtitle(
-                f"Setup needed - {ocr_reason}. The hotkey is saved "
-                "but won't fire until the missing tools are installed.")
+            ocr_row.set_subtitle(f"Setup needed: {ocr_reason}.")
         ocr_recorder = HotkeyRecorder(
             self._settings.get("ocr_hotkey") or "",
             on_changed=lambda v: self._save_key("ocr_hotkey", v),
         )
-        # When OCR backends aren't available, surface a "Copy install
-        # command" button that puts the right apt/dnf/pacman/zypper
-        # command on the clipboard. Same one-step pattern we use for
-        # the MCP server snippet and the userscript-manager store link
-        # - we don't run privileged commands ourselves but we make the
-        # next manual step trivial.
+        # When OCR backends aren't available, offer a one-click Install
+        # button that runs the install in the background via pkexec (a
+        # graphical password prompt), then re-probes and updates the row
+        # live. Replaces the old "copy command to clipboard" dance, which
+        # also relied on xclip - absent on a Wayland box.
         if not ocr_ok:
             try:
-                from screen_ocr import install_command as _ocr_install_cmd
-                cmd = _ocr_install_cmd()
+                from screen_ocr import install_argv as _ocr_install_argv
+                argv = _ocr_install_argv()
             except Exception:
-                cmd = ""
-            if cmd:
-                ocr_copy_btn = Gtk.Button(label="Copy install command")
-                ocr_copy_btn.set_valign(Gtk.Align.CENTER)
-                ocr_copy_btn.set_tooltip_text(
-                    "Puts the right install command for your distro "
-                    "on the clipboard. Paste into a terminal and run.")
+                argv = None
+            ocr_install_btn = Gtk.Button(label="Install")
+            ocr_install_btn.set_valign(Gtk.Align.CENTER)
+            ocr_install_btn.get_style_context().add_class("suggested-action")
+            ocr_install_btn.set_tooltip_text(
+                "Installs the OCR tools in the background "
+                "(asks for your password).")
+            if argv is None:
+                ocr_install_btn.set_sensitive(False)
+                ocr_install_btn.set_tooltip_text(
+                    "Couldn't detect your package manager - please "
+                    "install tesseract manually.")
 
-                def _on_ocr_copy(_b, cmd=cmd):
-                    subprocess.run(
-                        ["xclip", "-selection", "clipboard"],
-                        input=cmd.encode("utf-8"),
-                        check=False, timeout=2.0,
-                    )
-                    subprocess.run(
-                        ["notify-send", "--hint=byte:transient:1",
-                         "-t", "3500", "-i", "edit-paste-symbolic",
-                         "LinuxPop OCR",
-                         "Install command on clipboard. Paste into a "
-                         "terminal, run it, then restart LinuxPop."],
-                        check=False,
-                    )
+            def _on_ocr_install(btn, argv=argv, row=ocr_row):
+                if not argv:
+                    return
+                btn.set_sensitive(False)
+                btn.set_label("Installing...")
+                row.set_subtitle(
+                    "Installing - authorise the password prompt...")
 
-                ocr_copy_btn.connect("clicked", _on_ocr_copy)
-                ocr_row.add(ocr_copy_btn)
+                def _done(ok, err):
+                    try:
+                        from screen_ocr import is_supported as _sup
+                        now_ok, reason = _sup()
+                    except Exception:
+                        now_ok, reason = ok, ""
+                    if now_ok:
+                        row.set_subtitle(
+                            "Ready. Draw a box anywhere to copy its text.")
+                        btn.set_label("Installed")
+                        btn.set_sensitive(False)
+                        try:
+                            btn.get_style_context().remove_class(
+                                "suggested-action")
+                        except Exception:
+                            pass
+                        # Bind the hotkey now that the backend works.
+                        if self._on_changed is not None:
+                            try:
+                                self._on_changed()
+                            except Exception:
+                                pass
+                    else:
+                        row.set_subtitle(
+                            f"Install didn't complete: {reason or err}. "
+                            "Try again.")
+                        btn.set_label("Install")
+                        btn.set_sensitive(True)
+                    return False
+
+                def _worker():
+                    ok, err = False, ""
+                    try:
+                        res = subprocess.run(
+                            argv, capture_output=True, timeout=600)
+                        ok = res.returncode == 0
+                        if not ok:
+                            err = (res.stderr or b"").decode(
+                                "utf-8", "replace").strip()[-160:]
+                    except Exception as exc:  # noqa: BLE001
+                        err = str(exc)
+                    GLib.idle_add(_done, ok, err)
+
+                threading.Thread(target=_worker, daemon=True,
+                                 name="ocr-install").start()
+
+            ocr_install_btn.connect("clicked", _on_ocr_install)
+            ocr_row.add(ocr_install_btn)
         ocr_row.add(ocr_recorder)
         ocr_clear = Gtk.Button.new_from_icon_name(
             "edit-clear-symbolic", Gtk.IconSize.BUTTON)
@@ -713,8 +949,10 @@ class SettingsDialog:
             "text field to bring up Paste / Select all / Backspace at "
             "the cursor. The modifier is required so it never collides "
             "with the app's own double-click-to-select-a-word gesture. "
-            "Requires LinuxPop to watch mouse clicks globally - "
-            "nothing is logged or sent.")
+            "Requires watching mouse clicks globally (nothing is logged or "
+            "sent). On Wayland this reaches XWayland windows only — for "
+            "native Wayland apps, press the popup hotkey instead; it shows "
+            "the same menu when nothing is selected.")
         dbl_switch = Gtk.Switch()
         dbl_switch.set_valign(Gtk.Align.CENTER)
         dbl_switch.set_active(
@@ -777,12 +1015,17 @@ class SettingsDialog:
             "leave the feature off.")
         force_combo = Gtk.ComboBoxText()
         force_combo.set_valign(Gtk.Align.CENTER)
+        # Keep the dropdown labels SHORT - the per-key caveats live in the
+        # subtitle above. Long option labels blow up the combo's natural
+        # width, which steals horizontal space from the wrapping subtitle
+        # and squeezes it into a tall narrow ribbon (there is no width clamp
+        # on the row).
         for key, label in [
             ("",      "None (off)"),
-            ("ctrl",  "Ctrl (may break word-by-word selection)"),
-            ("alt",   "Alt (conflicts with Alt+drag move-window)"),
-            ("super", "Super (conflicts with most WMs' window gesture)"),
-            ("shift", "Shift (extends existing selection)"),
+            ("ctrl",  "Ctrl"),
+            ("alt",   "Alt"),
+            ("super", "Super"),
+            ("shift", "Shift"),
         ]:
             force_combo.append(key, label)
         current_force = (

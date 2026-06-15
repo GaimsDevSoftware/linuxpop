@@ -67,7 +67,8 @@ DEFAULTS: dict[str, Any] = {
     # Hotkey to open the clipboard / snippets picker. Press, type to filter,
     # Enter to paste at the cursor. Ignored if clipboard_history_enabled
     # is False.
-    "clipboard_hotkey": "super+v",
+    # Default avoids Meta+V, which KDE Klipper / clipboard managers grab.
+    "clipboard_hotkey": "super+shift+v",
     # Hotkey to capture a screen region and OCR it. Requires `maim` and
     # `tesseract-ocr` on PATH. Empty string disables. Useful for
     # reaching text inside PDF viewers, video frames, OS chrome, and
@@ -168,6 +169,9 @@ DEFAULTS: dict[str, Any] = {
     # XGrabKey path is still wired up for power users who want pure
     # event-driven behaviour: flip this off in Settings.
     "hotkey_use_polling": True,
+    # Target language for the Translate plugin (ISO code, e.g. "en", "no",
+    # "de"). Changeable from the dropdown in the translation bubble itself.
+    "translate_target_lang": "en",
     # Milliseconds before the popup auto-hides if the mouse never enters
     # it. 6.5 s leaves enough time to read the buttons without overstaying
     # - 8 s felt sluggish in practice. Tunable via Settings → Timing.
@@ -217,6 +221,24 @@ DEFAULTS: dict[str, Any] = {
     # if you want every action visible regardless of how many you
     # enable; drop it for a tighter single-row look.
     "max_popup_buttons": 24,
+    # What the popup does when more actions match than fit on one line:
+    #   "wrap"   -> spill onto a second row (classic two-line look),
+    #   "expand" -> keep one tidy line, with a chevron that reveals the rest
+    #               on click (recommended: compact, nothing dropped),
+    #   "cap"    -> one row only; the remainder sit behind a "+N" chip.
+    # All modes are still bounded by max_popup_buttons above.
+    "popup_overflow_mode": "expand",
+    # Icon style for branded/utility plugins:
+    #   "color" -> vibrant gradient tiles (default)
+    #   "glyph" -> uniform mono glyphs that match the plain text-edit icons
+    "icon_style": "color",
+    # System-tray icon appearance. Auto-recolouring isn't reliable on KDE
+    # (plasmashell won't recolour a custom symbolic icon, and the app's own
+    # colour scheme can differ from the panel theme), so the user picks:
+    #   "color" -> the coloured brand badge; visible on any panel (default)
+    #   "light" -> light monochrome glyph; for DARK panels
+    #   "dark"  -> dark monochrome glyph; for LIGHT panels
+    "tray_icon_style": "color",
     # If True (default): after the command, drop into an interactive shell so
     #   output stays visible. Close with exit/Ctrl-D/X.
     # If False: terminal closes immediately after the command exits (output lost).
@@ -262,7 +284,7 @@ DEFAULTS: dict[str, Any] = {
     # (each is independent - show only the ones you've actually set up).
     # Conventional defaults are pre-filled assuming the GitHub org name
     # matches the upstream repo; update or blank out as needed.
-    "support_paypal_url":   "https://paypal.me/linuxpop",
+    "support_paypal_url":   "https://paypal.me/gaimsdev",
     # 'Skip short auto-popup selections' filter. Off by default to
     # match PopClip out of the box (no minimum-size knob there). When
     # on, the watcher silently drops selections shorter than
@@ -281,6 +303,12 @@ DEFAULTS: dict[str, Any] = {
     # Stays here as a hidden settings.json knob for the rare user who
     # explicitly wants AT-SPI back on. Default off.
     "editable_atspi_listener_enabled": False,
+    # Anchor the popup to the SELECTED-TEXT rectangle (via AT-SPI screen
+    # extents) instead of the mouse pointer. On by default, but it only has
+    # any effect when editable_atspi_listener_enabled is also True AND the
+    # focused app exposes accessibility - otherwise the popup silently falls
+    # back to the mouse pointer (so leaving this on costs nothing).
+    "popup_anchor_to_selection": True,
     # If True, show the one-time welcome dialog on first run. Set to False
     # to skip it (mostly useful for screencasts / CI testing).
     "show_welcome_dialog": True,

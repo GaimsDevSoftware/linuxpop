@@ -10,22 +10,18 @@ when they're in a rich-text vs plain-text context.
 """
 from __future__ import annotations
 
-import shutil
-import subprocess
-
 from plugin_base import Plugin
 
 
 def _send(combo: str) -> None:
-    if not shutil.which("xdotool"):
-        return
+    # Route through the active backend so key injection uses the right tool
+    # for the session: xdotool on X11, ydotool on Wayland/KDE. Calling
+    # xdotool directly does nothing on native Wayland.
     try:
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", combo],
-            check=False, timeout=2.0,
-        )
-    except subprocess.TimeoutExpired:
-        pass
+        from platform_backend import get_backend
+        get_backend().send_key(combo)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[formatting] send_key failed: {exc}")
 
 
 def register(register_plugin) -> None:

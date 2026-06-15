@@ -126,7 +126,11 @@ url="https://github.com/GaimsDevSoftware/linuxpop"
 license=('MIT')
 depends=('python' 'gtk3' 'libhandy' 'libayatana-appindicator'
          'python-xlib' 'xdotool' 'xclip' 'wmctrl')
-optdepends=('ollama: local AI plugin'
+optdepends=('gtk-layer-shell: native popup placement on Wayland/KDE'
+            'wl-clipboard: selection capture on Wayland'
+            'ydotool: key injection (paste) on Wayland/KDE'
+            'at-spi2-core: anchor popup to the selected-text rectangle'
+            'ollama: local AI plugin'
             'python-pillow: QR code plugin')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/GaimsDevSoftware/linuxpop/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
@@ -153,12 +157,24 @@ above install to the same paths under `$pkgdir`. Build with
 
 ---
 
-## What's intentionally not supported
+## Platform support
 
-- **Wayland.** LinuxPop relies on X11 global hotkey grabs, raw root
-  pointer queries, and `xdotool`/`xclip`. The README documents this,
-  and `main.py` refuses to start under pure Wayland. Adding Wayland
-  support would require a portal-based redesign - out of scope for v0.x.
+LinuxPop runs on **both X11 and KDE Plasma 6 / Wayland**. The codebase
+uses a `platform_backend/` package that selects an X11 backend
+(`xdotool`/`xclip`/python-xlib, raw root pointer queries, XGrabKey) or a
+native Wayland/KDE backend (`wl-clipboard`, `gtk-layer-shell` popup
+placement, KWin scripting for cursor position + active window,
+KGlobalAccel for global hotkeys, `ydotool` for key injection) at runtime.
+Other Wayland compositors (GNOME, wlroots) fall back to the X11 path under
+XWayland. See `docs/FEDORA-KDE.md`.
+
+Packaging implication: a fully self-contained Flatpak must bundle the
+Wayland tools too (`wl-clipboard`, `ydotool`, the `gtk-layer-shell`
+typelib) since none ship in GNOME Platform 46 - see the TODO in the
+Flatpak manifest. Native packages (`.deb`, AUR) should list them as
+runtime/optional deps (see the PKGBUILD below).
+
+## What's intentionally not supported
 
 - **Auto-updating.** Each store handles updates itself. Don't ship an
   in-app updater.
