@@ -369,6 +369,123 @@ def _atspi_focus_editable(timeout: float = 0.15) -> bool | None:
     return result[0]
 
 
+def _selection_rect_of(acc) -> tuple[int, int, int, int] | None:
+    """Screen-coord bounding box (x, y, w, h) of the text currently
+    selected inside an accessible, or None. Uses the AT-SPI Text
+    interface: get_n_selections -> get_selection (a Range) ->
+    get_range_extents(COORD_TYPE_SCREEN). Returns None when the widget
+    exposes no Text interface, has no selection, or reports a degenerate
+    rectangle - the caller then falls back to the mouse pointer."""
+    try:
+        n_sel = Atspi.Text.get_n_selections(acc)
+    except Exception:
+        return None  # widget doesn't implement the Text interface
+    if not n_sel or n_sel <= 0:
+        return None
+    try:
+        rng = Atspi.Text.get_selection(acc, 0)
+        start, end = rng.start_offset, rng.end_offset
+    except Exception:
+        return None
+    if end <= start:
+        return None
+    try:
+        r = Atspi.Text.get_range_extents(acc, start, end,
+                                         Atspi.CoordType.SCREEN)
+    except Exception:
+        return None
+    if r is None:
+        return None
+    x, y, w, h = int(r.x), int(r.y), int(r.width), int(r.height)
+    # A real horizontal selection must have width. Height, however, is
+    # often reported as 0 by some toolkits - notably KTextEditor (Kate /
+    # KWrite) returns 0-height text extents - so synthesize a sane line
+    # height rather than discarding an otherwise-correct anchor (we place
+    # the popup above `y`, so only the below-fallback needs the height).
+    if w <= 0:
+        return None
+    if h <= 0:
+        h = 24
+    # Reject sentinel / absurd rectangles toolkits emit when they can't
+    # really answer (offscreen -1s, absurdly large).
+    if w > 100_000 or h > 100_000 or x < -50_000 or y < -50_000:
+        return None
+    return (x, y, w, h)
+
+
+def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] | None:
+    """Bounding rectangle of the SELECTED text in the focused widget, in
+    absolute SCREEN pixels (x, y, width, height), or None.
+
+    Mirrors _atspi_focus_editable's walk (active window -> focused
+    descendant) and then reads the selection extents via the AT-SPI Text
+    interface. Lets the popup anchor to the selection itself instead of
+    the mouse pointer (the user's explicit request). Returns None - so
+    the caller falls back to mouse positioning - whenever AT-SPI is off,
+    unavailable, times out, the widget exposes no Text interface, or
+    nothing is selected. Gated on the same editable_atspi_listener_enabled
+    setting as the rest of the AT-SPI machinery."""
+    if not _HAS_ATSPI:
+        return None
+    try:
+        from settings import get_settings
+        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+            return None
+    except Exception:
+        return None
+
+    result: list[tuple[int, int, int, int] | None] = [None]
+
+    def worker() -> None:
+        try:
+            desktop = Atspi.get_desktop(0)
+            if desktop is None:
+                return
+            for i in range(desktop.get_child_count()):
+                try:
+                    app = desktop.get_child_at_index(i)
+                except Exception:
+                    continue
+                if app is None:
+                    continue
+                try:
+                    n_win = app.get_child_count()
+                except Exception:
+                    continue
+                for j in range(n_win):
+                    try:
+                        win = app.get_child_at_index(j)
+                    except Exception:
+                        continue
+                    if win is None:
+                        continue
+                    try:
+                        if not win.get_state_set().contains(
+                                Atspi.StateType.ACTIVE):
+                            continue
+                    except Exception:
+                        continue
+                    focused = _find_focused_in(win, max_depth=10)
+                    if focused is None:
+                        return
+                    result[0] = _selection_rect_of(focused)
+                    return
+        except Exception:
+            return
+
+    t = threading.Thread(target=worker, daemon=True,
+                         name="linuxpop-atspi-selrect")
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        _log.info("[anchor] AT-SPI selection-rect probe timed out (>%.0f ms)",
+                  timeout * 1000)
+        return None
+    if result[0] is not None:
+        _log.info("[anchor] AT-SPI selection rect (screen px): %r", result[0])
+    return result[0]
+
+
 def _wm_class_lower() -> str:
     """Return the focused window's WM_CLASS in lower-case, or '' on failure.
 

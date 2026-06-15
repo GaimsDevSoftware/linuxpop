@@ -386,6 +386,12 @@ class PopupWindow:
                 self._esc_keycode = 0
         self._prev_button_pressed = False
         self._prev_esc_pressed = False
+        # True while the pointer is over the popup. The popup must never
+        # auto-hide while this holds (user is reading / about to click).
+        # On Wayland this enter/leave signal is reliable; the tick's
+        # screen-space safe-zone math is not (pointer.get_position() is
+        # surface-local there), so Wayland persistence is driven from here.
+        self._pointer_in_popup = False
 
     def _clear_buttons(self) -> None:
         # destroy() drops the GTK refcount to 0, which releases the button's
@@ -530,14 +536,77 @@ class PopupWindow:
         except Exception:
             return None
 
+    def _glyph_colors(self) -> tuple[str, str]:
+        """Foreground + background hex for our custom mono glyphs, following
+        the popup's resolved light/dark theme. Dark-theme defaults: a light
+        glyph on the dark bar."""
+        fg, bg = "#f0f3fa", "#1c2231"
+        try:
+            import theme as _theme
+            mode = _theme._resolve_mode(
+                (get_settings_func() or {}).get("theme", "dark"))
+            if mode == "light":
+                fg, bg = "#1c2231", "#ffffff"
+        except Exception:
+            pass
+        return fg, bg
+
+    def _glyph_image(self, icon_name: str, icon_px: int):
+        """Load one of our custom linuxpop-*-symbolic glyphs, recolouring its
+        hardcoded palette to the current theme.
+
+        These SVGs hardcode #f0f0f0 strokes (tuned for the dark bar) and are
+        NOT in GTK's recolourable symbolic format, so GTK never recolours them
+        via the popup CSS `color` property. On a light popup they'd render
+        near-white-on-white (invisible) - the "faint glyph" bug. We recolour
+        them ourselves at load time instead. Returns None on any failure so the
+        caller can fall back to the plain icon-name path."""
+        try:
+            from gi.repository import GdkPixbuf, Gio, GLib
+            info = Gtk.IconTheme.get_default().lookup_icon(
+                icon_name, icon_px, Gtk.IconLookupFlags.FORCE_SIZE)
+            if info is None:
+                return None
+            path = info.get_filename()
+            if not path or not path.endswith(".svg"):
+                return None
+            with open(path, "rb") as fh:
+                svg = fh.read()
+            if b"#f0f0f0" not in svg.lower():
+                return None  # not one of our hardcoded glyphs - leave to GTK
+            fg, bg = self._glyph_colors()
+            # Body strokes/fills -> foreground; punch-out holes (#2b2b2b) ->
+            # background so negative space matches the bar in both themes; the
+            # lone map-pin green accent -> foreground (mono glyph).
+            for old, new in (
+                (b"#f0f0f0", fg), (b"#F0F0F0", fg),
+                (b"#2b2b2b", bg), (b"#2B2B2B", bg),
+                (b"#1d7a3a", fg), (b"#1D7A3A", fg),
+            ):
+                svg = svg.replace(old, new.encode())
+            scale = self._device_scale()
+            dev = max(12, icon_px * scale)
+            stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(svg))
+            pb = GdkPixbuf.Pixbuf.new_from_stream_at_scale(
+                stream, dev, dev, True, None)
+            if pb is None:
+                return None
+            surf = Gdk.cairo_surface_create_from_pixbuf(pb, 1, None)
+            surf.set_device_scale(scale, scale)
+            return Gtk.Image.new_from_surface(surf)
+        except Exception:
+            return None
+
     def _make_icon_image(self, icon_name: str) -> Gtk.Image:
         """Render an icon scaled to ~72% of the configured button size, so it
         has a comfortable halo of padding inside the button.
 
         Colour logos (non-symbolic) are composited with a thin dark contrast
         rim at device resolution so they stay crisp on HiDPI and separate
-        cleanly from the dark bar. Symbolic icons stay on the icon-name path
-        so the popup's CSS can still recolour them to follow the text."""
+        cleanly from the dark bar. Our custom linuxpop-*-symbolic glyphs are
+        recoloured to the theme foreground at load time (GTK can't recolour
+        them via CSS). System symbolic icons stay on the icon-name path so the
+        popup's CSS can recolour them to follow the text."""
         size = _resolve_button_size()
         icon_px = max(12, int(size * 0.72))
         # Swap to the colour tile or the mono glyph per the user's icon_style.
@@ -548,6 +617,10 @@ class PopupWindow:
             pass
         if icon_name and not icon_name.endswith("-symbolic"):
             img = self._colored_icon_with_rim(icon_name, icon_px)
+            if img is not None:
+                return img
+        elif icon_name and icon_name.startswith("linuxpop-"):
+            img = self._glyph_image(icon_name, icon_px)
             if img is not None:
                 return img
         image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.MENU)
@@ -561,6 +634,7 @@ class PopupWindow:
         y: int,
         content_type: ContentType,
         editable: bool = True,
+        rect: tuple[int, int, int, int] | None = None,
     ) -> None:
         self._current_text = text
         self._clear_buttons()
@@ -654,7 +728,7 @@ class PopupWindow:
 
         specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]
         self._present_buttons(specs, hidden_count, max_btns)
-        self._present_near(x, y)
+        self._present_near(x, y, rect=rect)
 
     def _add_overflow_chip(
         self, hidden: int, cap: int, row: Gtk.Box | None = None,
@@ -817,21 +891,31 @@ class PopupWindow:
         self._present_buttons(specs, 0, 0)
         self._present_near(x, y)
 
-    def _present_near(self, x: int, y: int) -> None:
+    def _present_near(
+        self, x: int, y: int,
+        rect: tuple[int, int, int, int] | None = None,
+    ) -> None:
         """Render the popup near physical screen coords (x, y) and arm
         the tracking/auto-hide machinery. Extracted from show_for so
         both show_for() and show_actions() share the same positioning
-        + lifecycle code path."""
+        + lifecycle code path.
+
+        When `rect` (x, y, w, h in screen pixels - the selected-text
+        bounding box from AT-SPI) is supplied, the popup centres
+        horizontally on the selection and sits just above its top edge
+        (dropping below the bottom edge when there's no room above),
+        instead of being placed relative to the mouse pointer. Falls back
+        to the (x, y) pointer behaviour when `rect` is None."""
         self._bar.show_all()
         self._outer.show_all()
 
-        # Realize WITHOUT mapping so we can measure natural size before the
-        # window is visible. show_all() on the children above marks them as
-        # visible so GTK includes them in the size request; realize() creates
-        # the GDK window resources without actually mapping (showing) it.
-        # On Wayland/layer-shell, mapping happens via show_all() AFTER we set
-        # the margins — if we called show_all() here the window would flash at
-        # (0, 0) before the layer-shell margins take effect.
+        # Map the window off-screen first so GTK performs a full layout pass
+        # and get_preferred_size() returns the real size. We never return to
+        # the GLib main loop before setting the real position, so the
+        # compositor never renders a frame at (-10000, -10000) — the first
+        # visible frame is already at the correct position.
+        get_backend().move_popup_window(self.win, -10000, -10000)
+        self.win.show_all()
         self.win.realize()
 
         _, natural = self.win.get_preferred_size()
@@ -840,53 +924,78 @@ class PopupWindow:
 
         # X11 root coords come in physical pixels; GTK move() takes logical.
         # Convert via the monitor's scale factor before doing layout math.
+        # Wayland/KDE pointer + AT-SPI screen coords are already logical
+        # (same space as the monitor geometry), so don't divide by scale -
+        # doing so would place the popup at half the real position.
+        is_logical = get_backend().pointer_is_logical
         screen = self.win.get_screen()
         display = screen.get_display()
-        monitor = display.get_monitor_at_point(int(x), int(y))
-        scale = monitor.get_scale_factor() if monitor else 1
-        if get_backend().pointer_is_logical:
-            # Wayland/KDE: cursor coords are already in logical pixels (same
-            # space as the monitor geometry), so don't divide by scale -
-            # doing so would place the popup at half the cursor position.
-            lx, ly = float(x), float(y)
+
+        # Anchor point: the selection centre when we have its rect,
+        # otherwise the mouse pointer.
+        if rect is not None:
+            rx, ry, rw, rh = rect
+            anchor_x, anchor_y = rx + rw / 2, ry + rh / 2
         else:
-            lx = x / scale
-            ly = y / scale
+            anchor_x, anchor_y = x, y
+        monitor = display.get_monitor_at_point(int(anchor_x), int(anchor_y))
+        scale = monitor.get_scale_factor() if monitor else 1
 
-        # Cursor Y is the mouse position, which sits in the middle of the
-        # selected line. We need to clear the whole line (~24 px tall in
-        # most fonts) plus a small visual gap, otherwise the popup lands
-        # on top of the text it's supposed to act on.
-        _LINE_CLEARANCE = 28
-        _BELOW_GAP = 32  # used when there isn't room above
-        if get_backend().pointer_is_logical:
-            # Wayland: we only have the pointer, which sits inside/under the
-            # selection rather than above it. Lift the popup further so it
-            # clears the copied text instead of covering it.
-            _LINE_CLEARANCE = 64
-            _BELOW_GAP = 56
+        def _lg(v: float) -> float:
+            return float(v) if is_logical else v / scale
 
-        # Place the popup horizontally centered on (lx,ly), clearly above ly
-        target_x = int(lx - w / 2)
-        target_y = int(ly - h - _LINE_CLEARANCE)
+        if rect is not None:
+            # Anchor to the selection box: centre horizontally on it and
+            # sit just above its top edge. We know the real edge here, so a
+            # small gap is enough (no need for the pointer path's guesswork
+            # lift). `below_y` drops past the bottom edge if there's no room.
+            lcx = _lg(rx + rw / 2)
+            ltop = _lg(ry)
+            lbot = _lg(ry + rh)
+            _GAP = 10
+            target_x = int(lcx - w / 2)
+            target_y = int(ltop - h - _GAP)
+            below_y = int(lbot + _GAP)
+            lx, ly = lcx, (ltop + lbot) / 2.0
+        else:
+            lx = _lg(x)
+            ly = _lg(y)
+            # Cursor Y is the mouse position, which sits in the middle of the
+            # selected line. We need to clear the whole line (~24 px tall in
+            # most fonts) plus a small visual gap, otherwise the popup lands
+            # on top of the text it's supposed to act on.
+            _LINE_CLEARANCE = 28
+            _BELOW_GAP = 32  # used when there isn't room above
+            if is_logical:
+                # Wayland: we only have the pointer, which sits inside/under
+                # the selection rather than above it. Lift the popup further
+                # so it clears the copied text instead of covering it.
+                _LINE_CLEARANCE = 64
+                _BELOW_GAP = 56
+            # Place the popup horizontally centered on (lx,ly), above ly
+            target_x = int(lx - w / 2)
+            target_y = int(ly - h - _LINE_CLEARANCE)
+            below_y = int(ly + _BELOW_GAP)
 
         # Keep on-screen (geom is also in logical coords)
         if monitor is not None:
             geom = monitor.get_geometry()
             target_x = max(geom.x + 4, min(target_x, geom.x + geom.width - w - 4))
             if target_y < geom.y + 4:
-                # Not enough room above: show below the selection instead,
-                # with the same generous gap so we don't overlap downward.
-                target_y = int(ly + _BELOW_GAP)
+                # Not enough room above: show below the selection/pointer
+                # instead, with a gap so we don't overlap downward.
+                target_y = below_y
             target_y = min(target_y, geom.y + geom.height - h - 4)
 
-        # Set layer-shell margins BEFORE mapping so the popup appears at the
-        # correct position on first frame (no 0,0 flash). X11 move() is also
-        # called here (no-op on Wayland), so both backends go through the same
-        # code path.
+        # Move to the real position. The window is already mapped (off-screen);
+        # this updates the layer-shell margins. The compositor applies the new
+        # position on the next Wayland commit, which happens when the main loop
+        # returns — so the window appears directly at the correct spot.
         get_backend().move_popup_window(self.win, target_x, target_y)
-        self.win.show_all()
         self.win.present()
+        # Fresh show: the pointer is at the selection, not on the popup yet.
+        # Reset so a stale True from a prior show can't suppress dismissal.
+        self._pointer_in_popup = False
 
         # Record safe zones for the cursor-tracking loop
         self._origin_logical = (lx, ly)
@@ -947,10 +1056,13 @@ class PopupWindow:
 
     def _on_initial_timeout(self) -> bool:
         self._initial_hide_id = None
-        # Only auto-hide if the user never reached the popup. If
-        # _hide_timeout_id is None and tick says we're in safe zone,
-        # we still hide here - the contract is "after N ms without
-        # pointer entry, give up".
+        # Never give up while the pointer is actually on the popup - the
+        # user is reading it / reaching for a button. _on_leave will arm
+        # the leave-grace once they move off it.
+        if self._pointer_in_popup:
+            return False
+        # Otherwise honour the contract: after N ms without pointer entry,
+        # give up.
         self.hide()
         return False
 
@@ -995,17 +1107,20 @@ class PopupWindow:
             self._click_watcher = None
 
     def _on_global_click(self) -> bool:
-        """A mouse button was pressed somewhere. If the cursor isn't over the
-        popup, dismiss it. Runs on the GLib main loop."""
+        """A mouse button was pressed somewhere (Wayland evdev watcher).
+        Dismiss the popup unless the click landed on it. Runs on the GLib
+        main loop.
+
+        We decide inside-vs-outside from the enter/leave flag, NOT from
+        pointer.get_position(): on Wayland that returns surface-local
+        coordinates that are stale/meaningless when the click lands on
+        another window, so a click well outside used to read as 'inside'
+        and fail to dismiss. The pointer must be over the popup to click
+        anything on it, so _pointer_in_popup is the reliable signal."""
         if not self.win.get_visible():
             return False
-        try:
-            seat = self.win.get_display().get_default_seat()
-            _s, px, py = seat.get_pointer().get_position()
-            if not self._point_in_popup(px, py):
-                self.hide()
-        except Exception:
-            pass
+        if not self._pointer_in_popup:
+            self.hide()
         return False
 
     def _tick(self) -> bool:
@@ -1050,6 +1165,13 @@ class PopupWindow:
             except Exception as exc:  # noqa: BLE001
                 print(f"[popup] xlib query failed: {exc}")
 
+        # Wayland: pointer.get_position() is surface-local, so the screen-
+        # space safe-zone math below is wrong (it would mis-fire and hide
+        # the popup while the cursor is right on it). Persistence there is
+        # driven entirely by enter/leave (_pointer_in_popup + _on_leave's
+        # grace), so skip this block.
+        if self._xdpy is None:
+            return True
         in_safe = self._in_safe_zone(px, py)
         if in_safe:
             # Reset/cancel any countdown - user is still on text or popup
@@ -1102,9 +1224,9 @@ class PopupWindow:
     def _on_enter(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        # User reached the popup - both timers should stop. Initial
-        # grace was "give up if they never come"; once they're here,
-        # the leave-grace alone governs disappearance.
+        # User reached the popup - it must not auto-hide while they're on
+        # it. Cancel BOTH the initial-grace and any leave-grace countdown.
+        self._pointer_in_popup = True
         self._cancel_initial_hide()
         self._cancel_hide_timeout()
         return False
@@ -1112,8 +1234,14 @@ class PopupWindow:
     def _on_leave(self, _widget, event):
         if event.detail == Gdk.NotifyType.INFERIOR:
             return False
-        # Don't arm here - the tracker decides based on whether we're still
-        # near the original text. Leaving the popup alone isn't enough.
+        self._pointer_in_popup = False
+        # On X11 the tracker tick (screen-space safe-zone) governs hiding,
+        # so leaving the popup alone isn't enough - the cursor may still be
+        # over the selected text. On Wayland the tick can't do that math, so
+        # arm the leave-grace here: the popup lingers briefly (covering a
+        # cursor that's still very near) then hides.
+        if self._xdpy is None and self.win.get_visible():
+            self._arm_hide_timeout(self._leave_grace_ms)
         return False
 
     def _on_key_press(self, _widget, event):

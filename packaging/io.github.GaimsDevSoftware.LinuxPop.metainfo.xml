@@ -23,18 +23,20 @@
       LinuxPop watches the text you select on screen and surfaces a small
       floating popup with relevant actions: search the web, copy to clipboard,
       open URLs and paths, send to your favourite AI assistant, encode/decode
-      common formats, run quick scripts. Inspired by PopClip on macOS, built
-      for Linux on X11.
+      common formats, translate, run quick scripts. Inspired by PopClip on
+      macOS, built for Linux - on X11 and on KDE Plasma 6 / Wayland.
     </p>
     <p>Highlights:</p>
     <ul>
-      <li>Floating action popup that appears near your text selection</li>
+      <li>Floating action popup that appears at your text selection</li>
+      <li>Runs on both X11 and KDE Plasma 6 / Wayland</li>
       <li>Context-aware buttons (URL decode only shows on encoded URLs, etc.)</li>
       <li>Send any selection to ChatGPT, Claude, Gemini, Perplexity or local Ollama</li>
+      <li>In-place translation bubble with a language picker</li>
       <li>Clipboard manager + snippets picker on a configurable hotkey</li>
       <li>No-code recipe wizard for building your own custom buttons</li>
       <li>Plugin marketplace with one-click install of community actions</li>
-      <li>Premium dark theme that respects your eyes</li>
+      <li>Light and premium dark themes</li>
     </ul>
   </description>
 

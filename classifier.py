@@ -108,6 +108,21 @@ _COMMAND_TOKENS = {
     "notify-send", "xdg-open",
     # env tools
     "direnv", "asdf", "mise", "nvm", "pyenv", "rbenv", "fnm", "volta",
+    # KDE / Plasma / Qt desktop tools (the user runs Plasma 6, so these
+    # show up constantly in restart/config snippets)
+    "kquitapp6", "kquitapp5", "kquitapp", "kstart6", "kstart5", "kstart",
+    "kwriteconfig6", "kwriteconfig5", "kreadconfig6", "kreadconfig5",
+    "qdbus", "qdbus6", "qdbus-qt6", "kcmshell6", "kcmshell5", "systemsettings",
+    "kded6", "kbuildsycoca6", "kioclient6", "kscreen-doctor", "krunner",
+    "plasmashell", "kwin_wayland", "kwin_x11", "kwin", "kactivities-cli",
+    "balooctl6", "balooctl", "kdialog", "kdeconnect-cli", "kompare",
+    "loginctl", "busctl", "gdbus", "gtk-launch",
+    # audio (PipeWire / PulseAudio / ALSA)
+    "wpctl", "pactl", "pacmd", "pw-cli", "pw-play", "pw-record", "pw-dump",
+    "pw-metadata", "amixer", "alsamixer", "speaker-test", "aplay", "arecord",
+    # desktop / wayland helpers
+    "gsettings", "dconf", "xdg-settings", "xdg-mime", "wl-copy", "wl-paste",
+    "ydotool", "wtype", "grim", "slurp", "spectacle", "okular", "dolphin",
 }
 
 # Shell metacharacters / patterns that strongly suggest the text is
@@ -158,6 +173,12 @@ def _line_first_token(line: str) -> str:
     return line.split(maxsplit=1)[0]
 
 
+# Shell statement separators. A known command token after any of these
+# also counts ('kquitapp6 foo ; kstart6 foo', 'cat x | grep y',
+# 'mkdir d && cd d') - _line_first_token only ever saw the first segment.
+_SHELL_SEP_RE = re.compile(r";|&&|\|\||\|")
+
+
 def _looks_like_command(stripped: str) -> bool:
     """Scan EVERY non-empty line for a known command token at the start.
 
@@ -168,15 +189,24 @@ def _looks_like_command(stripped: str) -> bool:
         sudo apt install foo
 
     A shebang on any line also counts (the user clearly pasted a script).
+    Each line is also split on shell separators (; && || |) so a command
+    that only appears after the separator still classifies.
     """
     for raw in stripped.splitlines():
         first = _line_first_token(raw)
-        if not first:
-            continue
         if first == "#!":
             return True
-        if first in _COMMAND_TOKENS:
+        if first and first in _COMMAND_TOKENS:
             return True
+        # Peel a leading prompt, then check the first token of every
+        # shell-separated segment against the command whitelist.
+        line = raw.strip()
+        if len(line) >= 2 and line[0] in "$>%#" and line[1] in (" ", "\t"):
+            line = line[2:].strip()
+        for segment in _SHELL_SEP_RE.split(line):
+            seg = segment.strip()
+            if seg and seg.split(maxsplit=1)[0] in _COMMAND_TOKENS:
+                return True
     return False
 
 
