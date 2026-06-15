@@ -1076,7 +1076,21 @@ def _maybe_start_trigger_watcher() -> None:
 
 # ----- clipboard reading -------------------------------------------------
 
+# Clipboard reads must be backend-aware. xclip only sees the X11 (XWayland)
+# clipboard, so on a native Wayland session it silently misses everything
+# copied from native-Wayland apps - the history then "doesn't record" most
+# copies. On Wayland we read via wl-paste (wl-clipboard); on X11 via xclip.
+
 def _read_clipboard_targets() -> list[str]:
+    if _is_wayland():
+        try:
+            out = subprocess.run(
+                ["wl-paste", "--list-types"],
+                capture_output=True, timeout=0.5,
+            )
+            return out.stdout.decode("utf-8", errors="replace").splitlines()
+        except (OSError, subprocess.SubprocessError):
+            return []
     try:
         out = subprocess.run(
             ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"],
@@ -1088,6 +1102,17 @@ def _read_clipboard_targets() -> list[str]:
 
 
 def _read_clipboard_text() -> str:
+    if _is_wayland():
+        # Prefer plain text; fall back to whatever wl-paste offers. -n so we
+        # don't pick up wl-paste's appended trailing newline (xclip is raw).
+        for args in (["wl-paste", "-n", "-t", "text/plain"], ["wl-paste", "-n"]):
+            try:
+                out = subprocess.run(args, capture_output=True, timeout=0.5)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if out.returncode == 0 and out.stdout:
+                return out.stdout.decode("utf-8", errors="replace")
+        return ""
     try:
         out = subprocess.run(
             ["xclip", "-selection", "clipboard", "-o"],
@@ -1099,6 +1124,17 @@ def _read_clipboard_text() -> str:
 
 
 def _read_clipboard_image() -> Optional[bytes]:
+    if _is_wayland():
+        try:
+            out = subprocess.run(
+                ["wl-paste", "-t", "image/png"],
+                capture_output=True, timeout=1.0,
+            )
+            if out.returncode == 0 and out.stdout:
+                return out.stdout
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return None
     try:
         out = subprocess.run(
             ["xclip", "-selection", "clipboard", "-t", "image/png", "-o"],
@@ -1335,18 +1371,34 @@ def _paste_to_window(
     caret lands where a {cursor} placeholder was rendered out.
     """
     if entry.kind == "text":
-        subprocess.run(
-            ["xclip", "-selection", "clipboard"],
-            input=entry.text.encode("utf-8"), check=False,
-            timeout=2.0,
-        )
+        if _is_wayland():
+            subprocess.run(
+                ["wl-copy"], input=entry.text.encode("utf-8"),
+                check=False, timeout=2.0,
+            )
+        else:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=entry.text.encode("utf-8"), check=False,
+                timeout=2.0,
+            )
     elif entry.kind == "image":
         if not Path(entry.image_path).is_file():
             return
-        subprocess.run(
-            ["xclip", "-selection", "clipboard", "-t", "image/png",
-             "-i", entry.image_path], check=False,
-        )
+        if _is_wayland():
+            try:
+                with open(entry.image_path, "rb") as fh:
+                    subprocess.run(
+                        ["wl-copy", "-t", "image/png"],
+                        stdin=fh, check=False, timeout=2.0,
+                    )
+            except OSError:
+                return
+        else:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard", "-t", "image/png",
+                 "-i", entry.image_path], check=False,
+            )
 
     import logging
     _log = logging.getLogger("linuxpop")
