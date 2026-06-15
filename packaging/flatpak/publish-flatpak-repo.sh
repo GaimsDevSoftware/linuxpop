@@ -36,8 +36,8 @@ touch "$PAGES/.nojekyll"
 
 echo "[4/5] commit + push Pages ..."
 git -C "$PAGES" config user.name  "$(git -C "$HOME/src/linuxpop" config user.name)"
-  git -C "$PAGES" config user.email "$(git -C "$HOME/src/linuxpop" config user.email)"
-  git -C "$PAGES" add -A
+git -C "$PAGES" config user.email "$(git -C "$HOME/src/linuxpop" config user.email)"
+git -C "$PAGES" add -A
 git -C "$PAGES" commit -m "Update Flatpak repo ($(git -C "$(dirname "$MANIFEST")/../.." describe --tags --always 2>/dev/null || echo update))" \
   && git -C "$PAGES" push || echo "  (nothing to push)"
 

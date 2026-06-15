@@ -101,6 +101,12 @@ class X11Backend(PlatformBackend):
         import shutil
         if not shutil.which("xdotool"):
             print("[x11] xdotool missing - cannot send key")
+            from .base import _warn_missing_injector
+            _warn_missing_injector(
+                "x11",
+                "Cut/Paste/Backspace needs xdotool. Install it to enable "
+                "keystroke actions.",
+            )
             return
         subprocess.run(
             ["xdotool", "key", "--clearmodifiers", combo], check=False,
@@ -114,6 +120,12 @@ class X11Backend(PlatformBackend):
         import shutil
         if not shutil.which("xdotool"):
             print("[x11] xdotool missing - cannot type text")
+            from .base import _warn_missing_injector
+            _warn_missing_injector(
+                "x11",
+                "Cut/Paste/Backspace needs xdotool. Install it to enable "
+                "keystroke actions.",
+            )
             return
         subprocess.run(
             ["xdotool", "type", "--clearmodifiers", "--", text], check=False,

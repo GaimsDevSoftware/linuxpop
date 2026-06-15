@@ -21,7 +21,27 @@ and `hotkey.Hotkey` already had, so callers barely change.
 from __future__ import annotations
 
 import abc
+import subprocess
 from typing import Callable, Optional, Protocol
+
+# One-time notification per session when a key-injection backend is missing.
+# Keeps Cut/Paste/Backspace from failing completely silently.
+_missing_injector_warned: set[str] = set()
+
+
+def _warn_missing_injector(backend_name: str, message: str) -> None:
+    """Show a desktop notification once per session if key injection fails."""
+    if backend_name in _missing_injector_warned:
+        return
+    _missing_injector_warned.add(backend_name)
+    try:
+        subprocess.run(
+            ["notify-send", "--hint=byte:transient:1", "-t", "6000",
+             "-i", "dialog-warning", "LinuxPop", message],
+            check=False,
+        )
+    except Exception:
+        pass
 
 
 class SelectionWatcher(Protocol):

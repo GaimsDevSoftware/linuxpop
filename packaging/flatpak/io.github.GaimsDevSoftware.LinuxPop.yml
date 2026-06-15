@@ -22,16 +22,11 @@
 #     - gtk-layer-shell: positions the popup as a layer-shell surface
 #       (a plain GTK window can't be placed on Wayland). Built with
 #       introspection so the GtkLayerShell-0.1 typelib is loadable by gi.
+#     - ydotool + ydotoold: key injection on Wayland. ydotoold writes to
+#       /dev/uinput, which needs the --device=all finish-arg. Bundling it
+#       means users don't have to install a host tool for Cut/Paste/Backspace.
 #     Neither ships in GNOME Platform 46, so both are built from source
 #     below with real upstream URL + sha256.
-#
-#   NOT bundled - ydotool (key injection / paste chords):
-#     ydotool needs /dev/uinput + the ydotoold daemon, which a Flatpak
-#     sandbox cannot provide, so the binary would be inert here. wtype is
-#     also dead on KWin (no zwp_virtual_keyboard_v1). In-sandbox paste
-#     therefore needs the libei / XDG RemoteDesktop portal route (future
-#     work); until then the Wayland paste path degrades to "copy + press
-#     Ctrl+V yourself". Outside Flatpak the host's ydotool is used.
 #
 #   RUNTIME VERSION: org.gnome.Platform//49 (GNOME 46 is EOL). 49 was
 #     verified to ship GTK3, the Handy-1 typelib, and python3-gi on Python
@@ -86,6 +81,7 @@ finish-args:
   # exactly what the feature does, and LinuxPop is self-distributed (not Flathub).
   - --talk-name=org.freedesktop.Flatpak
   - --device=dri                  # GTK rendering
+  - --device=all                  # ydotoold needs /dev/uinput for key injection
 
 cleanup:
   - /include
@@ -234,6 +230,23 @@ modules:
       - type: archive
         url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.3.0.tar.gz
         sha256: b4dc560973f0cd74e02f817ffa2fd44ba645a4f1ea94b7b9614dacc9f895f402
+
+  # ----- ydotool -----
+  # Key injection on Wayland. ydotool v1.x is pure C99 with no external
+  # dependencies and only needs CMake. The companion ydotoold daemon holds
+  # a persistent uinput device; the wrapper script starts it at launch.
+  # --device=all grants /dev/uinput access inside the sandbox.
+  # We patch out the manpage subdir so we don't need scdoc in the SDK.
+  - name: ydotool
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    sources:
+      - type: archive
+        url: https://github.com/ReimuNotMoe/ydotool/archive/refs/tags/v1.0.4.tar.gz
+        sha256: ba075a43aa6ead51940e892ecffa4d0b8b40c241e4e2bc4bd9bd26b61fde23bd
+      - type: patch
+        path: ydotool-no-docs.patch
 
   # ----- python3-dbus (dbus-python) -----
   # The Wayland/KDE backend uses dbus-python for KGlobalAccel (global

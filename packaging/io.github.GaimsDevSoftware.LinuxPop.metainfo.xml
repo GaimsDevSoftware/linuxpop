@@ -96,6 +96,15 @@
   <content_rating type="oars-1.1" />
 
   <releases>
+    <release version="0.9.7" date="2026-06-16">
+      <description>
+        <p>Cut, Paste, Backspace and the other editing buttons now work out
+        of the box in the Flatpak build on KDE Plasma Wayland. ydotool and
+        its ydotoold daemon are bundled and started automatically, so users
+        no longer need to install a host key-injection tool. If injection
+        ever fails, the app now shows a warning instead of failing silently.</p>
+      </description>
+    </release>
     <release version="0.9.6" date="2026-06-15">
       <description>
         <p>The editing buttons work in the Flatpak again. Select all, Cut,

@@ -836,15 +836,23 @@ class WaylandKdeBackend(PlatformBackend):
         return args
 
     def _has_ydotool(self) -> bool:
-        return _host_has("ydotool") if _in_flatpak() else bool(
-            shutil.which("ydotool"))
+        if _in_flatpak():
+            # Prefer the bundled ydotool (needs --device=all for /dev/uinput);
+            # fall back to a host install for custom Flatpak builds without it.
+            return os.path.isfile("/app/bin/ydotool") or _host_has("ydotool")
+        return bool(shutil.which("ydotool"))
 
     def _ydotool_run(self, sub_argv: list) -> bool:
-        """Dispatch `ydotool <sub_argv>` to the daemon. In the Flatpak the
-        sandbox has no /dev/uinput, so we run ydotool on the HOST via
-        flatpak-spawn (same daemon + socket the native app uses); otherwise
-        we run it in-process. Returns True if it was dispatched."""
-        if _in_flatpak():
+        """Dispatch `ydotool <sub_argv>` to the daemon.
+
+        In the Flatpak we prefer the bundled ydotool binary and run it inside
+        the sandbox (ydotoold is started by the wrapper). We keep the
+        flatpak-spawn --host fallback so custom builds without the bundled
+        binary can still use a host-installed ydotool."""
+        bundled = "/app/bin/ydotool"
+        if _in_flatpak() and os.path.isfile(bundled):
+            argv = [bundled, *sub_argv]
+        elif _in_flatpak():
             runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
             sock = os.path.join(runtime, ".ydotool_socket")
             argv = ["flatpak-spawn", "--host",
@@ -871,6 +879,20 @@ class WaylandKdeBackend(PlatformBackend):
                 return
         print(f"[wayland] no working key-injection tool for {combo!r} "
               "(install ydotool + ydotoold on KWin)")
+        from .base import _warn_missing_injector
+        if _in_flatpak():
+            _warn_missing_injector(
+                "wayland_kde_flatpak",
+                "Cut/Paste/Backspace could not use ydotool. If this is a custom "
+                "Flatpak build, install ydotool on the host; otherwise the "
+                "bundled daemon may not have started.",
+            )
+        else:
+            _warn_missing_injector(
+                "wayland_kde_native",
+                "Cut/Paste/Backspace needs ydotool + ydotoold. Install and "
+                "start ydotoold to enable keystroke actions.",
+            )
 
     def type_text(self, text: str) -> None:
         # `--` terminates ydotool's own option parsing so text that starts
