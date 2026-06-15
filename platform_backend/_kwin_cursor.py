@@ -23,10 +23,14 @@ import dbus  # noqa: E402
 import dbus.service  # noqa: E402
 from dbus.mainloop.glib import DBusGMainLoop  # noqa: E402
 
-BUS_NAME = "org.linuxpop.Cursor"
+# App-id-prefixed so a Flatpak sandbox auto-allows owning it (the bus filter
+# only lets an app own its app-id and sub-names; the old "org.linuxpop.Cursor"
+# was rejected with org.freedesktop.DBus.Error.ServiceUnknown). Harmless
+# outside Flatpak. _JS references the constant so both sides stay in sync.
+BUS_NAME = "io.github.GaimsDevSoftware.LinuxPop.Cursor"
 OBJ_PATH = "/cursor"
 _JS = (
-    'callDBus("org.linuxpop.Cursor", "/cursor", "org.linuxpop.Cursor", '
+    f'callDBus("{BUS_NAME}", "{OBJ_PATH}", "{BUS_NAME}", '
     '"Report", workspace.cursorPos.x, workspace.cursorPos.y);'
 )
 
