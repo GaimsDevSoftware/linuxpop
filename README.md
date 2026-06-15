@@ -42,7 +42,30 @@ no telemetry.
 
 ## Install
 
-### 1. System dependencies
+### Flatpak (recommended — KDE Plasma 6 / Wayland & X11)
+
+LinuxPop ships as a **GPG-signed Flatpak from its own auto-updating repo** — one command,
+no Flathub account or approval needed:
+
+```sh
+flatpak install --from https://gaimsdevsoftware.github.io/linuxpop-flatpak/linuxpop.flatpakref
+flatpak run io.github.GaimsDevSoftware.LinuxPop
+```
+
+First time using Flatpak? Add the Flathub runtimes first:
+`flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo`
+
+Prefer a single file? Grab the `.flatpak` bundle from the
+[latest release](https://github.com/GaimsDevSoftware/linuxpop/releases/latest) and run
+`flatpak install --bundle linuxpop-*.flatpak`. Full instructions:
+<https://gaimsdevsoftware.github.io/linuxpop-flatpak/>
+
+> In the Flatpak build, "open file/folder" works (read-only home access); screen OCR
+> isn't bundled yet (planned for a later release).
+
+### From source
+
+#### 1. System dependencies
 
 ```sh
 # Ubuntu / Linux Mint / Debian
@@ -60,7 +83,7 @@ sudo pacman -S python python-gobject gtk3 libayatana-appindicator \
 
 Optional: `qrencode` (for the QR plugin), `ollama` (for the local-AI plugin).
 
-### 2. Install LinuxPop
+#### 2. Install LinuxPop
 
 ```sh
 git clone https://github.com/GaimsDevSoftware/linuxpop.git ~/linuxpop
