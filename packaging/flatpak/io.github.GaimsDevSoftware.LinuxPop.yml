@@ -15,18 +15,27 @@
 #     are built as Flatpak modules below from upstream source.
 #   - X11 global hotkey grabs work via the forwarded X11 socket.
 #
-#   TODO (full Wayland/KDE Flatpak — needs a build to verify):
-#     The Wayland/KDE backend shells out to wl-clipboard (wl-copy/wl-paste)
-#     and ydotool (key injection — wtype is dead on KWin, which does not
-#     implement zwp_virtual_keyboard_v1), and uses the gtk-layer-shell
-#     typelib for popup placement. None ship in GNOME Platform 46, so they
-#     must be added as modules below (like xdotool), each with a real
-#     upstream URL + sha256. ydotool also needs the ydotoold daemon +
-#     /dev/uinput, which a sandbox cannot provide — so the chord-injection
-#     path may need the libei/RemoteDesktop portal instead inside Flatpak.
-#     Until then a Flatpak build detects the wayland_kde backend but is
-#     degraded at runtime on KDE. The finish-args Wayland socket + KDE
-#     talk-names below are already set; the bundled tools remain.
+#   Wayland/KDE tools (bundled below, like the X11 ones):
+#     - wl-clipboard (wl-copy/wl-paste): selection + clipboard on Wayland,
+#       the way the X11 backend uses xclip. Works over the shared Wayland
+#       socket inside the sandbox.
+#     - gtk-layer-shell: positions the popup as a layer-shell surface
+#       (a plain GTK window can't be placed on Wayland). Built with
+#       introspection so the GtkLayerShell-0.1 typelib is loadable by gi.
+#     Neither ships in GNOME Platform 46, so both are built from source
+#     below with real upstream URL + sha256.
+#
+#   NOT bundled — ydotool (key injection / paste chords):
+#     ydotool needs /dev/uinput + the ydotoold daemon, which a Flatpak
+#     sandbox cannot provide, so the binary would be inert here. wtype is
+#     also dead on KWin (no zwp_virtual_keyboard_v1). In-sandbox paste
+#     therefore needs the libei / XDG RemoteDesktop portal route (future
+#     work); until then the Wayland paste path degrades to "copy + press
+#     Ctrl+V yourself". Outside Flatpak the host's ydotool is used.
+#
+#   RUNTIME VERSION: this targets org.gnome.Platform//46. Verify at build
+#     time that the chosen runtime still ships GTK3 + that 46 is not EOL on
+#     Flathub; bump to a current GNOME runtime if needed.
 
 app-id: io.github.GaimsDevSoftware.LinuxPop
 runtime: org.gnome.Platform
@@ -160,6 +169,35 @@ modules:
       - type: file
         url: https://files.pythonhosted.org/packages/ac/10/c67e20445a707f7a610699bba4fe050583b688d8cd2d202572b257f46600/pillow-10.4.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
         sha256: 5e84b6cc6a4a3d76c153a6b19270b3526a5a8ed6b09501d3af891daa2a9de7d6
+
+  # ----- gtk-layer-shell -----
+  # Positions the popup as a Wayland layer-shell surface — the Wayland/KDE
+  # backend can't place a plain GTK window. introspection=true so the
+  # GtkLayerShell-0.1 typelib is available to PyGObject; vapi off to avoid
+  # a vala/vapigen build dep. Builds against the runtime's GTK3.
+  - name: gtk-layer-shell
+    buildsystem: meson
+    config-opts:
+      - -Dexamples=false
+      - -Ddocs=false
+      - -Dtests=false
+      - -Dvapi=false
+      - -Dintrospection=true
+    sources:
+      - type: archive
+        url: https://github.com/wmww/gtk-layer-shell/archive/refs/tags/v0.10.1.tar.gz
+        sha256: 88c3a3e0a5300532f3d368d5df64838a87f1fb85273f22d41df0a6b8d0ec59c6
+
+  # ----- wl-clipboard -----
+  # wl-copy / wl-paste — selection + clipboard capture on Wayland, the way
+  # the X11 backend uses xclip. Pure meson, only needs wayland-client +
+  # wayland-protocols from the SDK.
+  - name: wl-clipboard
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.3.0.tar.gz
+        sha256: b4dc560973f0cd74e02f817ffa2fd44ba645a4f1ea94b7b9614dacc9f895f402
 
   # ----- LinuxPop itself -----
   - name: linuxpop
