@@ -707,6 +707,32 @@ class SettingsDialog:
             _rebuild_icon_preview(style)
         icon_combo.connect("changed", _on_icon_style_changed)
 
+        # ----- Tray icon: coloured badge vs mono glyph for light/dark panels -----
+        tray_row = Handy.ActionRow()
+        tray_row.set_title("Tray icon")
+        tray_row.set_subtitle(
+            "The colour badge is visible on any panel. The mono styles let you "
+            "match your panel manually (KDE won't recolour it automatically): "
+            "Light for a dark panel, Dark for a light panel.")
+        tray_combo = Gtk.ComboBoxText()
+        tray_combo.append("color", "Colour (any panel)")
+        tray_combo.append("light", "Light mono (dark panels)")
+        tray_combo.append("dark", "Dark mono (light panels)")
+        _cur_tray = (self._settings.get("tray_icon_style") or "color")
+        if _cur_tray not in ("color", "light", "dark"):
+            _cur_tray = "color"
+        tray_combo.set_active_id(_cur_tray)
+        tray_combo.set_valign(Gtk.Align.CENTER)
+        tray_row.add(tray_combo)
+        tray_row.set_activatable_widget(tray_combo)
+        group.add(tray_row)
+
+        def _on_tray_icon_changed(combo: Gtk.ComboBoxText) -> None:
+            # _save_key fires the on_changed chain -> main.py tells the tray
+            # subprocess to re-render its icon live (no restart needed).
+            self._save_key("tray_icon_style", combo.get_active_id() or "color")
+        tray_combo.connect("changed", _on_tray_icon_changed)
+
         # Max buttons per popup: how many actions can show before the
         # popup wraps to a second row and (past 2 rows) drops to a
         # "+N" overflow chip. Pairs with popup_button_size to govern
