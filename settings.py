@@ -169,6 +169,9 @@ DEFAULTS: dict[str, Any] = {
     # XGrabKey path is still wired up for power users who want pure
     # event-driven behaviour: flip this off in Settings.
     "hotkey_use_polling": True,
+    # Target language for the Translate plugin (ISO code, e.g. "en", "no",
+    # "de"). Changeable from the dropdown in the translation bubble itself.
+    "translate_target_lang": "en",
     # Milliseconds before the popup auto-hides if the mouse never enters
     # it. 6.5 s leaves enough time to read the buttons without overstaying
     # - 8 s felt sluggish in practice. Tunable via Settings → Timing.
@@ -293,6 +296,12 @@ DEFAULTS: dict[str, Any] = {
     # Stays here as a hidden settings.json knob for the rare user who
     # explicitly wants AT-SPI back on. Default off.
     "editable_atspi_listener_enabled": False,
+    # Anchor the popup to the SELECTED-TEXT rectangle (via AT-SPI screen
+    # extents) instead of the mouse pointer. On by default, but it only has
+    # any effect when editable_atspi_listener_enabled is also True AND the
+    # focused app exposes accessibility - otherwise the popup silently falls
+    # back to the mouse pointer (so leaving this on costs nothing).
+    "popup_anchor_to_selection": True,
     # If True, show the one-time welcome dialog on first run. Set to False
     # to skip it (mostly useful for screencasts / CI testing).
     "show_welcome_dialog": True,

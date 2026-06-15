@@ -8,12 +8,25 @@
 #     flatpak run io.github.GaimsDevSoftware.LinuxPop
 #
 # Notes:
-#   - LinuxPop is an X11-only app. The sandbox needs the X11 socket,
-#     keyboard simulation, system tray, and notifications.
+#   - LinuxPop runs on X11 and on KDE Plasma 6 / Wayland. The sandbox
+#     needs both sockets, keyboard simulation, system tray, notifications,
+#     and (on KDE) talk access to KWin + KGlobalAccel.
 #   - xdotool / xclip / wmctrl are not in any freedesktop runtime. They
 #     are built as Flatpak modules below from upstream source.
-#   - Global hotkey grabs work because we forward the X11 socket — there
-#     is no Wayland support yet (XWayland would lose the global grab).
+#   - X11 global hotkey grabs work via the forwarded X11 socket.
+#
+#   TODO (full Wayland/KDE Flatpak — needs a build to verify):
+#     The Wayland/KDE backend shells out to wl-clipboard (wl-copy/wl-paste)
+#     and ydotool (key injection — wtype is dead on KWin, which does not
+#     implement zwp_virtual_keyboard_v1), and uses the gtk-layer-shell
+#     typelib for popup placement. None ship in GNOME Platform 46, so they
+#     must be added as modules below (like xdotool), each with a real
+#     upstream URL + sha256. ydotool also needs the ydotoold daemon +
+#     /dev/uinput, which a sandbox cannot provide — so the chord-injection
+#     path may need the libei/RemoteDesktop portal instead inside Flatpak.
+#     Until then a Flatpak build detects the wayland_kde backend but is
+#     degraded at runtime on KDE. The finish-args Wayland socket + KDE
+#     talk-names below are already set; the bundled tools remain.
 
 app-id: io.github.GaimsDevSoftware.LinuxPop
 runtime: org.gnome.Platform
@@ -25,11 +38,14 @@ finish-args:
   - --share=ipc
   - --socket=x11
   - --socket=fallback-x11
+  - --socket=wayland              # KDE Plasma 6 Wayland backend
   - --share=network               # AI plugins (ChatGPT URL prefill, Ollama, etc.)
   - --filesystem=home             # plugin install + recipes + snippets in ~/.config/linuxpop
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher    # system tray
   - --talk-name=org.freedesktop.portal.OpenURI   # xdg-open via portal
+  - --talk-name=org.kde.KWin                     # Wayland: cursorPos + active window via KWin scripting
+  - --talk-name=org.kde.kglobalaccel             # Wayland: global hotkey registration
   - --device=dri                  # GTK rendering
 
 cleanup:

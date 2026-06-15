@@ -989,12 +989,17 @@ class SettingsDialog:
             "leave the feature off.")
         force_combo = Gtk.ComboBoxText()
         force_combo.set_valign(Gtk.Align.CENTER)
+        # Keep the dropdown labels SHORT - the per-key caveats live in the
+        # subtitle above. Long option labels blow up the combo's natural
+        # width, which steals horizontal space from the wrapping subtitle
+        # and squeezes it into a tall narrow ribbon (there is no width clamp
+        # on the row).
         for key, label in [
             ("",      "None (off)"),
-            ("ctrl",  "Ctrl (may break word-by-word selection)"),
-            ("alt",   "Alt (conflicts with Alt+drag move-window)"),
-            ("super", "Super (conflicts with most WMs' window gesture)"),
-            ("shift", "Shift (extends existing selection)"),
+            ("ctrl",  "Ctrl"),
+            ("alt",   "Alt"),
+            ("super", "Super"),
+            ("shift", "Shift"),
         ]:
             force_combo.append(key, label)
         current_force = (

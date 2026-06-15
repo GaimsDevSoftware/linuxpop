@@ -35,7 +35,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 import plugin_loader
 import theme
 from classifier import classify
-from editable_detect import is_focus_editable
+from editable_detect import is_focus_editable, focused_selection_rect
 from platform_backend import get_backend
 from popup import PopupWindow
 from settings import get_settings
@@ -224,7 +224,19 @@ class App:
         # classes in from settings without circular imports.
         extra_ro = tuple(self.settings.get("readonly_app_classes") or [])
         editable = is_focus_editable(extra_readonly_classes=extra_ro)
-        self.popup.show_for(text, x, y, ctype, editable=editable)
+        # Try to anchor the popup to the selected-text rectangle (via
+        # AT-SPI screen-coord extents) instead of the mouse pointer. Returns
+        # None - and we fall back to (x, y) - whenever AT-SPI is off /
+        # unavailable / the app exposes no selection geometry, so this is a
+        # zero-regression enhancement. Gated behind popup_anchor_to_selection.
+        rect = None
+        if bool(self.settings.get("popup_anchor_to_selection")):
+            try:
+                rect = focused_selection_rect()
+            except Exception as exc:  # noqa: BLE001
+                log.info("[anchor] selection-rect lookup failed: %s", exc)
+                rect = None
+        self.popup.show_for(text, x, y, ctype, editable=editable, rect=rect)
 
     def show_popup_now(self) -> None:
         # Stamped so a "had to press the hotkey 3 times" report comes
