@@ -38,6 +38,10 @@ def _in_flatpak() -> bool:
     return os.path.exists("/.flatpak-info")
 
 
+def _debug_keys() -> bool:
+    return os.environ.get("LINUXPOP_DEBUG_KEYS", "").lower() in ("1", "true", "yes")
+
+
 def _host_has(binary: str) -> bool:
     """Is `binary` on the host's PATH? Used in Flatpak, where the Wayland
     injectors (ydotool) live on the host, not in the sandbox. Cached: host
@@ -75,6 +79,15 @@ def _kwin_subprocess_env() -> dict:
 # ydotool `key` CODE:STATE tokens. Letters/digits are lower-cased on
 # lookup; the named keys cover every chord the app actually sends
 # (Return, ctrl+Return, BackSpace, ctrl+a/x/v) plus common extras.
+#
+# Inter-event delay for ydotool chords. 12 ms is the research-note
+# minimum, but real apps (KWrite, Chrome/Electron on KWin Wayland)
+# often miss the modifier if it is not held a little longer. 50 ms
+# between events makes Ctrl+X/A/V reliable without feeling sluggish.
+_YDOTOOL_KEY_DELAY_MS = 50
+# Typing is a stream of single keys, so it can be faster while still
+# giving KWin time to register each one.
+_YDOTOOL_TYPE_DELAY_MS = 12
 _YDOTOOL_KEYCODES = {
     **{d: 2 + i for i, d in enumerate("1234567890")},  # KEY_1=2 .. KEY_0=11
     "a": 30, "b": 48, "c": 46, "d": 32, "e": 18, "f": 33, "g": 34,
@@ -758,13 +771,20 @@ class WaylandKdeBackend(PlatformBackend):
         return 0, 0
 
     def can_paste(self) -> bool:
-        # ydotool (KWin) / wtype (wlroots) are the only Wayland injectors.
-        # In the Flatpak the sandbox has neither (and no /dev/uinput), so we
-        # drive the host's ydotool through flatpak-spawn instead - check that
-        # it's actually installed on the host.
+        # Prefer eitype (libei portal – works on KWin), then the bundled
+        # ydotool, then wdotool, then wtype (wlroots-only, dead on KWin).
+        if _in_flatpak():
+            if os.path.isfile("/app/bin/eitype"):
+                return True
+        elif shutil.which("eitype"):
+            return True
+        if self._has_ydotool():
+            return True
+        if shutil.which("wdotool"):
+            return True
         if _in_flatpak():
             return _host_has("ydotool")
-        return bool(shutil.which("ydotool") or shutil.which("wtype"))
+        return bool(shutil.which("wtype"))
 
     # ---- keystroke injection --------------------------------------------
     #
@@ -782,14 +802,18 @@ class WaylandKdeBackend(PlatformBackend):
 
     def _ydotool_env(self) -> dict:
         """Env for ydotool with YDOTOOL_SOCKET pointed at the running
-        daemon. ydotoold here listens on $XDG_RUNTIME_DIR/.ydotool_socket;
-        set it explicitly so we don't depend on ydotool's compiled default."""
+        daemon. In the Flatpak the wrapper starts ydotoold on a LinuxPop-
+        specific socket so it does not clash with a host ydotoold."""
         env = os.environ.copy()
         if not env.get("YDOTOOL_SOCKET"):
             runtime = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-            sock = os.path.join(runtime, ".ydotool_socket")
-            if os.path.exists(sock):
-                env["YDOTOOL_SOCKET"] = sock
+            # Prefer the LinuxPop-specific socket; fall back to the default
+            # socket for native runs where the user started ydotoold manually.
+            for sock_name in ("linuxpop/.ydotool_socket", ".ydotool_socket"):
+                sock = os.path.join(runtime, sock_name)
+                if os.path.exists(sock):
+                    env["YDOTOOL_SOCKET"] = sock
+                    break
         return env
 
     def _ydotool_key_events(self, combo: str) -> Optional[list[str]]:
@@ -817,6 +841,43 @@ class WaylandKdeBackend(PlatformBackend):
         events += [f"{key_code}:1", f"{key_code}:0"]
         events += [f"{c}:0" for c in reversed(mods)]
         return events
+
+    def _eitype_args(self, combo: str) -> Optional[list[str]]:
+        """Translate xdotool-style combo ('ctrl+v', 'Return') to eitype args.
+
+        eitype uses the libei RemoteDesktop portal so KWin cannot mis-read
+        modifier+key chords the way it does with ydotool/uinput."""
+        parts = [p.strip() for p in combo.split("+") if p.strip()]
+        if not parts:
+            return None
+        mod_map = {"ctrl": "ctrl", "control": "ctrl", "alt": "alt",
+                   "shift": "shift", "super": "super", "win": "super",
+                   "meta": "super"}
+        mods = []
+        for m in parts[:-1]:
+            mn = mod_map.get(m.lower())
+            if mn is None:
+                return None
+            mods.append(mn)
+        key = parts[-1]
+        _NAMED = {"return", "enter", "kp_enter", "backspace", "tab",
+                   "escape", "esc", "delete", "home", "end",
+                   "prior", "next", "left", "right", "up", "down",
+                   "space"}
+        if not mods:
+            if key.lower() in _NAMED:
+                return ["-k", key.lower()]
+            if len(key) == 1:
+                return [key]
+            return ["-k", key]
+        args = []
+        for m in mods:
+            args += ["-M", m]
+        if key.lower() in _NAMED:
+            args += ["-k", key.lower()]
+        else:
+            args.append(key)
+        return args
 
     def _wtype_args(self, combo: str) -> Optional[list[str]]:
         parts = [p.strip() for p in combo.split("+") if p.strip()]
@@ -848,7 +909,11 @@ class WaylandKdeBackend(PlatformBackend):
         In the Flatpak we prefer the bundled ydotool binary and run it inside
         the sandbox (ydotoold is started by the wrapper). We keep the
         flatpak-spawn --host fallback so custom builds without the bundled
-        binary can still use a host-installed ydotool."""
+        binary can still use a host-installed ydotool.
+
+        The return value is True only when ydotool exits 0, so callers can
+        fall back to other injectors or warn the user.
+        """
         bundled = "/app/bin/ydotool"
         if _in_flatpak() and os.path.isfile(bundled):
             argv = [bundled, *sub_argv]
@@ -859,50 +924,210 @@ class WaylandKdeBackend(PlatformBackend):
                     f"--env=YDOTOOL_SOCKET={sock}", "ydotool", *sub_argv]
         else:
             argv = ["ydotool", *sub_argv]
+        if _debug_keys():
+            print(f"[ydotool] argv={argv} "
+                  f"YDOTOOL_SOCKET={self._ydotool_env().get('YDOTOOL_SOCKET')}")
         try:
-            subprocess.run(argv, env=self._ydotool_env(), check=False)
+            result = subprocess.run(
+                argv, env=self._ydotool_env(), check=False,
+                capture_output=True, text=True)
+            if _debug_keys():
+                print(f"[ydotool] rc={result.returncode} "
+                      f"stderr={result.stderr.strip()!r} "
+                      f"stdout={result.stdout.strip()!r}")
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "").strip()
+                print(f"[wayland] ydotool failed (rc={result.returncode}): {err}")
+                return False
             return True
         except OSError as exc:
+            _dbg(f"OSError: {exc}")
             print(f"[wayland] ydotool failed: {exc}")
             return False
 
+    def _eitype_run(self, argv: list) -> bool:
+        """Dispatch eitype (libei / RemoteDesktop portal) for key injection.
+
+        Uses the portal's RemoteDesktop interface, so KWin processes every
+        event through its normal Wayland input path – modifier chords cannot
+        be dropped or mis-read. The portal shows a consent dialog on first
+        use per session; after that the token is cached.
+
+        In Flatpak, the portal's talk-name (org.freedesktop.portal.RemoteDesktop)
+        is already in the finish-args. On the host, eitype needs to be installed
+        (cargo install eitype or distro package).
+        """
+        bundled = "/app/bin/eitype"
+        if _in_flatpak() and os.path.isfile(bundled):
+            exec_path = bundled
+        else:
+            exec_path = shutil.which("eitype")
+            if not exec_path:
+                return False
+        if _debug_keys():
+            print(f"[eitype] argv={[exec_path, *argv]}")
+        try:
+            result = subprocess.run(
+                [exec_path, *argv], check=False,
+                capture_output=True, text=True, timeout=10.0)
+            if _debug_keys():
+                print(f"[eitype] rc={result.returncode} "
+                      f"stderr={result.stderr.strip()!r} "
+                      f"stdout={result.stdout.strip()!r}")
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "").strip()
+                print(f"[wayland] eitype failed (rc={result.returncode}): {err}")
+                return False
+            return True
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"[wayland] eitype failed: {exc}")
+            return False
+
+    def _ydotool_chord_run(self, events: list[str]) -> bool:
+        """Inject a modifier chord in explicit phases.
+
+        Several compositors (KWin/Plasma 6 in particular) drop or mis-read
+        modifier+key chords when all events arrive in one rapid ydotool
+        command. By pressing the modifiers, pausing, pressing/releasing the
+        final key, pausing again, and only then releasing the modifiers, we
+        make it impossible for the compositor to miss that Ctrl/Shift/Alt was
+        held when X/A/V/etc. was pressed.
+
+        Modifiers are always released on error so they cannot get stuck.
+        """
+        mod_codes = {29, 42, 56, 125}  # ctrl, shift, alt, super
+        mod_downs: list[str] = []
+        key_events: list[str] = []
+        mod_ups: list[str] = []
+        for ev in events:
+            code_s, state_s = ev.split(":")
+            code = int(code_s)
+            state = int(state_s)
+            if code in mod_codes:
+                if state == 1:
+                    mod_downs.append(ev)
+                else:
+                    # Insert at front so release order is reverse of press.
+                    mod_ups.insert(0, ev)
+            else:
+                key_events.append(ev)
+
+        def _release_mods() -> None:
+            if mod_ups:
+                self._ydotool_run(["key", *mod_ups])
+
+        try:
+            if mod_downs and not self._ydotool_run(["key", *mod_downs]):
+                return False
+            # Hold the modifier(s) long enough for KWin to register the state.
+            time.sleep(0.08)
+            if key_events and not self._ydotool_run(["key", *key_events]):
+                _release_mods()
+                return False
+            # Keep the modifier(s) held briefly after the key release so the
+            # chord cannot be split into separate modifier-up + key events.
+            time.sleep(0.08)
+            if mod_ups and not self._ydotool_run(["key", *mod_ups]):
+                return False
+            return True
+        except Exception:
+            _release_mods()
+            return False
+
+    def _wdotool_run(self, sub_argv: list) -> bool:
+        """Fallback using the libei/RemoteDesktop-portal injector bundled in
+        the Flatpak. `wdotool` understands xdotool-style chords, so `sub_argv`
+        can be ["key", "ctrl+x"] directly."""
+        if not shutil.which("wdotool"):
+            return False
+        try:
+            result = subprocess.run(
+                ["wdotool", *sub_argv], check=False,
+                capture_output=True, text=True)
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "").strip()
+                print(f"[wayland] wdotool failed (rc={result.returncode}): {err}")
+                return False
+            return True
+        except OSError as exc:
+            print(f"[wayland] wdotool failed: {exc}")
+            return False
+
     def send_key(self, combo: str) -> None:
-        if self._has_ydotool():
+        debug = _debug_keys()
+        if debug:
+            print(f"[wayland] send_key: {combo}")
+        # 1) eitype — libei / RemoteDesktop portal. This is the ONLY path
+        #    verified to send reliable modifier chords on KWin/Plasma 6
+        #    (research verification matrix: PASS at 100 % and 125 % scale).
+        args = self._eitype_args(combo)
+        if args is not None and self._eitype_run(args):
+            if debug:
+                print("[wayland] eitype succeeded")
+            return
+        # 2) ydotool — uinput fallback (daemon must be running, needs
+        #    /dev/uinput + --device=all). Chords get phased injection so
+        #    modifiers are clearly held; single keys use one fast command.
+        has_yd = self._has_ydotool()
+        if has_yd:
             events = self._ydotool_key_events(combo)
-            if events is not None and self._ydotool_run(["key", *events]):
-                return
-        # wtype is wlroots-only (dead on KWin) and not bundled in the Flatpak.
+            if events is not None:
+                has_modifier = any(
+                    int(ev.split(":")[0]) in {29, 42, 56, 125} for ev in events
+                )
+                if has_modifier:
+                    ok = self._ydotool_chord_run(events)
+                else:
+                    ok = self._ydotool_run(
+                        ["key", "--key-delay", str(_YDOTOOL_KEY_DELAY_MS), *events])
+                if debug:
+                    print(f"[wayland] ydotool injection ok={ok}")
+                if ok:
+                    return
+        # 3) wdotool — another libei portal injector (backup).
+        if debug:
+            print("[wayland] trying wdotool fallback")
+        if self._wdotool_run(["key", combo]):
+            if debug:
+                print("[wayland] wdotool succeeded")
+            return
+        # 4) wtype — wlroots-only (dead on KWin).
         if not _in_flatpak() and shutil.which("wtype"):
             args = self._wtype_args(combo)
             if args is not None:
                 subprocess.run(["wtype"] + args, check=False)
                 return
+        if debug:
+            print(f"[wayland] no working injector for {combo}")
         print(f"[wayland] no working key-injection tool for {combo!r} "
-              "(install ydotool + ydotoold on KWin)")
+              "- install eitype (cargo install eitype) or ydotool + ydotoold")
         from .base import _warn_missing_injector
         if _in_flatpak():
             _warn_missing_injector(
                 "wayland_kde_flatpak",
-                "Cut/Paste/Backspace could not use ydotool. If this is a custom "
-                "Flatpak build, install ydotool on the host; otherwise the "
-                "bundled daemon may not have started.",
+                "Cut/Paste/Backspace could not use eitype or ydotool. "
+                "If this is a custom Flatpak build, install eitype on the "
+                "host; otherwise the bundled binary may not be built.",
             )
         else:
             _warn_missing_injector(
                 "wayland_kde_native",
-                "Cut/Paste/Backspace needs ydotool + ydotoold. Install and "
-                "start ydotoold to enable keystroke actions.",
+                "Cut/Paste/Backspace needs eitype or ydotool + ydotoold. "
+                "Install eitype (cargo install eitype) or ydotool.",
             )
 
     def type_text(self, text: str) -> None:
-        # `--` terminates ydotool's own option parsing so text that starts
-        # with '-' is typed literally rather than parsed.
-        if self._has_ydotool() and self._ydotool_run(["type", "--", text]):
+        if self._eitype_run([text]):
+            return
+        if self._has_ydotool() and self._ydotool_run(
+                ["type", "--key-delay", str(_YDOTOOL_TYPE_DELAY_MS), "--", text]):
+            return
+        if self._wdotool_run(["type", text]):
             return
         if not _in_flatpak() and shutil.which("wtype"):
             subprocess.run(["wtype", text], check=False)
             return
-        print("[wayland] no working text-injection tool (install ydotool)")
+        print("[wayland] no working text-injection tool (install eitype or ydotool)")
 
     # ---- active window ---------------------------------------------------
     def active_window_haystacks(self) -> list[str]:

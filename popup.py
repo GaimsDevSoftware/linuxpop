@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import subprocess
 import threading
+import time
 from typing import Callable
 
 import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 try:
     from Xlib import X, XK, display as xdisplay  # noqa: E402
@@ -712,6 +713,14 @@ class PopupWindow:
 
                 def _worker():
                     try:
+                        # Give the compositor time to return keyboard focus
+                        # to the source window after the popup is hidden. This
+                        # is essential for Cut/Paste actions that inject Ctrl+X/
+                        # Ctrl+V via uinput/ydotool, otherwise the keystroke can
+                        # land on the still-focused popup or on no window.
+                        # 300 ms is longer than ideal but reliably lets KWin
+                        # shift focus back on Plasma 6 Wayland.
+                        time.sleep(0.30)
                         if shift_held:
                             with actions.force_copy_mode():
                                 p.execute(text_snapshot)
@@ -720,10 +729,13 @@ class PopupWindow:
                     except Exception as exc:  # noqa: BLE001
                         print(f"[popup] plugin '{plugin_name}' failed: {exc}")
 
+                # Hide the popup *before* the worker starts. The worker
+                # then waits for the compositor to return focus to the
+                # source window before injecting keystrokes.
+                self.hide()
                 threading.Thread(
                     target=_worker, daemon=True, name=f"plugin-{plugin_name}",
                 ).start()
-                self.hide()
             return _on_click
 
         specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]

@@ -4,10 +4,14 @@
 
 # Start the bundled ydotool daemon on Wayland if present. It needs
 # /dev/uinput (granted via --device=all) so key injection works out of
-# the box without a host-installed ydotool. If a daemon is already
-# running it will quietly fail and the existing socket is reused.
+# the box without a host-installed ydotool.
+# Use a LinuxPop-specific socket path to avoid clashing with a host
+# ydotoold that may already own $XDG_RUNTIME_DIR/.ydotool_socket.
 if [ -n "$WAYLAND_DISPLAY" ] && [ -x /app/bin/ydotoold ]; then
-    nohup /app/bin/ydotoold >/dev/null 2>&1 &
+    RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id - u)}"
+    YDOTOOL_SOCK="$RUNTIME_DIR/linuxpop/.ydotool_socket"
+    mkdir -p "$(dirname "$YDOTOOL_SOCK")"
+    nohup /app/bin/ydotoold -p "$YDOTOOL_SOCK" >/dev/null 2>&1 &
 fi
 
 exec python3 /app/share/linuxpop/main.py "$@"

@@ -23,15 +23,28 @@ import subprocess
 from plugin_base import Plugin
 
 
+def _debug_keys() -> bool:
+    import os
+    return os.environ.get("LINUXPOP_DEBUG_KEYS", "").lower() in ("1", "true", "yes")
+
+
 def _send_keys(combo: str) -> None:
     # Key injection goes through the platform backend: xdotool on X11,
     # wtype on Wayland/KDE. The backend handles a missing tool itself.
+    if _debug_keys():
+        print(f"[editing_actions] _send_keys: {combo}")
     from platform_backend import get_backend
     get_backend().send_key(combo)
+    if _debug_keys():
+        print(f"[editing_actions] _send_keys done: {combo}")
 
 
 def _cut(_text: str) -> None:
+    if _debug_keys():
+        print("[editing_actions] _cut called")
     _send_keys("ctrl+x")
+    if _debug_keys():
+        print("[editing_actions] _cut finished")
 
 
 def _paste(_text: str) -> None:
