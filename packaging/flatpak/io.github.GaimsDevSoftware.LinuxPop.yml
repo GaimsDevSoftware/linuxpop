@@ -40,6 +40,8 @@ runtime: org.gnome.Platform
 # (Python 3.13). The bundled Python wheels below must match cp313.
 runtime-version: '49'
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 command: linuxpop
 
 finish-args:
@@ -58,6 +60,7 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher    # system tray
   - --talk-name=org.kde.kglobalaccel    # global hotkey (linter-accepted)
+  - --talk-name=org.freedesktop.portal.RemoteDesktop   # wdotool libei input injection
   # The ONE finish-arg that needs a Flathub exception. The native Wayland
   # popup anchors at the cursor / selection via KWin scripting
   # (workspace.cursorPos). Wayland exposes NO protocol or XDG portal for a
@@ -247,6 +250,40 @@ modules:
         sha256: ba075a43aa6ead51940e892ecffa4d0b8b40c241e4e2bc4bd9bd26b61fde23bd
       - type: patch
         path: ydotool-no-docs.patch
+
+  # ----- eitype -----
+  # Modern Wayland key injection using the XDG RemoteDesktop portal (libei).
+  # Builds BOTH the CLI binary (/app/bin/eitype) AND the Python bindings
+  # (import eitype → EiType.connect_portal()). The Python bindings enable a
+  # persistent EIS session that keeps one portal connection open for the
+  # lifetime of the app, so KWin only shows the "Remote Control" OSD once
+  # at startup instead of flickering on every keystroke.
+  #
+  # The tarball bundles the eitype source, vendored Cargo deps (186 crates),
+  # and .cargo/config.toml. maturin + patchelf wheels are pre-fetched so
+  # the build is fully offline (no pip downloads).
+  - name: eitype
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/eitype/cargo
+    build-commands:
+      - pip3 install --prefix=/app --no-build-isolation --no-deps patchelf*.whl
+      - pip3 install --prefix=/app --no-build-isolation --no-deps maturin*.whl
+      - maturin build --release
+      - install -Dm755 target/release/eitype /app/bin/eitype
+      - pip3 install --prefix=/app --no-deps target/wheels/eitype*.whl
+    sources:
+      - type: archive
+        path: eitype-0.2.2+bundle.tar.xz
+        sha256: b911278c4e0d587729ee33094babbb72e42376c1ab81737231747a18aa71ff5f
+      - type: file
+        url: https://files.pythonhosted.org/packages/7e/19/f7821ef31aab01fa7dc8ebe697ece88ec4f7a0fdd3155dab2dfee4b00e5c/patchelf-0.17.2.4-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.musllinux_1_1_x86_64.whl
+        sha256: d9b35ebfada70c02679ad036407d9724ffe1255122ba4ac5e4be5868618a5689
+      - type: file
+        url: https://files.pythonhosted.org/packages/40/79/15957eb4e055597f217e6310963a9c1371372e63c5b4a3e30803365addd2/maturin-1.14.0-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.musllinux_1_1_x86_64.whl
+        sha256: 75bcd4468a7fe597652cc2980c6bb16ce4bb8c411e3eb85dac2c4418cef0e95a
 
   # ----- python3-dbus (dbus-python) -----
   # The Wayland/KDE backend uses dbus-python for KGlobalAccel (global
