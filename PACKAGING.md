@@ -128,7 +128,8 @@ depends=('python' 'gtk3' 'libhandy' 'libayatana-appindicator'
          'python-xlib' 'xdotool' 'xclip' 'wmctrl')
 optdepends=('gtk-layer-shell: native popup placement on Wayland/KDE'
             'wl-clipboard: selection capture on Wayland'
-            'ydotool: key injection (paste) on Wayland/KDE'
+            'wdotool: key injection via libei/RemoteDesktop portal (recommended on KDE Plasma 6)'
+            'ydotool: legacy key injection (kernel uinput, drops modifier chords on KDE)'
             'at-spi2-core: anchor popup to the selected-text rectangle'
             'ollama: local AI plugin'
             'python-pillow: QR code plugin')

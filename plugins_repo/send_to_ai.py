@@ -897,8 +897,15 @@ def _scheme_registered(deeplink: str) -> bool:
 
 
 def _ydotool_enter() -> None:
-    """Press Enter in the focused window via ydotool. Enter is a single keycode,
-    so it lands on this compositor even though injected modifier chords don't."""
+    """Press Enter in the focused window. Prefers wdotool (libei/portal);
+    falls back to ydotool (kernel uinput, Enter is a single keycode)."""
+    if shutil.which("wdotool"):
+        try:
+            subprocess.run(["wdotool", "key", "Return"],
+                           capture_output=True, timeout=5)
+            return
+        except (OSError, subprocess.SubprocessError):
+            pass
     yd = shutil.which("ydotool")
     sock = os.environ.get("YDOTOOL_SOCKET") or os.path.join(
         os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"),

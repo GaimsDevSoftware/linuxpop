@@ -20,6 +20,7 @@ Requires:       xclip
 Requires:       xdg-utils
 # Optional features — present on most desktops, pulled in when available:
 Recommends:     wl-clipboard
+Recommends:     wdotool
 Recommends:     ydotool
 Recommends:     qrencode
 Recommends:     espeak-ng

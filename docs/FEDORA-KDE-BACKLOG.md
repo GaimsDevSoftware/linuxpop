@@ -21,8 +21,10 @@ Hovedplanen og fasene ligger i tasklisten; dette er det som *ikke* er i den.
 - [ ] **Resident KWin-script** i stedet for load-run-per-event, hvis Fase 0-spiken
       måler for høy markør-latens (>~150 ms). Holder ett script i live som pusher
       posisjon på forespørsel.
-- [ ] **`ydotool` som alternativ til `wtype`** for auto-paste, hvis `wtype` ikke
-      dekker alle apper (ydotool krever uinput-daemon - mer oppsett).
+- [x] **`ydotool` → `wdotool`** for key injection. `wdotool` bruker libei/XDG
+      RemoteDesktop portal og leverer modifier-chords (ctrl+a, ctrl+x) korrekt
+      på KDE Plasma 6 — `ydotool` (kernel uinput) mister dem i Chrome/Electron.
+      Installeres med `cargo install wdotool`.
 - [ ] **HiDPI / fraksjonell skalering** grundig testet på Plasma (X11-versjonen er
       mest testet på 2× skalering - se README «Limitations»).
 

@@ -122,7 +122,7 @@ _COMMAND_TOKENS = {
     "pw-metadata", "amixer", "alsamixer", "speaker-test", "aplay", "arecord",
     # desktop / wayland helpers
     "gsettings", "dconf", "xdg-settings", "xdg-mime", "wl-copy", "wl-paste",
-    "ydotool", "wtype", "grim", "slurp", "spectacle", "okular", "dolphin",
+    "wdotool", "ydotool", "wtype", "grim", "slurp", "spectacle", "okular", "dolphin",
 }
 
 # Shell metacharacters / patterns that strongly suggest the text is

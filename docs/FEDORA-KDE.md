@@ -12,7 +12,7 @@ How it maps each piece of the X11 design onto Wayland/KDE:
 | Auto-popup on selection | `wl-paste --primary --watch` |
 | Popup placement at cursor | `gtk-layer-shell` (anchor top-left + margins) |
 | Global cursor position | KWin scripting `workspace.cursorPos` over D-Bus |
-| Keystroke / paste injection | `wtype` |
+| Keystroke / paste injection | `wdotool` (libei/RemoteDesktop portal) |
 | Global hotkey | KGlobalAccel over D-Bus |
 | Tray icon | StatusNotifierItem via libappindicator (KDE SNI) |
 
@@ -25,7 +25,10 @@ The backend is chosen automatically from `XDG_SESSION_TYPE`. Force it with
 sudo dnf install -y \
     python3 python3-gobject python3-dbus \
     gtk3 gtk-layer-shell libhandy libappindicator-gtk3 \
-    wl-clipboard wtype
+    wl-clipboard
+# key injection: install wdotool (requires Rust/cargo):
+#   cargo install wdotool
+# or use the ghcr.io/cushycush/wdotool container
 # optional: OCR + region capture
 sudo dnf install -y tesseract
 ```

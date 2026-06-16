@@ -73,11 +73,9 @@ ported; Wayland-only pieces intentionally left out).
   - X11 path: XRecord watch + xdotool inject (unchanged; used on Mint).
   - **Wayland path** (`_WaylandTriggerWatcher`): reads `/dev/input` keyboards
     (user is in `input` group), maps keycodes via **libxkbcommon ctypes**
-    (`_XkbMapper`, honours the active layout - Norwegian `no(mac)` reads øæå
-    right), injects via **ydotool**: backspace the trigger + `wl-copy` the
-    expansion + **Shift+Insert** to paste. NB: `ydotool type` drops non-ASCII
-    and ydotool **Ctrl chords don't register on KWin** - Shift+Insert does.
-    Branches on `WAYLAND_DISPLAY`. ydotoold runs at `/run/user/1000/.ydotool_socket`.
+    (`_XkbMapper`, honours the active layout), injects via **wdotool**
+    (libei/RemoteDesktop portal) when available, else **ydotool**: backspace the
+    trigger + `wl-copy` the expansion + **Shift+Insert** to paste.
 - **OCR** (`screen_ocr.py` + `ocr_selector.py`):
   - `is_supported()` accepts spectacle/grim/maim + tesseract. `install_argv()`
     returns a `pkexec <pkgmgr> install …` argv; Settings shows an **Install**
@@ -108,10 +106,11 @@ ported; Wayland-only pieces intentionally left out).
 
 ## Environment facts that matter
 
-- Wayland/KWin: keystroke **injection** of modifier chords (Ctrl+V) does NOT
-  reach apps; single keys + Shift+Insert + `ydotool type` (ASCII) do.
-- User is in the `input` group → `/dev/input` readable (snippets, outside-click)
-  and `/dev/uinput` writable (ydotool).
+- Wayland/KWin: keystroke **injection** of modifier chords (Ctrl+V) requires
+  **wdotool** (libei/XDG RemoteDesktop portal) — ydotool's kernel-uinput path
+  drops modifier chords in Chrome/Electron on KDE Plasma 6. `wdotool key ctrl+v`
+  works everywhere. Install via `cargo install wdotool`.
+- User is in the `input` group → `/dev/input` readable (snippets, outside-click).
 - HiDPI: monitor scale factor 2. Keyboard layout `no(mac)`, pc105.
 - spectacle 6.6.5; grim present but KWin lacks wlr-screencopy (grim fails);
   `wl-copy` present, `xclip`/`maim`/`tesseract` were installed via the OCR

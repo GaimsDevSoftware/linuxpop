@@ -1014,22 +1014,26 @@ def _fire_trigger_expansion(
         )
 
     def worker_wayland():
-        if not shutil.which("ydotool"):
-            print("[triggers] ydotool not found - cannot expand on Wayland")
+        has_wdo = bool(shutil.which("wdotool"))
+        if not has_wdo and not shutil.which("ydotool"):
+            print("[triggers] neither wdotool nor ydotool found - "
+                  "cannot expand on Wayland")
             return
         global _kbd_suppress_until
-        env = _ydotool_env()
         n_delete = len(trigger) + 1
-        # Suppress reading our own injected keystrokes for the whole run.
-        _kbd_suppress_until = (time.monotonic() + 1.2
-                               + 0.02 * (n_delete + cursor_left))
         time.sleep(0.06)
-        # 1. Delete the typed shortcode + boundary char. Single keys inject
-        #    fine via ydotool (keycode 14 = BackSpace).
-        bs = []
-        for _ in range(n_delete):
-            bs += ["14:1", "14:0"]
-        subprocess.run(["ydotool", "key", *bs], env=env, check=False)
+        # 1. Delete the typed shortcode + boundary char.
+        if has_wdo:
+            for _ in range(n_delete):
+                subprocess.run(["wdotool", "key", "BackSpace"], check=False)
+        else:
+            env = _ydotool_env()
+            _kbd_suppress_until = (time.monotonic() + 1.2
+                                   + 0.02 * (n_delete + cursor_left))
+            bs = []
+            for _ in range(n_delete):
+                bs += ["14:1", "14:0"]
+            subprocess.run(["ydotool", "key", *bs], env=env, check=False)
         time.sleep(0.03)
         # 2. Stage the expansion on BOTH clipboard and primary. This carries
         #    full unicode (ae/oe/aa etc.) that 'ydotool type' silently drops,
@@ -1043,18 +1047,26 @@ def _fire_trigger_expansion(
         except (OSError, subprocess.SubprocessError):
             return
         time.sleep(0.05)
-        # 3. Paste with Shift+Insert (LEFTSHIFT=42, INSERT=110). ydotool's
-        #    Ctrl chords don't register on KWin, but Shift+Insert does - and
-        #    it pastes the staged unicode verbatim.
-        subprocess.run(["ydotool", "key", "42:1", "110:1", "110:0", "42:0"],
-                       env=env, check=False)
+        # 3. Paste with Shift+Insert. wdotool handles modifier chords via
+        #    libei/portal; ydotool falls back to Shift+Insert which KWin
+        #    processes correctly (unlike Ctrl chords).
+        if has_wdo:
+            subprocess.run(["wdotool", "key", "Shift+Insert"], check=False)
+        else:
+            subprocess.run(["ydotool", "key", "42:1", "110:1", "110:0", "42:0"],
+                           env=env, check=False)
         if cursor_left > 0:
             time.sleep(0.05)
-            lf = []
-            for _ in range(cursor_left):
-                lf += ["105:1", "105:0"]
-            subprocess.run(["ydotool", "key", *lf], env=env, check=False)
-        _kbd_suppress_until = time.monotonic() + 0.25
+            if has_wdo:
+                for _ in range(cursor_left):
+                    subprocess.run(["wdotool", "key", "Left"], check=False)
+            else:
+                lf = []
+                for _ in range(cursor_left):
+                    lf += ["105:1", "105:0"]
+                subprocess.run(["ydotool", "key", *lf], env=env, check=False)
+        if not has_wdo:
+            _kbd_suppress_until = time.monotonic() + 0.25
 
     worker = worker_wayland if _is_wayland() else worker_x11
     threading.Thread(target=worker, daemon=True,
