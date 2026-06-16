@@ -758,27 +758,30 @@ class WaylandKdeBackend(PlatformBackend):
         return 0, 0
 
     def can_paste(self) -> bool:
-        # ydotool (KWin) / wtype (wlroots) are the only Wayland injectors.
-        # In the Flatpak the sandbox has neither (and no /dev/uinput), so we
-        # drive the host's ydotool through flatpak-spawn instead - check that
-        # it's actually installed on the host.
+        # wdotool (libei/RemoteDesktop portal) on KDE Plasma 6 is the
+        # preferred injector. Falls back to ydotool (kernel uinput) or
+        # wtype (wlroots). In the Flatpak these live on the host.
         if _in_flatpak():
-            return _host_has("ydotool")
-        return bool(shutil.which("ydotool") or shutil.which("wtype"))
+            return bool(_host_has("wdotool") or _host_has("ydotool"))
+        return bool(self._has_wdotool() or shutil.which("ydotool") or shutil.which("wtype"))
 
     # ---- keystroke injection --------------------------------------------
     #
     # wtype is DEAD on KWin: it drives zwp_virtual_keyboard_v1, which KWin
-    # does not implement, so it silently no-ops on Plasma. The validated
-    # path on KWin is ydotool, which writes to the kernel uinput device and
-    # bypasses Wayland's synthetic-input ban entirely (needs the ydotoold
-    # user daemon + /dev/uinput + user in `input` group). The future
-    # sandbox-clean route is libei via the RemoteDesktop portal (`eitype`),
-    # left as a fallback hook for when that CLI is present.
+    # does not implement, so it silently no-ops on Plasma. ydotool writes to
+    # the kernel uinput device and bypasses the compositor entirely (needs
+    # ydotoold + /dev/uinput + user in `input` group) — but on KDE Plasma 6
+    # its modifier chords (ctrl+a, ctrl+x) are silently dropped or reordered
+    # by KWin's libinput path, especially in Chrome/Electron.
     #
-    # Order: ydotool (works on KWin) -> wtype (works on wlroots/Sway, dead on
-    # KWin but harmless to try) so this same backend still injects on a
-    # non-KDE Wayland compositor.
+    # The validated fix is wdotool, which uses libei via the XDG
+    # RemoteDesktop portal. It goes through the compositor's own input stack,
+    # so modifier chords arrive correctly in every toolkit. It is the
+    # sandbox-clean route (portals cross the Flatpak boundary via D-Bus).
+    #
+    # Order: wdotool (libei/portal, works on KDE Plasma 6) -> ydotool
+    # (kernel uinput, works on KWin for single keys) -> wtype (wlroots/Sway,
+    # dead on KWin but harmless to try).
 
     def _ydotool_env(self) -> dict:
         """Env for ydotool with YDOTOOL_SOCKET pointed at the running
@@ -839,6 +842,55 @@ class WaylandKdeBackend(PlatformBackend):
         return _host_has("ydotool") if _in_flatpak() else bool(
             shutil.which("ydotool"))
 
+    _wdotool_path: str | None = None
+
+    def _wdotool_run(self, argv: list[str]) -> bool:
+        """Dispatch `wdotool <argv>` on the current system. In Flatpak the
+        sandbox can use portals directly (D-Bus is forwarded), but we still
+        prefer the host install; inside the sandbox wdotool isn't bundled yet.
+        Returns True if dispatched successfully."""
+        if _in_flatpak():
+            cmd = ["flatpak-spawn", "--host", "wdotool"] + argv
+        else:
+            cmd = [self._wdotool_bin()] + argv
+        try:
+            subprocess.run(cmd, check=False, timeout=15)
+            return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def _wdotool_bin(self) -> str:
+        """Full path to wdotool binary, or 'wdotool' (resolved via PATH).
+        Must only be called after _has_wdotool() returned True."""
+        if _in_flatpak():
+            return "wdotool"  # dispatched via flatpak-spawn --host
+        return WaylandKdeBackend._wdotool_path or "wdotool"
+
+    _wdotool_has: bool | None = None
+
+    def _has_wdotool(self) -> bool:
+        """Check if wdotool (libei/RemoteDesktop portal) is available.
+        Works inside Flatpak without --host since portals cross the sandbox
+        via D-Bus forwarding. Also checks ~/.cargo/bin for cargo-installed
+        binaries not on the user's PATH."""
+        if WaylandKdeBackend._wdotool_has is not None:
+            return WaylandKdeBackend._wdotool_has
+        ok = False
+        if _in_flatpak():
+            ok = _host_has("wdotool")
+        else:
+            which = shutil.which("wdotool")
+            if which:
+                ok = True
+                WaylandKdeBackend._wdotool_path = which
+            else:
+                cargo = os.path.expanduser("~/.cargo/bin/wdotool")
+                ok = bool(os.path.isfile(cargo) and os.access(cargo, os.X_OK))
+                if ok:
+                    WaylandKdeBackend._wdotool_path = cargo
+        WaylandKdeBackend._wdotool_has = ok
+        return ok
+
     def _ydotool_run(self, sub_argv: list) -> bool:
         """Dispatch `ydotool <sub_argv>` to the daemon. In the Flatpak the
         sandbox has no /dev/uinput, so we run ydotool on the HOST via
@@ -859,6 +911,12 @@ class WaylandKdeBackend(PlatformBackend):
             return False
 
     def send_key(self, combo: str) -> None:
+        # wdotool uses libei/XDG RemoteDesktop portal — the only path that
+        # correctly delivers modifier chords (ctrl+a, ctrl+x/v/c) through
+        # KWin's input stack to Chrome/Electron. Falls back to ydotool
+        # (kernel uinput, single-key only on KDE) then wtype (wlroots-only).
+        if self._has_wdotool() and self._wdotool_run(["key", combo]):
+            return
         if self._has_ydotool():
             events = self._ydotool_key_events(combo)
             if events is not None and self._ydotool_run(["key", *events]):
@@ -870,9 +928,11 @@ class WaylandKdeBackend(PlatformBackend):
                 subprocess.run(["wtype"] + args, check=False)
                 return
         print(f"[wayland] no working key-injection tool for {combo!r} "
-              "(install ydotool + ydotoold on KWin)")
+              "(install wdotool — 'cargo install wdotool' — or ydotool)")
 
     def type_text(self, text: str) -> None:
+        if self._has_wdotool() and self._wdotool_run(["type", "--", text]):
+            return
         # `--` terminates ydotool's own option parsing so text that starts
         # with '-' is typed literally rather than parsed.
         if self._has_ydotool() and self._ydotool_run(["type", "--", text]):
@@ -880,7 +940,7 @@ class WaylandKdeBackend(PlatformBackend):
         if not _in_flatpak() and shutil.which("wtype"):
             subprocess.run(["wtype", text], check=False)
             return
-        print("[wayland] no working text-injection tool (install ydotool)")
+        print("[wayland] no working text-injection tool (install wdotool)")
 
     # ---- active window ---------------------------------------------------
     def active_window_haystacks(self) -> list[str]:

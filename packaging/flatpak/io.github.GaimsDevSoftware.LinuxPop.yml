@@ -25,13 +25,16 @@
 #     Neither ships in GNOME Platform 46, so both are built from source
 #     below with real upstream URL + sha256.
 #
-#   NOT bundled - ydotool (key injection / paste chords):
-#     ydotool needs /dev/uinput + the ydotoold daemon, which a Flatpak
-#     sandbox cannot provide, so the binary would be inert here. wtype is
-#     also dead on KWin (no zwp_virtual_keyboard_v1). In-sandbox paste
-#     therefore needs the libei / XDG RemoteDesktop portal route (future
-#     work); until then the Wayland paste path degrades to "copy + press
-#     Ctrl+V yourself". Outside Flatpak the host's ydotool is used.
+#   Key injection (paste chords):
+#     wdotool (libei/XDG RemoteDesktop portal) is the preferred injector on
+#     KDE Plasma 6 — it goes through the compositor's input stack, so modifier
+#     chords (ctrl+v, ctrl+a) arrive correctly in every toolkit. Inside the
+#     Flatpak sandbox it uses the host's RemoteDesktop portal via D-Bus
+#     forwarding, so it works without /dev/uinput. Bundle as a Flatpak module
+#     once wdotool is packaged for Fedora/Debian; until then install it on the
+#     host via `cargo install wdotool` and it is accessed through flatpak-spawn.
+#     ydotool (kernel uinput) is the legacy fallback — it drops modifier chords
+#     in Chrome/Electron on KDE Plasma 6.
 #
 #   RUNTIME VERSION: org.gnome.Platform//49 (GNOME 46 is EOL). 49 was
 #     verified to ship GTK3, the Handy-1 typelib, and python3-gi on Python
