@@ -200,6 +200,11 @@ DEFAULTS: dict[str, Any] = {
     "selection_debounce_ms": 150,
     # If True, ignore selections that contain only whitespace
     "ignore_whitespace_only": True,
+    # If True, log a short, secret-redacted preview of selection text at
+    # DEBUG level (needs --debug to surface). Default False: the log
+    # records only content type + length, never the raw selection, so
+    # passwords/tokens/private text are not written to linuxpop.log.
+    "debug_log_selection_content": False,
     # Substrings that, if any matches the active window's title or
     # WM_CLASS (case-insensitive), suppress the popup entirely. Useful
     # for password managers, banking sites, etc. One entry per pattern.

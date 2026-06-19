@@ -6,6 +6,7 @@ import argparse
 import fcntl
 import logging
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -114,6 +115,33 @@ def _setup_logging(debug: bool) -> None:
     root.addHandler(stream_handler)
 
 
+# Patterns for obvious secrets. Matched substrings are replaced with a
+# placeholder before any preview is logged, so even a DEBUG-level preview
+# (opt-in via debug_log_selection_content) never persists a live token.
+_SECRET_PATTERNS = [
+    re.compile(r"sk-[A-Za-z0-9_-]{8,}"),              # OpenAI / Anthropic-style
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{16,}"),        # GitHub tokens
+    re.compile(r"xox[baprs]-[A-Za-z0-9-]{8,}"),       # Slack tokens
+    re.compile(r"AKIA[0-9A-Z]{12,}"),                 # AWS access key id
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._-]{8,}"), # Bearer auth headers
+    re.compile(r"eyJ[A-Za-z0-9_-]{8,}\."              # JWT (header.payload...)
+               r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
+    # Long high-entropy run (hex/base64-ish) - catches generic API keys.
+    re.compile(r"\b[A-Za-z0-9+/_-]{32,}\b"),
+]
+
+
+def _redact_secrets(text: str) -> str:
+    for pat in _SECRET_PATTERNS:
+        text = pat.sub("[REDACTED]", text)
+    return text
+
+
+def _safe_preview(text: str, limit: int = 60) -> str:
+    """Secret-redacted, newline-flattened snippet for DEBUG logging only."""
+    return _redact_secrets(text[:limit]).replace("\n", "↵")
+
+
 def _read_selection(source: str) -> str:
     return get_backend().read_selection(source)
 
@@ -216,8 +244,15 @@ class App:
             log.info("[blocked] suppressed popup -- active window matches blocklist")
             return
         ctype = classify(text)
-        preview = text[:60].replace("\n", "↵")
-        log.info("[%s] %r", ctype.value, preview)
+        # Never log the raw selection at INFO: it routinely contains
+        # passwords, API keys and other private text, and linuxpop.log is
+        # an unencrypted file on disk. Log only non-sensitive metadata.
+        log.info("[%s] %d chars", ctype.value, len(text))
+        # A secret-redacted preview is available at DEBUG, and only when
+        # the user explicitly opts in via debug_log_selection_content.
+        if log.isEnabledFor(logging.DEBUG) and \
+                bool(self.settings.get("debug_log_selection_content")):
+            log.debug("[%s] preview=%r", ctype.value, _safe_preview(text))
         # AT-SPI / WM_CLASS probe - drives which plugins are eligible.
         # Done here (not in popup.show_for) so the popup module stays
         # accessibility-agnostic and we can pipe extra user blocklist
