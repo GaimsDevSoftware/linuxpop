@@ -20,6 +20,10 @@ dist/
 
 # Local
 *.log
+
+# Baked version file written by package builds (gen-version.sh). The version
+# is resolved from the git tag, so this generated file is never committed.
+_version.py
 .env
 .envrc
 .flatpak-builder/

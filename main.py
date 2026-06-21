@@ -40,8 +40,7 @@ from platform_backend import get_backend
 from popup import PopupWindow
 from settings import get_settings
 from xdg_paths import CACHE_DIR, CONFIG_DIR
-
-__version__ = "0.9.7"
+from version import __version__
 
 LOG_FILE = CACHE_DIR / "linuxpop.log"
 LOCK_FILE = CACHE_DIR / "linuxpop.lock"

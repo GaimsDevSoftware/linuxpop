@@ -368,6 +368,12 @@ modules:
       # No `|| true` here: a missing source should fail the build loudly.
       - cp -r *.py platform_backend icons plugins_repo /app/share/linuxpop/
 
+      # 1b. Bake the version. The sandbox has no .git at runtime, so resolve it
+      #     now (git tag, with a metainfo fallback) into a _version.py the app
+      #     reads first - keeps the About dialog in sync with the release.
+      - bash -c 'printf "VERSION = \"%s\"\n" "$(bash packaging/gen-version.sh)"
+          > /app/share/linuxpop/_version.py'
+
       # 2. Wrapper script on PATH
       - install -Dm755 packaging/flatpak/linuxpop.wrapper /app/bin/linuxpop
 

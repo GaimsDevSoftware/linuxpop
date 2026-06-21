@@ -20,6 +20,12 @@ mkdir -p "$STAGE/DEBIAN" \
 cp -a "$ROOT"/*.py "$ROOT"/platform_backend "$ROOT"/plugins_repo "$ROOT"/icons \
       "$STAGE/usr/share/linuxpop/"
 
+# Bake the version so the installed copy (which has no .git) reports it
+# correctly. VERSION comes from the release tag in CI; gen-version.sh just
+# echoes it back (or resolves it itself when run by hand without an arg).
+BAKED_VERSION="$(bash "$ROOT/packaging/gen-version.sh" "$VERSION")"
+printf 'VERSION = "%s"\n' "$BAKED_VERSION" > "$STAGE/usr/share/linuxpop/_version.py"
+
 cat > "$STAGE/usr/bin/linuxpop" <<'EOF'
 #!/usr/bin/env bash
 exec /usr/bin/python3 /usr/share/linuxpop/main.py "$@"
