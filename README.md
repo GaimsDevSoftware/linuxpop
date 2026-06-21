@@ -1,6 +1,6 @@
 # LinuxPop
 
-> Like PopClip on the Mac, but for Linux.
+> Like PopClip on the Mac, but for Linux. Highlight text, get a popup of actions. Works on X11 and KDE Plasma 6 Wayland.
 
 ![LinuxPop in action: select text, a popup of context actions appears, here translating the selection](docs/linuxpop-demo.gif)
 
@@ -168,6 +168,23 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full plugin API.
 - **The odd input grab.** If another app is holding an X11 input grab (an open menu, say), the popup might not catch your outside-click right away.
 
 ---
+
+## FAQ
+
+**Is there a PopClip for Linux?**
+That's pretty much what LinuxPop is. Highlight some text and a popup of actions shows up over it. It's free, MIT-licensed, and runs on X11 and KDE Plasma 6 Wayland.
+
+**Does it work on Wayland?**
+On KDE Plasma 6, yes: selection goes through `wl-clipboard`, the popup is placed with `gtk-layer-shell`, and the cursor position comes from KWin's scripting API. Other Wayland compositors fall back to the X11 path under XWayland.
+
+**Which desktops are supported?**
+Cinnamon, GNOME-on-X11, KDE, XFCE and MATE on X11, plus KDE Plasma 6 on Wayland.
+
+**Does it send my text anywhere?**
+No, not unless a plugin clearly does (the "Send to Claude" button being the obvious one). Otherwise everything stays on your machine. No telemetry, no accounts.
+
+**How do I uninstall it?**
+`bash ~/linuxpop/install.sh --uninstall` for a source install, or remove the Flatpak or native package the usual way.
 
 ## License
 

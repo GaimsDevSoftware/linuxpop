@@ -3,10 +3,91 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LinuxPop - PopClip-inspired text actions for Linux</title>
-  <meta name="description" content="A floating popup of context-aware actions on whatever text you highlight. Open URLs, run commands, ask an AI, transform text - without leaving the keyboard.">
+  <title>LinuxPop: PopClip for Linux (X11 &amp; KDE Plasma Wayland)</title>
+  <meta name="description" content="LinuxPop is a free, open-source PopClip alternative for Linux. Highlight some text and a popup of actions appears: copy, search, translate, run as a command, or send it to an AI. Runs on X11 (Cinnamon, GNOME, XFCE, MATE) and on KDE Plasma 6 Wayland. No telemetry.">
+  <meta name="keywords" content="PopClip for Linux, PopClip alternative Linux, Linux text selection popup, text actions Linux, KDE Plasma Wayland, X11, clipboard manager Linux, send text to AI, open source, GTK">
+  <meta name="author" content="GaimsDev Software">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="canonical" href="https://gaimsdevsoftware.github.io/linuxpop/">
   <link rel="icon" href="assets/icons/linuxpop.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="LinuxPop">
+  <meta property="og:url" content="https://gaimsdevsoftware.github.io/linuxpop/">
+  <meta property="og:title" content="LinuxPop: PopClip for Linux">
+  <meta property="og:description" content="Highlight some text and get a popup of actions: copy, search, translate, run, or send it to an AI. Free and open source. X11 and KDE Plasma 6 Wayland.">
+  <meta property="og:image" content="https://gaimsdevsoftware.github.io/linuxpop/screenshots/popup.png">
+  <meta property="og:image:alt" content="LinuxPop popup of context actions appearing over selected text">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="LinuxPop: PopClip for Linux">
+  <meta name="twitter:description" content="Highlight some text and get a popup of actions: copy, search, translate, run, or send it to an AI. Free and open source. X11 and KDE Plasma 6 Wayland.">
+  <meta name="twitter:image" content="https://gaimsdevsoftware.github.io/linuxpop/screenshots/popup.png">
+
+  <!-- Structured data: the software itself (helps Google + AI search understand what this is) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "LinuxPop",
+    "alternateName": "PopClip for Linux",
+    "applicationCategory": "UtilitiesApplication",
+    "applicationSubCategory": "Productivity",
+    "operatingSystem": "Linux (X11, KDE Plasma 6 Wayland)",
+    "description": "LinuxPop is a free, open-source PopClip alternative for Linux. Highlight some text and a popup of actions appears: copy, search, translate, run as a command, or send it to an AI. Extensible with plugins.",
+    "url": "https://gaimsdevsoftware.github.io/linuxpop/",
+    "downloadUrl": "https://github.com/GaimsDevSoftware/linuxpop/releases/latest",
+    "softwareVersion": "0.9.2",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Organization", "name": "GaimsDev Software", "url": "https://github.com/GaimsDevSoftware" },
+    "featureList": [
+      "Context-aware text-selection popup",
+      "Global hotkeys",
+      "Clipboard manager and named snippets",
+      "Send selected text to Claude, ChatGPT, Gemini, Perplexity or local Ollama",
+      "Built-in plugins (Base64, JSON, URL encode, calculator, QR, translate)",
+      "No-code plugin wizard plus Python plugin API",
+      "Native KDE Plasma 6 Wayland support"
+    ]
+  }
+  </script>
+
+  <!-- Structured data: FAQ (eligible for Google rich results + quoted by AI answer engines) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is there a PopClip for Linux?",
+        "acceptedAnswer": { "@type": "Answer", "text": "That's pretty much what LinuxPop is. You highlight text and a small popup of actions appears over it: copy, search, translate, run as a command, or send it to an AI. It runs on X11 desktops (Cinnamon, GNOME, XFCE, MATE) and on KDE Plasma 6 Wayland. Free and MIT-licensed." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does LinuxPop work on Wayland?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes, natively on KDE Plasma 6 Wayland: selection through wl-clipboard, popup placement through gtk-layer-shell, and cursor position through KWin scripting. Other Wayland compositors fall back to the X11 path under XWayland." }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I install LinuxPop?",
+        "acceptedAnswer": { "@type": "Answer", "text": "The easiest way is the auto-updating Flatpak: flatpak install --from https://gaimsdevsoftware.github.io/linuxpop-flatpak/linuxpop.flatpakref . There are also native packages (a .deb for Debian/Ubuntu/Mint and a Fedora COPR RPM), or you can install from source with git clone and install.sh." }
+      },
+      {
+        "@type": "Question",
+        "name": "Is LinuxPop free and does it send my text anywhere?",
+        "acceptedAnswer": { "@type": "Answer", "text": "LinuxPop is free and MIT-licensed with no telemetry and no accounts. Your selected text stays on your machine unless a plugin obviously sends it somewhere, such as the Send-to-AI button." }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 
@@ -28,9 +109,9 @@
   <img class="hero-logo" src="assets/icons/linuxpop.svg" alt="">
   <h1>Text actions for Linux,<br>without leaving where you are.</h1>
   <p class="lead">
-    Highlight anything. A small popup appears with context-aware actions -
-    open URLs, run commands, ask an AI, transform text. Inspired by PopClip
-    on macOS, built native for X11.
+    Highlight anything. A small popup appears with actions that fit what you
+    grabbed: open URLs, run commands, ask an AI, transform text. It's the
+    PopClip idea from macOS, done for Linux. Works on X11 and KDE Plasma 6 Wayland.
   </p>
   <div class="hero-buttons">
     <a class="btn btn-primary" href="#install">Install LinuxPop</a>
@@ -44,34 +125,28 @@
     <p class="section-sub">Twelve plugins ship out of the box. Add your own with a no-code wizard or a 20-line Python file.</p>
     <div class="feature-grid">
       <div class="feature">
-        <div class="feature-icon">↗</div>
         <h3>Selection-aware popup</h3>
         <p>Different buttons for URLs, shell commands, emails, paths and plain text - the classifier figures it out.</p>
       </div>
       <div class="feature">
-        <div class="feature-icon">⌘</div>
         <h3>Global hotkeys</h3>
-        <p>Summon the popup on the current selection, or open the clipboard + snippets picker, from anywhere on your desktop.</p>
+        <p>Summon the popup on the current selection, or open the clipboard and snippets picker, from anywhere on your desktop.</p>
       </div>
       <div class="feature">
-        <div class="feature-icon">📋</div>
         <h3>Clipboard &amp; snippets</h3>
         <p>Built-in history (text and images) with pin/name to turn anything into a permanent named snippet.</p>
       </div>
       <div class="feature">
-        <div class="feature-icon">✨</div>
         <h3>AI without lock-in</h3>
-        <p>Send to Claude, ChatGPT, Gemini, Perplexity or Google AI - or run local models via Ollama. No keys, no accounts.</p>
+        <p>Send to Claude, ChatGPT, Gemini, Perplexity or Google AI, or run local models via Ollama. No keys, no accounts.</p>
       </div>
       <div class="feature">
-        <div class="feature-icon">🧩</div>
         <h3>No-code wizard</h3>
         <p>Build a custom action in 30 seconds with a GUI form. Pick an icon from 3 800+, write a URL template, done.</p>
       </div>
       <div class="feature">
-        <div class="feature-icon">🪶</div>
         <h3>Lightweight</h3>
-        <p>Event-driven via XFixes - 55 MB resident, 0 % CPU at idle. Doesn't fight your laptop.</p>
+        <p>Event-driven via XFixes: 55 MB resident, 0 % CPU at idle. Doesn't fight your laptop.</p>
       </div>
     </div>
   </div>
@@ -80,21 +155,28 @@
 <section id="install" class="tight">
   <div class="container-narrow">
     <h2 class="section-title">Install</h2>
-    <p class="section-sub">X11 desktop required. Tested on Linux Mint Cinnamon; works on Ubuntu, Fedora, Arch.</p>
+    <p class="section-sub">Runs on X11 (Cinnamon, GNOME, XFCE, MATE) and natively on KDE Plasma 6 Wayland.</p>
 
-    <h3>1. System dependencies</h3>
-    <pre><code># Ubuntu / Linux Mint / Debian
-sudo apt-get install -y python3 python3-gi python3-gi-cairo gir1.2-gtk-3.0 \
-    gir1.2-handy-1 gir1.2-ayatanaappindicator3-0.1 \
-    xclip xdotool xdg-utils python3-xlib</code></pre>
+    <h3>Flatpak (recommended)</h3>
+    <p>Auto-updating, GPG-signed, works on every distro:</p>
+    <pre><code>flatpak install --from https://gaimsdevsoftware.github.io/linuxpop-flatpak/linuxpop.flatpakref
+flatpak run io.github.GaimsDevSoftware.LinuxPop</code></pre>
 
-    <h3>2. Clone &amp; install</h3>
+    <h3>Native packages</h3>
+    <pre><code># Debian / Ubuntu / Linux Mint - grab the .deb from the latest release
+sudo apt install ./linuxpop_0.9.2_all.deb
+
+# Fedora (COPR)
+sudo dnf copr enable gaimsdevsoftware/linuxpop
+sudo dnf install linuxpop</code></pre>
+
+    <h3>From source</h3>
     <pre><code>git clone https://github.com/GaimsDevSoftware/linuxpop.git ~/linuxpop
 cd ~/linuxpop
 bash install.sh
 python3 ~/linuxpop/main.py    # start now without logging out</code></pre>
 
-    <h3>3. Use it</h3>
+    <h3>Use it</h3>
     <ul>
       <li>Highlight any text on screen → popup appears with actions</li>
       <li>Press <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>Y</kbd> → popup on current selection at cursor</li>
