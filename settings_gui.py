@@ -788,6 +788,23 @@ class SettingsDialog:
         ov_row.set_activatable_widget(ov_combo)
         group.add(ov_row)
 
+        # Category grouping: collapse plugins that share a category (Formatting,
+        # Markdown) behind one chip that expands on click.
+        grp_row = Handy.ActionRow()
+        grp_row.set_title("Group actions by category")
+        grp_row.set_subtitle(
+            "Collapse families like Formatting and Markdown behind a single "
+            "chip in the popup; click the chip to reveal its actions on a "
+            "second row. Turn off to show every action inline.")
+        grp_switch = Gtk.Switch()
+        grp_switch.set_valign(Gtk.Align.CENTER)
+        grp_switch.set_active(bool(self._settings.get("popup_group_categories")))
+        grp_switch.connect(
+            "notify::active", self._on_switch, "popup_group_categories")
+        grp_row.add(grp_switch)
+        grp_row.set_activatable_widget(grp_switch)
+        group.add(grp_row)
+
         return group
 
     def _build_activation_group(self) -> Handy.PreferencesGroup:
