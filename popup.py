@@ -355,6 +355,7 @@ class PopupWindow:
         self.win.connect("leave-notify-event", self._on_leave)
 
         self._current_text: str = ""
+        self._open_category: str | None = None
         self._hide_timeout_id: int | None = None
         self._tracker_id: int | None = None
         # Absolute ceiling on time the popup will linger if the user
@@ -405,6 +406,8 @@ class PopupWindow:
         # Collapse row 2 until something gets added to it.
         self._row2.hide()
         self._row2.set_no_show_all(True)
+        # No category chip is expanded on a fresh popup.
+        self._open_category = None
 
     def _add_button(
         self, icon_name: str, tooltip: str, on_click,
@@ -675,6 +678,10 @@ class PopupWindow:
         # the focused widget - see main.py / editable_detect.py.
         if not editable:
             plugins = [p for p in plugins if not p.requires_editable]
+        # Keep the full, uncapped list for the grouped view: category chips
+        # collapse their members, so the flat cap below (which is about how
+        # many *icons* fit) shouldn't pre-trim members that live behind a chip.
+        plugins_all = list(plugins)
         # Hard cap so the popup doesn't grow to 25 icons across when
         # many plugins are installed. for_content_type already returns
         # in priority/custom-order, so the first N are the highest-
@@ -726,8 +733,14 @@ class PopupWindow:
                 self.hide()
             return _on_click
 
-        specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]
-        self._present_buttons(specs, hidden_count, max_btns)
+        if self._group_categories_enabled():
+            plan = plugin_loader.plan_grouped(
+                plugins_all, group=True, min_size=self._category_min(),
+                categories=plugin_loader.CATEGORIES)
+            self._present_plan(plan, make_handler, max_btns)
+        else:
+            specs = [(p.icon, p.tooltip, make_handler(p)) for p in plugins]
+            self._present_buttons(specs, hidden_count, max_btns)
         self._present_near(x, y, rect=rect)
 
     def _add_overflow_chip(
@@ -818,6 +831,82 @@ class PopupWindow:
                 self._add_overflow_chip(
                     extra, max_btns,
                     row=self._row2 if shown > per_row else self._row1)
+
+    # ---- category grouping ------------------------------------------------
+    def _group_categories_enabled(self) -> bool:
+        try:
+            from settings import get_settings as _gs
+            return bool(_gs().get("popup_group_categories"))
+        except Exception:
+            return False
+
+    def _category_min(self) -> int:
+        try:
+            from settings import get_settings as _gs
+            return max(2, int(_gs().get("popup_category_min") or 2))
+        except Exception:
+            return 2
+
+    def _present_plan(self, plan, make_handler, max_btns: int) -> None:
+        """Lay out a grouped plan (action + category entries) on row 1.
+        Category chips expand their members onto row 2 on click."""
+        per_row = self._max_per_row()
+        shown = plan[:per_row]
+        for entry in shown:
+            if entry[0] == "category":
+                _, _key, label, icon, members = entry
+                specs = [(p.icon, p.tooltip, make_handler(p)) for p in members]
+                self._add_category_chip(icon, label, specs)
+            else:
+                p = entry[1]
+                self._add_button(p.icon, p.tooltip, make_handler(p), row=self._row1)
+        extra = len(plan) - len(shown)
+        if extra > 0:
+            self._add_overflow_chip(extra, max_btns, row=self._row1)
+
+    def _add_category_chip(self, icon: str, label: str, member_specs) -> None:
+        """A chip that, on click, reveals its category's members on row 2
+        (and collapses them again on a second click)."""
+        n = len(member_specs)
+        btn = Gtk.Button()
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        btn.set_tooltip_text(
+            f"{label} — {n} action{'s' if n != 1 else ''} (click to expand)")
+        btn.get_style_context().add_class("linuxpop-action")
+        btn.get_style_context().add_class("linuxpop-category")
+        btn.set_image(self._make_icon_image(icon))
+        btn.set_always_show_image(True)
+
+        def _toggle(_b):
+            already_open = self._open_category == label
+            for child in list(self._row2.get_children()):
+                self._row2.remove(child)
+                child.destroy()
+            if already_open:
+                self._open_category = None
+                self._row2.hide()
+                self._row2.set_no_show_all(True)
+                self._try_resize()
+                return
+            self._open_category = label
+            per_row = self._max_per_row()
+            for ic, tip, h in member_specs[:per_row]:
+                self._add_button(ic, tip, h, row=self._row2)
+            hidden = n - min(n, per_row)
+            if hidden > 0:
+                self._add_overflow_chip(hidden, 0, row=self._row2)
+            self._row2.set_no_show_all(False)
+            self._row2.show_all()
+            self._try_resize()
+
+        btn.connect("clicked", _toggle)
+        self._row1.pack_start(btn, False, False, 0)
+
+    def _try_resize(self) -> None:
+        try:
+            self.win.queue_resize()
+        except Exception:
+            pass
 
     def _add_expand_chip(self, rest, hidden_count: int, max_btns: int) -> None:
         """A chevron at the end of row 1; clicking it reveals row 2 with the
