@@ -272,6 +272,7 @@ modules:
       - pip3 install --prefix=/app --no-build-isolation --no-deps patchelf*.whl
       - pip3 install --prefix=/app --no-build-isolation --no-deps maturin*.whl
       - maturin build --release
+      - cargo build --release --bin eitype
       - install -Dm755 target/release/eitype /app/bin/eitype
       - pip3 install --prefix=/app --no-deps target/wheels/eitype*.whl
     sources:
