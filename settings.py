@@ -234,6 +234,15 @@ DEFAULTS: dict[str, Any] = {
     #   "cap"    -> one row only; the remainder sit behind a "+N" chip.
     # All modes are still bounded by max_popup_buttons above.
     "popup_overflow_mode": "expand",
+    # Collapse plugins that share a category (Formatting, Markdown, ...) behind
+    # a single chip in the popup; clicking the chip expands its members onto the
+    # second row. Declutters the bar when families like the markdown actions are
+    # installed. Turn off to show every action inline.
+    "popup_group_categories": True,
+    # A category only collapses into a chip once it has at least this many
+    # members in the popup; smaller groups stay inline (no point hiding one
+    # button behind a chip).
+    "popup_category_min": 2,
     # Icon style for branded/utility plugins:
     #   "color" -> vibrant gradient tiles (default)
     #   "glyph" -> uniform mono glyphs that match the plain text-edit icons

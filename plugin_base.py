@@ -32,6 +32,7 @@ class Plugin:
     # Cut / Paste / Backspace / Bold / Italic / Underline - actions that
     # have no effect on read-only text and would just confuse the user.
     requires_editable: bool = False
+    category: Optional[str] = None
 
     def handles(self, content_type: ContentType) -> bool:
         if not self.content_types:

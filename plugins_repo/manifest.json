@@ -22,6 +22,17 @@
     "icon": "format-text-bold-symbolic"
   },
   {
+    "file": "markdown.py",
+    "title": "Markdown - Bold, Italic, Code, Strikethrough, Link",
+    "description": "Wraps the selection in Markdown syntax (**bold**, _italic_, `code`, ~~strike~~, [link](url)) and pastes it back in place. Works in plain-text fields where Ctrl+B does nothing - GitHub, Reddit, Obsidian, code editors, chat. Each button toggles. Turn off individual buttons in this expander.",
+    "category": "Productivity",
+    "tags": [
+      "editing",
+      "markdown"
+    ],
+    "icon": "linuxpop-md-bold-symbolic"
+  },
+  {
     "file": "large_type.py",
     "title": "Large type",
     "description": "Show the selection in giant fullscreen text. Useful for reading a number aloud, showing a code across the room, or enlarging tiny menu items.",
