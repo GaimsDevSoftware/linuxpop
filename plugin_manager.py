@@ -901,12 +901,16 @@ class PluginManagerDialog:
             pass
 
     def _on_order_drag_data_get(self, _grip, context, data, info, time, row) -> None:
-        data.set_text(str(getattr(row, "_order_index", -1)), -1)
+        # Use set()/get_data() with our custom target atom. set_text() only
+        # works for text targets, so with "LINUXPOP_ORDER_ROW" the receiver's
+        # get_text() returns None and the drop is silently dropped.
+        payload = str(getattr(row, "_order_index", -1)).encode("utf-8")
+        data.set(data.get_target(), 8, payload)
 
     def _on_order_drag_data_received(self, row, context, x, y, data, info, time) -> None:
         try:
-            src = int(data.get_text())
-        except (TypeError, ValueError):
+            src = int(bytes(data.get_data()).decode("utf-8"))
+        except (TypeError, ValueError, AttributeError):
             return
         dst = getattr(row, "_order_index", -1)
         names = list(getattr(self, "_order_names", []) or [])
