@@ -1,7 +1,9 @@
-"""System tray icon (KStatusNotifierItem via separate Qt process) for LinuxPop.
+"""System tray icon for LinuxPop.
 
-Spawns a lean Qt process that uses KStatusNotifierItem - native KDE/Wayland
-protocol, no XWayland dependency, no GTK thread conflicts.
+Spawns a lean subprocess (tray_dbus.py) that exports a hand-rolled
+StatusNotifierItem over D-Bus (dbus-python). It advertises ItemIsMenu=true
+so plasmashell renders the menu on left- AND right-click, and needs no Qt.
+This class talks to that subprocess over a small length-prefixed JSON socket.
 """
 from __future__ import annotations
 
@@ -17,14 +19,10 @@ from pathlib import Path
 from typing import Callable
 
 from xdg_paths import CACHE_DIR as SOCKET_DIR
-# Custom StatusNotifierItem (dbus-python) that advertises ItemIsMenu=true so
-# plasmashell shows the menu on left-click too. Falls back to the Qt
-# QSystemTrayIcon implementation (right-click only on KDE Wayland) if the
-# dbus-python tray is unavailable.
-_TRAY_DIR = Path(__file__).resolve().parent
-TRAY_SCRIPT = str(_TRAY_DIR / "tray_dbus.py")
-if not os.path.isfile(TRAY_SCRIPT):
-    TRAY_SCRIPT = str(_TRAY_DIR / "tray_qt.py")
+# The tray is a hand-rolled StatusNotifierItem (dbus-python) that advertises
+# ItemIsMenu=true, so plasmashell shows the menu on left-click too - something
+# the old Qt QSystemTrayIcon could not do. No Qt/PySide6 dependency.
+TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_dbus.py")
 
 
 def _tray_preexec() -> None:
@@ -86,7 +84,8 @@ def _send_message(sock: socket.socket, msg: dict) -> None:
 
 
 class Tray:
-    """Same API as the old GTK/Ayatana Tray, but backed by a Qt KSNI subprocess."""
+    """Same API as the old GTK/Ayatana Tray, backed by the dbus-python
+    StatusNotifierItem subprocess (tray_dbus.py)."""
 
     def __init__(
         self,
