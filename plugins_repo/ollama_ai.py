@@ -180,7 +180,7 @@ def register(register_plugin) -> None:
     ))
     register_plugin(Plugin(
         name="ai-translate-en",
-        icon="preferences-desktop-locale-symbolic",
+        icon="linuxpop-ai-translate-en-symbolic",
         tooltip="AI: translate to English",
         handler=_translate_to_en,
         content_types=types,
@@ -188,7 +188,7 @@ def register(register_plugin) -> None:
     ))
     register_plugin(Plugin(
         name="ai-translate-no",
-        icon="preferences-desktop-locale-symbolic",
+        icon="linuxpop-ai-translate-no-symbolic",
         tooltip="AI: translate to Norwegian",
         handler=_translate_to_no,
         content_types=types,

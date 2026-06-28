@@ -367,7 +367,7 @@ def _register_builtins() -> None:
     # EMAIL
     register(Plugin(
         name="compose-email",
-        icon="mail-send-symbolic",
+        icon="mail-message-new-symbolic",
         tooltip="Compose email",
         handler=actions.compose_email,
         content_types=(ContentType.EMAIL,),
