@@ -486,6 +486,82 @@ def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] |
     return result[0]
 
 
+def active_window_atspi_haystacks(timeout: float = 0.15) -> list[str]:
+    """Lowercased [app-name, active-window-name] for the focused window via
+    AT-SPI, for blocklist matching on Wayland where WM_CLASS is unavailable
+    for native apps (the X11 xprop/xdotool path only sees XWayland windows).
+
+    Returns [] when AT-SPI is off/unavailable/times out. Mirrors
+    focused_selection_rect's defensive desktop walk and thread+timeout guard.
+    Gated on the same editable_atspi_listener_enabled setting."""
+    if not _HAS_ATSPI:
+        return []
+    try:
+        from settings import get_settings
+        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+            return []
+    except Exception:
+        return []
+
+    result: list[list[str]] = [[]]
+
+    def worker() -> None:
+        try:
+            desktop = Atspi.get_desktop(0)
+            if desktop is None:
+                return
+            for i in range(desktop.get_child_count()):
+                try:
+                    app = desktop.get_child_at_index(i)
+                except Exception:
+                    continue
+                if app is None:
+                    continue
+                try:
+                    n_win = app.get_child_count()
+                except Exception:
+                    continue
+                for j in range(n_win):
+                    try:
+                        win = app.get_child_at_index(j)
+                    except Exception:
+                        continue
+                    if win is None:
+                        continue
+                    try:
+                        if not win.get_state_set().contains(
+                                Atspi.StateType.ACTIVE):
+                            continue
+                    except Exception:
+                        continue
+                    hay: list[str] = []
+                    try:
+                        an = app.get_name()
+                        if an:
+                            hay.append(an.lower())
+                    except Exception:
+                        pass
+                    try:
+                        wn = win.get_name()
+                        if wn:
+                            hay.append(wn.lower())
+                    except Exception:
+                        pass
+                    result[0] = hay
+                    return
+        except Exception:
+            return
+
+    t = threading.Thread(target=worker, daemon=True,
+                         name="linuxpop-atspi-actwin")
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        _log.info("[blocklist] AT-SPI active-window probe timed out")
+        return []
+    return result[0]
+
+
 def _wm_class_lower() -> str:
     """Return the focused window's WM_CLASS in lower-case, or '' on failure.
 
