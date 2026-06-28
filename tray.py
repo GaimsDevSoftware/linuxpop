@@ -17,7 +17,14 @@ from pathlib import Path
 from typing import Callable
 
 from xdg_paths import CACHE_DIR as SOCKET_DIR
-TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_qt.py")
+# Custom StatusNotifierItem (dbus-python) that advertises ItemIsMenu=true so
+# plasmashell shows the menu on left-click too. Falls back to the Qt
+# QSystemTrayIcon implementation (right-click only on KDE Wayland) if the
+# dbus-python tray is unavailable.
+_TRAY_DIR = Path(__file__).resolve().parent
+TRAY_SCRIPT = str(_TRAY_DIR / "tray_dbus.py")
+if not os.path.isfile(TRAY_SCRIPT):
+    TRAY_SCRIPT = str(_TRAY_DIR / "tray_qt.py")
 
 
 def _tray_preexec() -> None:
@@ -106,14 +113,14 @@ class Tray:
         self._connected = False
 
         if not os.path.isfile(TRAY_SCRIPT):
-            print("[tray] tray_qt.py not found - tray disabled")
+            print(f"[tray] {os.path.basename(TRAY_SCRIPT)} not found - tray disabled")
             return
 
         self._start_process()
         self._connect()
 
     def _start_process(self) -> None:
-        """Launch the Qt tray subprocess."""
+        """Launch the tray subprocess."""
         SOCKET_DIR.mkdir(parents=True, exist_ok=True)
         # Remove stale socket
         try:
@@ -127,7 +134,8 @@ class Tray:
                 stderr=subprocess.STDOUT,
                 preexec_fn=_tray_preexec,  # die with parent + own session
             )
-            print(f"[tray] spawned Qt tray process (pid={self._proc.pid})")
+            print(f"[tray] spawned tray process {os.path.basename(TRAY_SCRIPT)} "
+                  f"(pid={self._proc.pid})")
         except OSError as exc:
             print(f"[tray] failed to start tray process: {exc}")
             self._proc = None
