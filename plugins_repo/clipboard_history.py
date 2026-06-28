@@ -3260,6 +3260,30 @@ def _open_from_popup(_text: str) -> None:
     open_picker(target)
 
 
+def unregister() -> None:
+    """Stop this module's background threads before a plugin reload.
+
+    plugin_loader.load_all() re-imports each plugin as a *fresh* module
+    object, so without an explicit teardown the previous module's clipboard
+    watcher and snippet-trigger watcher kept running. Every reload - and one
+    fires on each settings save - leaked another pair of threads. The trigger
+    watcher reads input devices in a tight loop, so a handful of leaked copies
+    saturated the GIL, froze the GTK main loop, and silently killed the tray's
+    command socket (Settings / Plugins menu items stopped responding). The
+    loader calls this on the outgoing module just before the new one runs."""
+    global _trigger_watcher, _watcher_thread
+    if _trigger_watcher is not None:
+        try:
+            _trigger_watcher.stop()
+        except Exception:  # noqa: BLE001
+            pass
+        _trigger_watcher = None
+    # Ends _watcher_loop() (it polls _watcher_stop); the thread is a daemon
+    # so it unwinds on its own within one select/poll interval.
+    _watcher_stop.set()
+    _watcher_thread = None
+
+
 def register(register_plugin) -> None:
     # Honour the master kill-switch so the user can turn the entire
     # clipboard plugin off (no watcher thread, no hotkey, no popup

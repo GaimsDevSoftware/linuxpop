@@ -21,6 +21,13 @@ from xdg_paths import CONFIG_DIR
 
 _PLUGINS: List[Plugin] = []
 
+# Module names of the user plugins loaded by the previous _load_user_plugins()
+# run. Before each reload we call every one's optional unregister() hook so a
+# plugin that starts a background thread (e.g. clipboard_history's watchers)
+# can stop it - otherwise each reload, and one fires on every settings save,
+# leaked another live thread.
+_USER_MODULE_NAMES: set[str] = set()
+
 USER_PLUGIN_DIR = CONFIG_DIR / "plugins"
 LINUXPOP_DIR = str(Path(__file__).resolve().parent)
 REPO_PLUGIN_DIR = Path(LINUXPOP_DIR) / "plugins_repo"
@@ -426,9 +433,25 @@ def _seed_default_plugins() -> None:
     _PLUGIN_SEED_MARKER.touch()
 
 
+def _teardown_user_plugins() -> None:
+    """Call the optional unregister() hook on every user plugin loaded last
+    time, so its background threads stop before we re-import. Also catches
+    plugins whose file was removed since the previous load."""
+    for mod_name in _USER_MODULE_NAMES:
+        hook = getattr(sys.modules.get(mod_name), "unregister", None)
+        if callable(hook):
+            try:
+                hook()
+            except Exception:
+                print(f"[plugin_loader] {mod_name}.unregister() failed:")
+                traceback.print_exc()
+    _USER_MODULE_NAMES.clear()
+
+
 def _load_user_plugins() -> None:
     _ensure_on_path()
     _seed_default_plugins()
+    _teardown_user_plugins()
     if not USER_PLUGIN_DIR.is_dir():
         return
     for path in sorted(USER_PLUGIN_DIR.glob("*.py")):
@@ -444,6 +467,8 @@ def _load_user_plugins() -> None:
             # introspection needs cls.__module__ to resolve.
             sys.modules[mod_name] = module
             spec.loader.exec_module(module)
+            # Track it so the next reload can call its unregister() hook.
+            _USER_MODULE_NAMES.add(mod_name)
             if hasattr(module, "register"):
                 # Wrap register so we can track which source file each
                 # plugin came from - the Plugin Manager uses this to
