@@ -202,6 +202,7 @@ class PluginManagerDialog:
         self._installed_group: Handy.PreferencesGroup | None = None
         self._order_group: Handy.PreferencesGroup | None = None
         self._order_listbox = None
+        self._pinned_set: set[str] = set()
         self._custom_group: Handy.PreferencesGroup | None = None
 
     def show(self, tab: str | None = None) -> None:
@@ -768,16 +769,21 @@ class PluginManagerDialog:
             group.add(row)
             return
 
-        # Compute effective order: user list first, then unlisted by priority
+        # Compute effective order: pinned first (locked to top), then the user
+        # plugin_order list, then unlisted by priority.
         order = list((settings.get("plugin_order") if settings else None) or [])
+        pinned = list((settings.get("pinned_plugins") if settings else None) or [])
         order_idx = {n: i for i, n in enumerate(order)}
-        sorted_plugins = sorted(
-            all_plugins,
-            key=lambda p: (
-                (0, order_idx[p.name]) if p.name in order_idx
-                else (1, p.priority),
-            ),
-        )
+        pinned_idx = {n: i for i, n in enumerate(pinned)}
+
+        def _ord_key(p):
+            if p.name in pinned_idx:
+                return (0, pinned_idx[p.name], p.priority)
+            if p.name in order_idx:
+                return (1, order_idx[p.name], p.priority)
+            return (2, len(order) + 1, p.priority)
+        sorted_plugins = sorted(all_plugins, key=_ord_key)
+        self._pinned_set = set(pinned)
 
         # Full ordered name list, kept in sync for drag-and-drop + arrow moves.
         self._order_names = [p.name for p in sorted_plugins]
@@ -792,12 +798,23 @@ class PluginManagerDialog:
             row._order_index = index
             row._order_icon = plugin.icon
             row._plugin_name = plugin.name
+            row._pinned = plugin.name in getattr(self, "_pinned_set", set())
             try:
                 img = Gtk.Image.new_from_icon_name(plugin.icon, Gtk.IconSize.LARGE_TOOLBAR)
                 img.set_pixel_size(20)
                 row.add_prefix(img)
             except Exception:
                 pass
+            if row._pinned:
+                # A star marks pinned (locked-to-top) plugins.
+                try:
+                    pin_img = Gtk.Image.new_from_icon_name(
+                        "starred-symbolic", Gtk.IconSize.BUTTON)
+                    pin_img.set_valign(Gtk.Align.CENTER)
+                    pin_img.set_tooltip_text("Pinned to top")
+                    row.add_prefix(pin_img)
+                except Exception:
+                    pass
 
             # Drag-and-drop: the DRAG HANDLE (≡) is the drag source; the whole
             # row is the drop target. The handle lives in its own EventBox so
@@ -939,6 +956,12 @@ class PluginManagerDialog:
             menu.append(item)
 
         names = list(getattr(self, "_order_names", []) or [])
+        is_pinned = name in getattr(self, "_pinned_set", set())
+        if is_pinned:
+            add("Unpin from top", lambda: self._order_set_pinned(name, False))
+        else:
+            add("Pin to top", lambda: self._order_set_pinned(name, True))
+        menu.append(Gtk.SeparatorMenuItem())
         at_top = names and names[0] == name
         at_bottom = names and names[-1] == name
         add("Move to top", lambda: self._order_move_to(name, "top"), not at_top)
@@ -948,6 +971,31 @@ class PluginManagerDialog:
         menu.show_all()
         menu.popup_at_pointer(event)
         return True
+
+    def _order_set_pinned(self, name: str, pinned: bool) -> None:
+        """Pin a plugin to the top (locked above the rest) or unpin it."""
+        try:
+            from settings import get_settings
+            s = get_settings()
+            current = list(s.get("pinned_plugins") or [])
+        except Exception as exc:  # noqa: BLE001
+            print(f"[plugin_manager] could not read pinned_plugins: {exc}")
+            return
+        if pinned and name not in current:
+            current.append(name)
+        elif not pinned and name in current:
+            current.remove(name)
+        else:
+            return
+        try:
+            s.set("pinned_plugins", current)
+            s.save()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[plugin_manager] could not save pinned_plugins: {exc}")
+            return
+        self._refresh_order_group()
+        if self._on_changed:
+            self._on_changed()
 
     def _order_move_to(self, name: str, where: str) -> None:
         names = list(getattr(self, "_order_names", []) or [])

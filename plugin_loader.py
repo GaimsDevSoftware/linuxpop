@@ -233,19 +233,80 @@ def for_content_type(content_type: ContentType, text: str | None = None) -> List
     # Plugins not in the order list fall back to their built-in priority.
     try:
         from settings import get_settings
-        order = list(get_settings().get("plugin_order") or [])
+        s = get_settings()
+        order = list(s.get("plugin_order") or [])
+        pinned = list(s.get("pinned_plugins") or [])
     except Exception:
-        order = []
+        order, pinned = [], []
     order_index = {name: i for i, name in enumerate(order)}
+    pinned_index = {name: i for i, name in enumerate(pinned)}
     big = len(order) + 1_000_000
 
     def sort_key(p: Plugin):
+        # Tier 0: pinned (locked to the top, in pin order). Tier 1: user
+        # plugin_order. Tier 2: everything else by built-in priority.
+        if p.name in pinned_index:
+            return (0, pinned_index[p.name], p.priority)
         if p.name in order_index:
-            return (0, order_index[p.name], p.priority)
-        return (1, big, p.priority)
+            return (1, order_index[p.name], p.priority)
+        return (2, big, p.priority)
 
     matched.sort(key=sort_key)
     return matched
+
+
+# Known plugin categories. A plugin sets Plugin.category to one of these keys;
+# the popup collapses each group behind a chip (icon + label) that expands to
+# its members. Order here is irrelevant - chips appear at the position of the
+# group's first member, so plugin_order still controls placement.
+CATEGORIES: dict[str, dict[str, str]] = {
+    "format":   {"label": "Formatting", "icon": "linuxpop-format-symbolic"},
+    "markdown": {"label": "Markdown",   "icon": "linuxpop-md-symbolic"},
+}
+
+
+def plan_grouped(plugins, *, group: bool, min_size: int,
+                 categories: dict | None = None) -> list[tuple]:
+    """Turn an ordered plugin list into a popup display plan.
+
+    Returns a list of entries, preserving the incoming order:
+      ("action",   plugin)
+      ("category",  key, label, icon, [member plugins])
+
+    A category collapses into one chip only when it has at least `min_size`
+    members present; smaller groups stay inline as plain actions (no point
+    hiding one button behind a chip). With group=False every plugin is an
+    inline action, i.e. today's behaviour. Pure/GTK-free so it can be tested.
+    """
+    cats = CATEGORIES if categories is None else categories
+    if not group:
+        return [("action", p) for p in plugins]
+
+    members: dict[str, list] = {}
+    skeleton: list[tuple] = []
+    for p in plugins:
+        key = getattr(p, "category", None)
+        if key and key in cats:
+            if key not in members:
+                members[key] = []
+                skeleton.append(("catref", key))
+            members[key].append(p)
+        else:
+            skeleton.append(("action", p))
+
+    out: list[tuple] = []
+    for entry in skeleton:
+        if entry[0] != "catref":
+            out.append(entry)
+            continue
+        key = entry[1]
+        group_members = members[key]
+        if len(group_members) >= max(2, min_size):
+            meta = cats[key]
+            out.append(("category", key, meta["label"], meta["icon"], group_members))
+        else:
+            out.extend(("action", m) for m in group_members)
+    return out
 
 
 def _register_builtins() -> None:
@@ -320,7 +381,7 @@ def _register_builtins() -> None:
     # EMAIL
     register(Plugin(
         name="compose-email",
-        icon="mail-send-symbolic",
+        icon="mail-message-new-symbolic",
         tooltip="Compose email",
         handler=actions.compose_email,
         content_types=(ContentType.EMAIL,),

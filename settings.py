@@ -200,6 +200,11 @@ DEFAULTS: dict[str, Any] = {
     "selection_debounce_ms": 150,
     # If True, ignore selections that contain only whitespace
     "ignore_whitespace_only": True,
+    # If True, log a short, secret-redacted preview of selection text at
+    # DEBUG level (needs --debug to surface). Default False: the log
+    # records only content type + length, never the raw selection, so
+    # passwords/tokens/private text are not written to linuxpop.log.
+    "debug_log_selection_content": False,
     # Substrings that, if any matches the active window's title or
     # WM_CLASS (case-insensitive), suppress the popup entirely. Useful
     # for password managers, banking sites, etc. One entry per pattern.
@@ -229,6 +234,15 @@ DEFAULTS: dict[str, Any] = {
     #   "cap"    -> one row only; the remainder sit behind a "+N" chip.
     # All modes are still bounded by max_popup_buttons above.
     "popup_overflow_mode": "expand",
+    # Collapse plugins that share a category (Formatting, Markdown, ...) behind
+    # a single chip in the popup; clicking the chip expands its members onto the
+    # second row. Declutters the bar when families like the markdown actions are
+    # installed. Turn off to show every action inline.
+    "popup_group_categories": True,
+    # A category only collapses into a chip once it has at least this many
+    # members in the popup; smaller groups stay inline (no point hiding one
+    # button behind a chip).
+    "popup_category_min": 2,
     # Icon style for branded/utility plugins:
     #   "color" -> vibrant gradient tiles (default)
     #   "glyph" -> uniform mono glyphs that match the plain text-edit icons
@@ -249,6 +263,10 @@ DEFAULTS: dict[str, Any] = {
     # listed here appear first in this order; unlisted plugins fall back
     # to their built-in priority. Edit via Plugin Manager → Order tab.
     "plugin_order": [],
+    # Plugin names pinned to the top of the popup. Pinned plugins always sort
+    # before everything else, in this order, and can't be pushed down by
+    # reordering the rest. Toggle via Plugin Manager → Order tab (right-click).
+    "pinned_plugins": [],
     # Plugin names (Plugin.name) the user has switched off inside a
     # bundled .py file. The plugin_loader silently drops these at
     # register time. Lets users keep "Paste" but hide "Paste & Enter"
