@@ -789,6 +789,15 @@ class PluginManagerDialog:
             row.set_subtitle(plugin.name)
             row._order_index = index
             row._order_icon = plugin.icon
+            row._plugin_name = plugin.name
+            # Right-click context menu: jump to top/bottom + hide the plugin.
+            try:
+                gesture = Gtk.GestureMultiPress.new(row)
+                gesture.set_button(3)  # secondary / right click
+                gesture.connect("pressed", self._on_order_row_rightclick, row)
+                row._ctx_gesture = gesture  # keep a ref so it isn't GC'd
+            except Exception as exc:  # noqa: BLE001
+                print(f"[plugin_manager] context-menu setup failed: {exc}")
             try:
                 img = Gtk.Image.new_from_icon_name(plugin.icon, Gtk.IconSize.LARGE_TOOLBAR)
                 img.set_pixel_size(20)
@@ -893,6 +902,65 @@ class PluginManagerDialog:
         # Move the dragged plugin to the dropped-on row's position.
         names.insert(dst, names.pop(src))
         self._persist_order(names)
+
+    # ---- right-click context menu -------------------------------------------
+    def _on_order_row_rightclick(self, gesture, n_press, x, y, row) -> None:
+        name = getattr(row, "_plugin_name", None)
+        if not name:
+            return
+        menu = Gtk.Menu()
+
+        def add(label, callback, sensitive=True):
+            item = Gtk.MenuItem(label=label)
+            item.set_sensitive(sensitive)
+            item.connect("activate", lambda _i: callback())
+            menu.append(item)
+
+        names = list(getattr(self, "_order_names", []) or [])
+        at_top = names and names[0] == name
+        at_bottom = names and names[-1] == name
+        add("Move to top", lambda: self._order_move_to(name, "top"), not at_top)
+        add("Move to bottom", lambda: self._order_move_to(name, "bottom"), not at_bottom)
+        menu.append(Gtk.SeparatorMenuItem())
+        add("Hide from popup", lambda: self._hide_plugin(name))
+        menu.show_all()
+        try:
+            menu.popup_at_pointer(gesture.get_last_event(None))
+        except Exception:
+            menu.popup_at_pointer(None)
+
+    def _order_move_to(self, name: str, where: str) -> None:
+        names = list(getattr(self, "_order_names", []) or [])
+        if name not in names:
+            return
+        names.remove(name)
+        names.insert(0, name) if where == "top" else names.append(name)
+        self._persist_order(names)
+
+    def _hide_plugin(self, name: str) -> None:
+        """Hide a plugin from the popup by adding it to disabled_plugins.
+        Reversible: re-enable it from the Installed tab."""
+        try:
+            from settings import get_settings
+            s = get_settings()
+            disabled = list(s.get("disabled_plugins") or [])
+            if name not in disabled:
+                disabled.append(name)
+                s.set("disabled_plugins", disabled)
+                s.save()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[plugin_manager] hide failed: {exc}")
+            return
+        # Reload so the daemon drops it from the popup, then refresh the list
+        # (the hidden plugin leaves the Order tab; unhide it under Installed).
+        if self._on_changed:
+            try:
+                self._on_changed()
+            except Exception:
+                pass
+        self._refresh_order_group()
+        if getattr(self, "_installed_group", None) is not None:
+            self._refresh_installed_group()
 
     def _rebuild_catalog_buttons(self) -> None:
         page = getattr(self, "_catalog_page", None)
