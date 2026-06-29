@@ -1,0 +1,15 @@
+[Unit]
+Description=ydotoold user daemon (LinuxPop key injection on Wayland)
+Documentation=man:ydotoold(8)
+
+[Service]
+# Socket at $XDG_RUNTIME_DIR/.ydotool_socket - the path LinuxPop's Wayland
+# backend points YDOTOOL_SOCKET at. Runs as the logged-in user (not root),
+# so it needs the user in the 'input' group and /dev/uinput readable by that
+# group (see 99-uinput.rules).
+ExecStart=/usr/bin/ydotoold --socket-path=%t/.ydotool_socket --socket-perm=0600
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

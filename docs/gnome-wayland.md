@@ -85,7 +85,11 @@ cd linuxpop
 sudo dnf install wl-clipboard ydotool python3-gobject gtk3 \
                  python3-xlib xdotool xclip tesseract
 sudo usermod -aG input "$USER"          # for evdev hotkey + double-click; re-login
-systemctl --user enable --now ydotoold  # or start ydotoold manually
+
+# Cut/Paste/Backspace injection on Wayland needs a per-user ydotoold +
+# /dev/uinput access. See packaging/wayland/README.md for the one-time setup
+# (udev rule + user service). Skip it if you only need selection-triggered
+# popups; required for the keystroke actions.
 
 python main.py                          # backend auto-selected; GDK_BACKEND auto-set
 ```
