@@ -53,16 +53,74 @@ def _grabber() -> "str | None":
     return None
 
 
+def _capture_via_portal(dest_path: str) -> "str | None":
+    """Full-screen capture via xdg-desktop-portal Screenshot(interactive=false).
+
+    The only capture path that works on GNOME/Mutter: it has no wlr-screencopy
+    (so grim fails) and X11 grabbers see only XWayland. Works on KDE too, and
+    inside the Flatpak sandbox (the portal hands back a URI the app can read).
+    The portal writes a PNG and returns its URI; we copy it to dest_path and
+    delete the portal's own copy (it lands in ~/Pictures by default)."""
+    try:
+        import gi  # noqa: F401  (ensure GLib is importable)
+        from gi.repository import GLib
+        import dbus
+        from dbus.mainloop.glib import DBusGMainLoop
+    except Exception:
+        return None
+    result: dict = {}
+    try:
+        DBusGMainLoop(set_as_default=True)
+        bus = dbus.SessionBus()
+        obj = bus.get_object("org.freedesktop.portal.Desktop",
+                             "/org/freedesktop/portal/desktop")
+        iface = dbus.Interface(obj, "org.freedesktop.portal.Screenshot")
+        loop = GLib.MainLoop()
+
+        def _on_response(response, results):
+            if int(response) == 0:
+                result["uri"] = str(results.get("uri", ""))
+            loop.quit()
+
+        opts = {"interactive": dbus.Boolean(False),
+                "handle_token": dbus.String("lpocr%d" % os.getpid())}
+        handle = iface.Screenshot("", opts)
+        bus.add_signal_receiver(
+            _on_response, signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request", path=str(handle))
+        GLib.timeout_add_seconds(10, loop.quit)
+        loop.run()
+    except Exception:
+        return None
+    uri = result.get("uri")
+    if not uri:
+        return None
+    try:
+        from urllib.parse import urlparse, unquote
+        src = unquote(urlparse(uri).path)
+        if not os.path.exists(src):
+            return None
+        shutil.copyfile(src, dest_path)
+        try:
+            os.remove(src)  # don't litter ~/Pictures with OCR captures
+        except OSError:
+            pass
+        return dest_path if os.path.getsize(dest_path) > 0 else None
+    except OSError:
+        return None
+
+
 def _capture_fullscreen() -> "str | None":
-    """Grab the whole screen to a temp PNG with no UI. spectacle -f -b is the
-    KWin-native path; grim covers wlroots; maim covers X11.
+    """Grab the whole screen to a temp PNG with no UI.
+
+    A native grabber when one that works on this session is present (spectacle
+    on KWin, grim on wlroots), then the xdg-desktop-portal Screenshot fallback -
+    the only path that works on GNOME/Mutter, where no CLI grabber sees the real
+    screen. maim is skipped under native Wayland (X11-only, captures black).
 
     Inside Flatpak the grabbers run on the HOST (flatpak-spawn), and the PNG
     must land in a dir the host can write and the sandbox can read: the app's
     $XDG_RUNTIME_DIR/linuxpop is bind-mounted to the identical host path."""
-    tool = _grabber()
-    if not tool:
-        return None
     in_fp = _in_flatpak()
     if in_fp:
         runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
@@ -77,17 +135,29 @@ def _capture_fullscreen() -> "str | None":
         fd, path = tempfile.mkstemp(suffix=".png", prefix="lp-ocr-full-")
         os.close(fd)
         prefix = []
-    argv = {
-        "spectacle": [*prefix, "spectacle", "-f", "-b", "-n", "-o", path],
-        "grim":      [*prefix, "grim", path],
-        "maim":      [*prefix, "maim", path],
-    }[tool]
-    try:
-        subprocess.run(argv, capture_output=True, timeout=15)
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            return path
-    except (OSError, subprocess.SubprocessError):
-        pass
+
+    on_wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
+    tool = _grabber()
+    if on_wayland and tool == "maim":
+        tool = None  # X11-only: captures black under native Wayland
+    if tool:
+        argv = {
+            "spectacle": [*prefix, "spectacle", "-f", "-b", "-n", "-o", path],
+            "grim":      [*prefix, "grim", path],
+            "maim":      [*prefix, "maim", path],
+        }[tool]
+        try:
+            subprocess.run(argv, capture_output=True, timeout=15)
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                return path
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    # GNOME/Mutter, or any session where the native grabber failed: the portal
+    # is the only thing that can see the real screen.
+    if _capture_via_portal(path):
+        return path
+
     try:
         os.unlink(path)
     except OSError:
