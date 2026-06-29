@@ -48,29 +48,52 @@ _focus_listener_ref = None  # keep listener alive (GC would otherwise drop it)
 # AT-SPI is optional. If gi bindings aren't installed we skip to the
 # WM_CLASS fallback only - no hard dependency.
 #
-# Two-step defensive probe before letting any code path call Atspi:
-#   1. Our own at-spi bus socket must exist at the XDG path and be
-#      r/w by us.
-#   2. There must be NO at-spi-bus-launcher running as another user.
+# Defensive probe before letting any code path call Atspi:
+#   1. There must be NO at-spi-bus-launcher running as another user.
 #      A foreign-uid launcher (typically a root one left behind by
 #      sudo'd interactions) can route our dbus query to its bus -
 #      we then crash on first use via glib dbind-ERROR (SIGTRAP,
 #      uncatchable from Python).
+#   2. An AT-SPI bus must actually be reachable: either our own socket
+#      at the XDG at-spi/bus_0 path (KDE / X11) or the session's
+#      org.a11y.Bus service (GNOME, which drops no socket at that path).
 # When either check fails, skip the Atspi import entirely and fall
 # back to the WM_CLASS heuristic. The walker still works fine,
 # just without per-widget editable detection inside Electron apps.
+def _a11y_bus_reachable() -> bool:
+    """True if the session exposes an AT-SPI bus via the standard
+    org.a11y.Bus service. GNOME uses this and drops no socket at the XDG
+    at-spi/bus_0 path that KDE/X11 rely on. Asking for the address is what
+    Atspi itself does on first use, so success here means later Atspi calls
+    reach a real bus."""
+    try:
+        import dbus
+        addr = dbus.SessionBus().get_object(
+            "org.a11y.Bus", "/org/a11y/bus").GetAddress(
+                dbus_interface="org.a11y.Bus")
+        return bool(addr)
+    except Exception:
+        return False
+
+
+def _de_is_cinnamon() -> bool:
+    """True on Cinnamon (Linux Mint's default). Activating AT-SPI there was
+    correlated with a desktop-panel segfault (xapp-sn-watcher ATK assertions -
+    see settings.py), so the AT-SPI selection walk stays off by default on
+    Cinnamon and the popup falls back to the mouse pointer - the proven Mint
+    behaviour."""
+    import os as _os
+    return "cinnamon" in (_os.environ.get("XDG_CURRENT_DESKTOP", "").lower())
+
+
 def _atspi_environment_safe() -> tuple[bool, str]:
     import os as _os
     import glob as _glob
     try:
-        runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
-                        or f"/run/user/{_os.getuid()}")
-        bus_socket = _os.path.join(runtime_dir, "at-spi", "bus_0")
-        if not _os.path.exists(bus_socket):
-            return False, f"bus socket missing at {bus_socket}"
-        if not _os.access(bus_socket, _os.R_OK | _os.W_OK):
-            return False, f"bus socket unreadable at {bus_socket}"
         my_uid = _os.getuid()
+        # Crash guard first, independent of how the bus is reached: a
+        # foreign-uid at-spi-bus-launcher can route our query to its bus
+        # and crash us via dbind-ERROR (SIGTRAP).
         for proc_dir in _glob.glob("/proc/[0-9]*"):
             try:
                 with open(f"{proc_dir}/comm") as f:
@@ -86,7 +109,19 @@ def _atspi_environment_safe() -> tuple[bool, str]:
                         f"refusing to risk a dbind crash")
             except (OSError, ValueError):
                 continue
-        return True, ""
+        # Then confirm a bus actually exists: XDG socket (KDE / X11) or
+        # org.a11y.Bus (GNOME).
+        runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
+                        or f"/run/user/{my_uid}")
+        bus_socket = _os.path.join(runtime_dir, "at-spi", "bus_0")
+        if _os.path.exists(bus_socket):
+            if not _os.access(bus_socket, _os.R_OK | _os.W_OK):
+                return False, f"bus socket unreadable at {bus_socket}"
+            return True, ""
+        if _a11y_bus_reachable():
+            return True, ""
+        return False, (f"no at-spi bus (no socket at {bus_socket}, "
+                       "no org.a11y.Bus)")
     except Exception as exc:
         return False, f"probe error: {exc}"
 
@@ -423,13 +458,31 @@ def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] |
     the mouse pointer (the user's explicit request). Returns None - so
     the caller falls back to mouse positioning - whenever AT-SPI is off,
     unavailable, times out, the widget exposes no Text interface, or
-    nothing is selected. Gated on the same editable_atspi_listener_enabled
-    setting as the rest of the AT-SPI machinery."""
+    nothing is selected. Gated on popup_anchor_to_selection (the user-facing
+    toggle, default on) plus AT-SPI availability - this is a one-shot bounded
+    walk and does not need the always-on focus listener, so it stays
+    decoupled from editable_atspi_listener_enabled."""
     if not _HAS_ATSPI:
+        return None
+    # On Wayland, AT-SPI COORD_TYPE_SCREEN extents come back WINDOW-relative,
+    # not screen-relative: the compositor's security model never tells a client
+    # its on-screen position (GNOME/KDE alike - see Red Hat bug 1517301). A
+    # window-relative rectangle treated as screen coordinates drops the popup
+    # at the wrong spot (e.g. mid-screen for a maximised window), so the rect
+    # is only trustworthy on an X11 session. Fall back to the mouse pointer on
+    # Wayland - which IS a real global coordinate (XQueryPointer / KWin).
+    import os as _os
+    if _os.environ.get("WAYLAND_DISPLAY"):
         return None
     try:
         from settings import get_settings
-        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+        s = get_settings()
+        if not bool(s.get("popup_anchor_to_selection")):
+            return None
+        # Cinnamon: activating AT-SPI was correlated with a panel segfault.
+        # Stay off by default there (pointer fallback); honour an explicit
+        # opt-in for power users who accept the risk.
+        if _de_is_cinnamon() and not bool(s.get("editable_atspi_listener_enabled")):
             return None
     except Exception:
         return None
@@ -483,6 +536,82 @@ def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] |
         return None
     if result[0] is not None:
         _log.info("[anchor] AT-SPI selection rect (screen px): %r", result[0])
+    return result[0]
+
+
+def active_window_atspi_haystacks(timeout: float = 0.15) -> list[str]:
+    """Lowercased [app-name, active-window-name] for the focused window via
+    AT-SPI, for blocklist matching on Wayland where WM_CLASS is unavailable
+    for native apps (the X11 xprop/xdotool path only sees XWayland windows).
+
+    Returns [] when AT-SPI is off/unavailable/times out. Mirrors
+    focused_selection_rect's defensive desktop walk and thread+timeout guard.
+    Gated on the same editable_atspi_listener_enabled setting."""
+    if not _HAS_ATSPI:
+        return []
+    try:
+        from settings import get_settings
+        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+            return []
+    except Exception:
+        return []
+
+    result: list[list[str]] = [[]]
+
+    def worker() -> None:
+        try:
+            desktop = Atspi.get_desktop(0)
+            if desktop is None:
+                return
+            for i in range(desktop.get_child_count()):
+                try:
+                    app = desktop.get_child_at_index(i)
+                except Exception:
+                    continue
+                if app is None:
+                    continue
+                try:
+                    n_win = app.get_child_count()
+                except Exception:
+                    continue
+                for j in range(n_win):
+                    try:
+                        win = app.get_child_at_index(j)
+                    except Exception:
+                        continue
+                    if win is None:
+                        continue
+                    try:
+                        if not win.get_state_set().contains(
+                                Atspi.StateType.ACTIVE):
+                            continue
+                    except Exception:
+                        continue
+                    hay: list[str] = []
+                    try:
+                        an = app.get_name()
+                        if an:
+                            hay.append(an.lower())
+                    except Exception:
+                        pass
+                    try:
+                        wn = win.get_name()
+                        if wn:
+                            hay.append(wn.lower())
+                    except Exception:
+                        pass
+                    result[0] = hay
+                    return
+        except Exception:
+            return
+
+    t = threading.Thread(target=worker, daemon=True,
+                         name="linuxpop-atspi-actwin")
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        _log.info("[blocklist] AT-SPI active-window probe timed out")
+        return []
     return result[0]
 
 

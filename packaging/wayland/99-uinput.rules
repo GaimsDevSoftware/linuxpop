@@ -1,0 +1,5 @@
+# Let members of the 'input' group open /dev/uinput, so a per-user ydotoold
+# can synthesize keystrokes (Cut / Paste / Backspace / Select-all) on Wayland.
+# Install as /etc/udev/rules.d/99-uinput-linuxpop.rules then:
+#   sudo udevadm control --reload-rules && sudo udevadm trigger /dev/uinput
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"

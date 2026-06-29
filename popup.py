@@ -967,11 +967,12 @@ class PopupWindow:
             _LINE_CLEARANCE = 28
             _BELOW_GAP = 32  # used when there isn't room above
             if is_logical:
-                # Wayland: we only have the pointer, which sits inside/under
-                # the selection rather than above it. Lift the popup further
-                # so it clears the copied text instead of covering it.
-                _LINE_CLEARANCE = 64
-                _BELOW_GAP = 56
+                # Wayland: the pointer sits inside/under the selected line
+                # (we have no selection rect), so lift the popup enough to
+                # clear the text - but only a little more than the X11 path,
+                # so it still sits close to the cursor.
+                _LINE_CLEARANCE = 40
+                _BELOW_GAP = 40
             # Place the popup horizontally centered on (lx,ly), above ly
             target_x = int(lx - w / 2)
             target_y = int(ly - h - _LINE_CLEARANCE)
@@ -992,7 +993,16 @@ class PopupWindow:
         # position on the next Wayland commit, which happens when the main loop
         # returns - so the window appears directly at the correct spot.
         get_backend().move_popup_window(self.win, target_x, target_y)
-        self.win.present()
+        # Raise WITHOUT requesting focus. gtk_window_present() explicitly asks
+        # the compositor to ACTIVATE the window, which overrides accept_focus=
+        # False on Mutter (GNOME) - so the popup stole keyboard focus on every
+        # selection change and the user's typing went into the void. The window
+        # is already mapped (show_all above) and keep_above keeps it on top;
+        # a plain GdkWindow.raise_() restacks it without touching focus.
+        self.win.show()
+        _gdkwin = self.win.get_window()
+        if _gdkwin is not None:
+            _gdkwin.raise_()
         # Fresh show: the pointer is at the selection, not on the popup yet.
         # Reset so a stale True from a prior show can't suppress dismissal.
         self._pointer_in_popup = False

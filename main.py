@@ -15,6 +15,29 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+# Decide the GTK display backend BEFORE importing gi/Gtk. On a non-KDE Wayland
+# session (notably GNOME/Mutter) we run the GTK app under XWayland so the popup
+# can position itself (Gtk.Window.move) and read the global pointer
+# (XQueryPointer) - neither is possible via native Wayland on Mutter, which has
+# no wlr-layer-shell and no external cursor-position API. KDE keeps the native
+# Wayland GDK backend (it needs it for gtk-layer-shell), so this only fires for
+# the xwayland_gnome backend. detect() is pure env inspection (no gi import).
+#
+# We force x11 even when GDK_BACKEND is already set to something else (many
+# sessions preset GDK_BACKEND=wayland): the gnome backend's whole premise is an
+# XWayland toplevel, so a native-Wayland GDK would silently break popup
+# positioning. LINUXPOP_GDK_BACKEND lets a power user opt out.
+try:
+    from platform_backend import detect as _detect_backend
+    if _detect_backend() == "xwayland_gnome":
+        _forced_gdk = os.environ.get("LINUXPOP_GDK_BACKEND")
+        if _forced_gdk:
+            os.environ["GDK_BACKEND"] = _forced_gdk
+        elif (os.environ.get("GDK_BACKEND") or "").lower() != "x11":
+            os.environ["GDK_BACKEND"] = "x11"
+except Exception:
+    pass
+
 import gi
 
 gi.require_version("Gtk", "3.0")

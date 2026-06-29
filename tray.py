@@ -1,7 +1,9 @@
-"""System tray icon (KStatusNotifierItem via separate Qt process) for LinuxPop.
+"""System tray icon for LinuxPop.
 
-Spawns a lean Qt process that uses KStatusNotifierItem - native KDE/Wayland
-protocol, no XWayland dependency, no GTK thread conflicts.
+Spawns a lean subprocess (tray_dbus.py) that exports a hand-rolled
+StatusNotifierItem over D-Bus (dbus-python). It advertises ItemIsMenu=true
+so plasmashell renders the menu on left- AND right-click, and needs no Qt.
+This class talks to that subprocess over a small length-prefixed JSON socket.
 """
 from __future__ import annotations
 
@@ -17,7 +19,10 @@ from pathlib import Path
 from typing import Callable
 
 from xdg_paths import CACHE_DIR as SOCKET_DIR
-TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_qt.py")
+# The tray is a hand-rolled StatusNotifierItem (dbus-python) that advertises
+# ItemIsMenu=true, so plasmashell shows the menu on left-click too - something
+# the old Qt QSystemTrayIcon could not do. No Qt/PySide6 dependency.
+TRAY_SCRIPT = str(Path(__file__).resolve().parent / "tray_dbus.py")
 
 
 def _tray_preexec() -> None:
@@ -79,7 +84,8 @@ def _send_message(sock: socket.socket, msg: dict) -> None:
 
 
 class Tray:
-    """Same API as the old GTK/Ayatana Tray, but backed by a Qt KSNI subprocess."""
+    """Same API as the old GTK/Ayatana Tray, backed by the dbus-python
+    StatusNotifierItem subprocess (tray_dbus.py)."""
 
     def __init__(
         self,
@@ -106,14 +112,14 @@ class Tray:
         self._connected = False
 
         if not os.path.isfile(TRAY_SCRIPT):
-            print("[tray] tray_qt.py not found - tray disabled")
+            print(f"[tray] {os.path.basename(TRAY_SCRIPT)} not found - tray disabled")
             return
 
         self._start_process()
         self._connect()
 
     def _start_process(self) -> None:
-        """Launch the Qt tray subprocess."""
+        """Launch the tray subprocess."""
         SOCKET_DIR.mkdir(parents=True, exist_ok=True)
         # Remove stale socket
         try:
@@ -127,7 +133,8 @@ class Tray:
                 stderr=subprocess.STDOUT,
                 preexec_fn=_tray_preexec,  # die with parent + own session
             )
-            print(f"[tray] spawned Qt tray process (pid={self._proc.pid})")
+            print(f"[tray] spawned tray process {os.path.basename(TRAY_SCRIPT)} "
+                  f"(pid={self._proc.pid})")
         except OSError as exc:
             print(f"[tray] failed to start tray process: {exc}")
             self._proc = None
