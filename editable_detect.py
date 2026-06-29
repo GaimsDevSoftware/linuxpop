@@ -76,6 +76,16 @@ def _a11y_bus_reachable() -> bool:
         return False
 
 
+def _de_is_cinnamon() -> bool:
+    """True on Cinnamon (Linux Mint's default). Activating AT-SPI there was
+    correlated with a desktop-panel segfault (xapp-sn-watcher ATK assertions -
+    see settings.py), so the AT-SPI selection walk stays off by default on
+    Cinnamon and the popup falls back to the mouse pointer - the proven Mint
+    behaviour."""
+    import os as _os
+    return "cinnamon" in (_os.environ.get("XDG_CURRENT_DESKTOP", "").lower())
+
+
 def _atspi_environment_safe() -> tuple[bool, str]:
     import os as _os
     import glob as _glob
@@ -456,7 +466,13 @@ def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] |
         return None
     try:
         from settings import get_settings
-        if not bool(get_settings().get("popup_anchor_to_selection")):
+        s = get_settings()
+        if not bool(s.get("popup_anchor_to_selection")):
+            return None
+        # Cinnamon: activating AT-SPI was correlated with a panel segfault.
+        # Stay off by default there (pointer fallback); honour an explicit
+        # opt-in for power users who accept the risk.
+        if _de_is_cinnamon() and not bool(s.get("editable_atspi_listener_enabled")):
             return None
     except Exception:
         return None
