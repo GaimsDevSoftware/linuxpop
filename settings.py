@@ -305,9 +305,11 @@ DEFAULTS: dict[str, Any] = {
     # explicitly wants AT-SPI back on. Default off.
     "editable_atspi_listener_enabled": False,
     # Anchor the popup to the SELECTED-TEXT rectangle (via AT-SPI screen
-    # extents) instead of the mouse pointer. On by default, but it only has
-    # any effect when editable_atspi_listener_enabled is also True AND the
-    # focused app exposes accessibility - otherwise the popup silently falls
+    # extents) instead of the mouse pointer - this is the primary placement.
+    # On by default. It uses a one-shot bounded AT-SPI walk (no always-on
+    # focus listener needed, so it's independent of
+    # editable_atspi_listener_enabled). When AT-SPI is unavailable or the
+    # focused app exposes no selection geometry, the popup silently falls
     # back to the mouse pointer (so leaving this on costs nothing).
     "popup_anchor_to_selection": True,
     # If True, show the one-time welcome dialog on first run. Set to False

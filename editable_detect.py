@@ -48,29 +48,42 @@ _focus_listener_ref = None  # keep listener alive (GC would otherwise drop it)
 # AT-SPI is optional. If gi bindings aren't installed we skip to the
 # WM_CLASS fallback only - no hard dependency.
 #
-# Two-step defensive probe before letting any code path call Atspi:
-#   1. Our own at-spi bus socket must exist at the XDG path and be
-#      r/w by us.
-#   2. There must be NO at-spi-bus-launcher running as another user.
+# Defensive probe before letting any code path call Atspi:
+#   1. There must be NO at-spi-bus-launcher running as another user.
 #      A foreign-uid launcher (typically a root one left behind by
 #      sudo'd interactions) can route our dbus query to its bus -
 #      we then crash on first use via glib dbind-ERROR (SIGTRAP,
 #      uncatchable from Python).
+#   2. An AT-SPI bus must actually be reachable: either our own socket
+#      at the XDG at-spi/bus_0 path (KDE / X11) or the session's
+#      org.a11y.Bus service (GNOME, which drops no socket at that path).
 # When either check fails, skip the Atspi import entirely and fall
 # back to the WM_CLASS heuristic. The walker still works fine,
 # just without per-widget editable detection inside Electron apps.
+def _a11y_bus_reachable() -> bool:
+    """True if the session exposes an AT-SPI bus via the standard
+    org.a11y.Bus service. GNOME uses this and drops no socket at the XDG
+    at-spi/bus_0 path that KDE/X11 rely on. Asking for the address is what
+    Atspi itself does on first use, so success here means later Atspi calls
+    reach a real bus."""
+    try:
+        import dbus
+        addr = dbus.SessionBus().get_object(
+            "org.a11y.Bus", "/org/a11y/bus").GetAddress(
+                dbus_interface="org.a11y.Bus")
+        return bool(addr)
+    except Exception:
+        return False
+
+
 def _atspi_environment_safe() -> tuple[bool, str]:
     import os as _os
     import glob as _glob
     try:
-        runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
-                        or f"/run/user/{_os.getuid()}")
-        bus_socket = _os.path.join(runtime_dir, "at-spi", "bus_0")
-        if not _os.path.exists(bus_socket):
-            return False, f"bus socket missing at {bus_socket}"
-        if not _os.access(bus_socket, _os.R_OK | _os.W_OK):
-            return False, f"bus socket unreadable at {bus_socket}"
         my_uid = _os.getuid()
+        # Crash guard first, independent of how the bus is reached: a
+        # foreign-uid at-spi-bus-launcher can route our query to its bus
+        # and crash us via dbind-ERROR (SIGTRAP).
         for proc_dir in _glob.glob("/proc/[0-9]*"):
             try:
                 with open(f"{proc_dir}/comm") as f:
@@ -86,7 +99,19 @@ def _atspi_environment_safe() -> tuple[bool, str]:
                         f"refusing to risk a dbind crash")
             except (OSError, ValueError):
                 continue
-        return True, ""
+        # Then confirm a bus actually exists: XDG socket (KDE / X11) or
+        # org.a11y.Bus (GNOME).
+        runtime_dir = (_os.environ.get("XDG_RUNTIME_DIR")
+                        or f"/run/user/{my_uid}")
+        bus_socket = _os.path.join(runtime_dir, "at-spi", "bus_0")
+        if _os.path.exists(bus_socket):
+            if not _os.access(bus_socket, _os.R_OK | _os.W_OK):
+                return False, f"bus socket unreadable at {bus_socket}"
+            return True, ""
+        if _a11y_bus_reachable():
+            return True, ""
+        return False, (f"no at-spi bus (no socket at {bus_socket}, "
+                       "no org.a11y.Bus)")
     except Exception as exc:
         return False, f"probe error: {exc}"
 
@@ -423,13 +448,15 @@ def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] |
     the mouse pointer (the user's explicit request). Returns None - so
     the caller falls back to mouse positioning - whenever AT-SPI is off,
     unavailable, times out, the widget exposes no Text interface, or
-    nothing is selected. Gated on the same editable_atspi_listener_enabled
-    setting as the rest of the AT-SPI machinery."""
+    nothing is selected. Gated on popup_anchor_to_selection (the user-facing
+    toggle, default on) plus AT-SPI availability - this is a one-shot bounded
+    walk and does not need the always-on focus listener, so it stays
+    decoupled from editable_atspi_listener_enabled."""
     if not _HAS_ATSPI:
         return None
     try:
         from settings import get_settings
-        if not bool(get_settings().get("editable_atspi_listener_enabled")):
+        if not bool(get_settings().get("popup_anchor_to_selection")):
             return None
     except Exception:
         return None
