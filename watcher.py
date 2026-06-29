@@ -20,11 +20,17 @@ class SelectionWatcher:
         self,
         on_selection: Callable[[str, int, int], None],
         debounce_ms: int = 300,
+        pointer_fn: "Optional[Callable[[], tuple[int, int]]]" = None,
     ) -> None:
         self._on_selection = on_selection
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._last_text: str = ""
+        # Optional override for reading the global pointer. XQueryPointer
+        # freezes over native-Wayland windows on GNOME, so the xwayland_gnome
+        # backend passes its GNOME-Shell-extension-backed pointer_position here.
+        # When None (X11 / KDE-under-XWayland) we use XQueryPointer directly.
+        self._pointer_fn = pointer_fn
         # Wait this long after the last selection-change event before firing.
         # Avoids popup churn while the user is still dragging the selection -
         # X PRIMARY updates on every character as the drag extends.
@@ -58,6 +64,11 @@ class SelectionWatcher:
             return ""
 
     def _pointer_position(self, dpy: display.Display) -> tuple[int, int]:
+        if self._pointer_fn is not None:
+            try:
+                return self._pointer_fn()
+            except Exception:  # noqa: BLE001
+                pass  # fall through to XQueryPointer
         data = dpy.screen().root.query_pointer()
         return data.root_x, data.root_y
 

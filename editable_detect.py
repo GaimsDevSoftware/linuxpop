@@ -464,6 +464,16 @@ def focused_selection_rect(timeout: float = 0.15) -> tuple[int, int, int, int] |
     decoupled from editable_atspi_listener_enabled."""
     if not _HAS_ATSPI:
         return None
+    # On Wayland, AT-SPI COORD_TYPE_SCREEN extents come back WINDOW-relative,
+    # not screen-relative: the compositor's security model never tells a client
+    # its on-screen position (GNOME/KDE alike - see Red Hat bug 1517301). A
+    # window-relative rectangle treated as screen coordinates drops the popup
+    # at the wrong spot (e.g. mid-screen for a maximised window), so the rect
+    # is only trustworthy on an X11 session. Fall back to the mouse pointer on
+    # Wayland - which IS a real global coordinate (XQueryPointer / KWin).
+    import os as _os
+    if _os.environ.get("WAYLAND_DISPLAY"):
+        return None
     try:
         from settings import get_settings
         s = get_settings()

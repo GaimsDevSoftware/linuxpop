@@ -1,0 +1,7 @@
+{
+  "uuid": "linuxpop-pointer@gaimsdevsoftware.github.io",
+  "name": "LinuxPop Pointer",
+  "description": "Exposes the global pointer (cursor) position over D-Bus. GNOME Wayland gives applications no way to query the global cursor location over other windows, which LinuxPop needs to place its selection popup. This tiny extension answers GetPointer() with global.get_pointer().",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/GaimsDevSoftware/linuxpop"
+}

@@ -29,88 +29,8 @@ from __future__ import annotations
 import os
 import shutil
 import sys
-import threading
-from typing import Callable, Optional
 
 from .x11 import X11Backend
-
-
-class _PollingSelectionWatcher:
-    """Primary-selection watcher for compositors WITHOUT wlr-data-control.
-
-    GNOME/Mutter does not implement the data-control protocol, so
-    `wl-paste --primary --watch` exits immediately ("Watch mode requires a
-    compositor that supports the data-control protocol") and the event-driven
-    WaylandSelectionWatcher never fires. One-shot `wl-paste --primary` reads DO
-    work on Mutter, so we poll: read the primary selection on a short interval
-    and fire on change. Sees both native Wayland and XWayland apps (anything
-    that owns the primary selection). Mirrors WaylandSelectionWatcher's
-    interface so the backend can swap it in transparently.
-    """
-
-    def __init__(
-        self,
-        backend,
-        on_selection: Callable[[str, int, int], None],
-        debounce_ms: int = 150,
-        poll_ms: int = 250,
-    ) -> None:
-        self._backend = backend
-        self._on_selection = on_selection
-        self._debounce_s = max(0.0, debounce_ms / 1000.0)
-        self._poll_s = max(0.05, poll_ms / 1000.0)
-        self._thread: Optional[threading.Thread] = None
-        self._stop = threading.Event()
-        self._last_text: Optional[str] = None
-
-    def set_debounce_ms(self, ms: int) -> None:
-        self._debounce_s = max(0.0, ms / 1000.0)
-
-    def start(self) -> None:
-        if not shutil.which("wl-paste"):
-            print("[xwayland_gnome] wl-paste missing - selection watch disabled")
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._run, daemon=True, name="linuxpop-gnome-selpoll")
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        t = self._thread
-        if t is not None and t.is_alive():
-            t.join(timeout=1.0)
-
-    def _read_primary(self) -> str:
-        try:
-            return self._backend.read_selection("primary") or ""
-        except Exception:  # noqa: BLE001
-            return ""
-
-    def _run(self) -> None:
-        # Baseline: whatever is already selected when LinuxPop starts must not
-        # pop up. Establish it before the loop so the first real change fires.
-        self._last_text = self._read_primary()
-        while not self._stop.wait(self._poll_s):
-            text = self._read_primary()
-            if text == self._last_text:
-                continue
-            # Changed. Let a drag settle, then re-read so we anchor on the
-            # final selection instead of an intermediate one mid-drag.
-            if self._debounce_s and self._stop.wait(self._debounce_s):
-                break
-            text = self._read_primary()
-            self._last_text = text
-            if not text or not text.strip():
-                continue
-            try:
-                x, y = self._backend.pointer_position()
-            except Exception:  # noqa: BLE001
-                x, y = 0, 0
-            try:
-                self._on_selection(text, x, y)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[xwayland_gnome] selection callback error: {exc}")
 
 
 class XWaylandGnomeBackend(X11Backend):
@@ -118,9 +38,10 @@ class XWaylandGnomeBackend(X11Backend):
     # Running under XWayland: the popup is an X11 toplevel, so the Xlib-based
     # pointer/Esc polling and Gtk.Window.move() inherited from X11Backend apply.
     popup_uses_xlib = True
-    # XQueryPointer returns physical root pixels (as on native X11), so the
-    # popup divides by the monitor scale - inherit X11Backend's False.
-    pointer_is_logical = False
+    # The pointer now comes from the GNOME Shell extension's global.get_pointer(),
+    # which is in LOGICAL (stage) coordinates - the same space as the monitor
+    # geometry and Gtk.Window.move() - so the popup must NOT divide by the scale.
+    pointer_is_logical = True
 
     def __init__(self) -> None:
         super().__init__()
@@ -128,6 +49,47 @@ class XWaylandGnomeBackend(X11Backend):
         # helper for clipboard + key injection (its wl-clipboard / ydotool code
         # is compositor-agnostic). Never used for pointer or positioning.
         self._wl = None
+        self._shell_pointer = None   # cached D-Bus proxy to the Shell extension
+        self._scale_cache = None     # monitor scale, for the no-extension path
+
+    # ---- pointer (via the GNOME Shell extension) -------------------------
+    def pointer_position(self) -> "tuple[int, int]":
+        # GNOME Wayland gives an X11/XWayland app no way to read the global
+        # cursor over native-Wayland windows: XQueryPointer freezes there and
+        # GNOME never shipped the wlr virtual-pointer / layer-shell protocols.
+        # Our bundled GNOME Shell extension publishes global.get_pointer() over
+        # D-Bus (logical coords) - query it.
+        try:
+            import dbus
+            if self._shell_pointer is None:
+                obj = dbus.SessionBus().get_object(
+                    "org.gnome.Shell",
+                    "/io/github/GaimsDevSoftware/LinuxPop/Pointer")
+                self._shell_pointer = dbus.Interface(
+                    obj, "io.github.GaimsDevSoftware.LinuxPop.Pointer")
+            x, y = self._shell_pointer.GetPointer()
+            return int(x), int(y)
+        except Exception:  # noqa: BLE001
+            # Extension not loaded yet (it needs a Shell reload / re-login) or
+            # disabled. Fall back to XQueryPointer converted to logical; it
+            # freezes over native-Wayland windows, but it won't crash.
+            self._shell_pointer = None
+            px, py = super().pointer_position()
+            s = self._logical_scale()
+            return int(px / s), int(py / s)
+
+    def _logical_scale(self) -> int:
+        if self._scale_cache is None:
+            try:
+                import gi
+                gi.require_version("Gdk", "3.0")
+                from gi.repository import Gdk
+                disp = Gdk.Display.get_default()
+                mon = disp.get_primary_monitor() or disp.get_monitor(0)
+                self._scale_cache = mon.get_scale_factor() or 1
+            except Exception:  # noqa: BLE001
+                self._scale_cache = 1
+        return self._scale_cache
 
     def _wl_io(self):
         if self._wl is None:
@@ -173,16 +135,44 @@ class XWaylandGnomeBackend(X11Backend):
         self._wl_io().set_clipboard(text)
 
     # ---- keystroke injection (ydotool/wtype via the KDE helper) ----------
+    def _activate_app(self) -> None:
+        # Clicking the popup hands keyboard focus to it on GNOME, so an injected
+        # chord would land on the popup. Ask the Shell extension to re-focus the
+        # app (the MRU normal window) first, then give the compositor a moment
+        # to apply it before we inject. No-op (and harmless) if the app never
+        # actually lost focus, or if the extension isn't loaded.
+        import time
+        try:
+            import dbus
+            if self._shell_pointer is None:
+                obj = dbus.SessionBus().get_object(
+                    "org.gnome.Shell",
+                    "/io/github/GaimsDevSoftware/LinuxPop/Pointer")
+                self._shell_pointer = dbus.Interface(
+                    obj, "io.github.GaimsDevSoftware.LinuxPop.Pointer")
+            self._shell_pointer.ActivateApp()
+        except Exception:  # noqa: BLE001
+            # ActivateApp needs the updated extension (loaded after a re-login).
+            # Don't drop the proxy - it's still valid for GetPointer.
+            pass
+        # Always pause briefly: it gives the compositor time to settle focus
+        # after the popup click, which fixes the injection even when the focus
+        # shift is only transient (no extension re-focus needed).
+        time.sleep(0.12)
+
     def send_key(self, combo: str) -> None:
+        self._activate_app()
         self._wl_io().send_key(combo)
 
     def type_text(self, text: str) -> None:
+        self._activate_app()
         self._wl_io().type_text(text)
 
     def can_paste(self) -> bool:
         return self._wl_io().can_paste()
 
     def paste(self) -> None:
+        self._activate_app()
         self._wl_io().paste()
 
     # ---- active window (AT-SPI + XWayland WM_CLASS) ----------------------
@@ -208,12 +198,21 @@ class XWaylandGnomeBackend(X11Backend):
 
     # ---- component factories --------------------------------------------
     def make_selection_watcher(self, on_selection, debounce_ms):
-        # Mutter has no wlr-data-control, so `wl-paste --watch` is dead here -
-        # use the polling watcher (one-shot reads work) instead of the KDE
-        # event-driven one. Sees native Wayland AND XWayland selections; calls
-        # back into this backend for read_selection() and pointer_position().
-        return _PollingSelectionWatcher(self, on_selection,
-                                        debounce_ms=debounce_ms)
+        # Mutter has no wlr-data-control (so `wl-paste --watch` is dead), and
+        # POLLING wl-paste turned out to hammer the source app into re-serving
+        # the primary selection several times a second - which made the
+        # selection highlight and the text caret blink and disrupted typing.
+        # Use the X11 XFixes watcher instead: it is event-driven (reads the
+        # selection only ONCE, when it actually changes), and Mutter bridges
+        # the Wayland primary selection to the X11 PRIMARY, so XFixes sees BOTH
+        # native-Wayland and XWayland app selections.
+        from watcher import SelectionWatcher
+        # pointer_fn: XQueryPointer freezes over native-Wayland windows here, so
+        # the watcher must read the cursor through our GNOME-Shell extension
+        # (pointer_position) instead - otherwise the popup anchors at a stale
+        # spot regardless of where the selection actually was.
+        return SelectionWatcher(on_selection, debounce_ms=debounce_ms,
+                                pointer_fn=self.pointer_position)
 
     def make_hotkey(self, hotkey_str, on_trigger, use_polling=False):
         from .evdev_hotkey import EvdevHotkey
