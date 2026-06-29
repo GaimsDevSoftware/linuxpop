@@ -29,9 +29,88 @@ from __future__ import annotations
 import os
 import shutil
 import sys
-from typing import Optional
+import threading
+from typing import Callable, Optional
 
 from .x11 import X11Backend
+
+
+class _PollingSelectionWatcher:
+    """Primary-selection watcher for compositors WITHOUT wlr-data-control.
+
+    GNOME/Mutter does not implement the data-control protocol, so
+    `wl-paste --primary --watch` exits immediately ("Watch mode requires a
+    compositor that supports the data-control protocol") and the event-driven
+    WaylandSelectionWatcher never fires. One-shot `wl-paste --primary` reads DO
+    work on Mutter, so we poll: read the primary selection on a short interval
+    and fire on change. Sees both native Wayland and XWayland apps (anything
+    that owns the primary selection). Mirrors WaylandSelectionWatcher's
+    interface so the backend can swap it in transparently.
+    """
+
+    def __init__(
+        self,
+        backend,
+        on_selection: Callable[[str, int, int], None],
+        debounce_ms: int = 150,
+        poll_ms: int = 250,
+    ) -> None:
+        self._backend = backend
+        self._on_selection = on_selection
+        self._debounce_s = max(0.0, debounce_ms / 1000.0)
+        self._poll_s = max(0.05, poll_ms / 1000.0)
+        self._thread: Optional[threading.Thread] = None
+        self._stop = threading.Event()
+        self._last_text: Optional[str] = None
+
+    def set_debounce_ms(self, ms: int) -> None:
+        self._debounce_s = max(0.0, ms / 1000.0)
+
+    def start(self) -> None:
+        if not shutil.which("wl-paste"):
+            print("[xwayland_gnome] wl-paste missing - selection watch disabled")
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, daemon=True, name="linuxpop-gnome-selpoll")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        t = self._thread
+        if t is not None and t.is_alive():
+            t.join(timeout=1.0)
+
+    def _read_primary(self) -> str:
+        try:
+            return self._backend.read_selection("primary") or ""
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _run(self) -> None:
+        # Baseline: whatever is already selected when LinuxPop starts must not
+        # pop up. Establish it before the loop so the first real change fires.
+        self._last_text = self._read_primary()
+        while not self._stop.wait(self._poll_s):
+            text = self._read_primary()
+            if text == self._last_text:
+                continue
+            # Changed. Let a drag settle, then re-read so we anchor on the
+            # final selection instead of an intermediate one mid-drag.
+            if self._debounce_s and self._stop.wait(self._debounce_s):
+                break
+            text = self._read_primary()
+            self._last_text = text
+            if not text or not text.strip():
+                continue
+            try:
+                x, y = self._backend.pointer_position()
+            except Exception:  # noqa: BLE001
+                x, y = 0, 0
+            try:
+                self._on_selection(text, x, y)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[xwayland_gnome] selection callback error: {exc}")
 
 
 class XWaylandGnomeBackend(X11Backend):
@@ -129,12 +208,12 @@ class XWaylandGnomeBackend(X11Backend):
 
     # ---- component factories --------------------------------------------
     def make_selection_watcher(self, on_selection, debounce_ms):
-        # wl-paste --primary --watch sees native Wayland apps' selection (the
-        # X11 XFixes watcher would only see XWayland apps). The watcher calls
+        # Mutter has no wlr-data-control, so `wl-paste --watch` is dead here -
+        # use the polling watcher (one-shot reads work) instead of the KDE
+        # event-driven one. Sees native Wayland AND XWayland selections; calls
         # back into this backend for read_selection() and pointer_position().
-        from .wayland_kde import WaylandSelectionWatcher
-        return WaylandSelectionWatcher(self, on_selection,
-                                       debounce_ms=debounce_ms)
+        return _PollingSelectionWatcher(self, on_selection,
+                                        debounce_ms=debounce_ms)
 
     def make_hotkey(self, hotkey_str, on_trigger, use_polling=False):
         from .evdev_hotkey import EvdevHotkey
