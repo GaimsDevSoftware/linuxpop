@@ -265,6 +265,10 @@ def _in_flatpak() -> bool:
 
 
 _TERMINALS = [
+    # Ptyxis is the default terminal on Fedora 41+ / modern GNOME. Same
+    # `-- bash -c <cmd>` convention as gnome-terminal. Listed first so it
+    # wins on GNOME boxes where it's the only terminal installed.
+    ("ptyxis", ["ptyxis", "--", "bash", "-c"]),
     ("gnome-terminal", ["gnome-terminal", "--", "bash", "-c"]),
     ("konsole", ["konsole", "-e", "bash", "-c"]),
     ("xfce4-terminal", ["xfce4-terminal", "-e"]),
