@@ -48,9 +48,9 @@ def _decode(text: str) -> None:
 
 def register(register_plugin) -> None:
     types = (ContentType.PLAIN_TEXT,)
-    register_plugin(Plugin(name="html-entity-encode", icon="text-html-symbolic",
+    register_plugin(Plugin(name="html-entity-encode", icon="linuxpop-html-encode-symbolic",
         tooltip="HTML entity encode", handler=_encode, content_types=types, priority=75,
         predicate=_has_escapable_chars))
-    register_plugin(Plugin(name="html-entity-decode", icon="text-html-symbolic",
+    register_plugin(Plugin(name="html-entity-decode", icon="linuxpop-html-decode-symbolic",
         tooltip="HTML entity decode", handler=_decode, content_types=types, priority=76,
         predicate=_has_html_entities))

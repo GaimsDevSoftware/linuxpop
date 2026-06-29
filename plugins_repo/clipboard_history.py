@@ -2814,7 +2814,7 @@ class _PickerDialog:
                 orientation=Gtk.Orientation.HORIZONTAL, margin_top=10)
             spacer = Gtk.Label()
             guide_row.pack_start(spacer, True, True, 0)
-            guide_btn = Gtk.Button(label="📖 Snippet guide")
+            guide_btn = Gtk.Button(label="Snippet guide")
             guide_btn.connect(
                 "clicked", lambda _b: self._show_snippet_help_dialog(parent=dlg))
             guide_row.pack_start(guide_btn, False, False, 0)
@@ -2995,7 +2995,7 @@ class _PickerDialog:
                 "<small>Click to insert a placeholder (filled in at paste time):</small>"
             )
             help_row.pack_start(help_intro, True, True, 0)
-            help_btn = Gtk.Button(label="📖 Snippet guide")
+            help_btn = Gtk.Button(label="Snippet guide")
             help_btn.set_tooltip_text(
                 "Open a friendly walkthrough of snippets, triggers, and placeholders."
             )

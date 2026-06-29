@@ -744,9 +744,10 @@ class PluginManagerDialog:
         group = Handy.PreferencesGroup()
         group.set_title("Popup button order")
         group.set_description(
-            "Drag-free reordering: ↑ and ↓ buttons move a plugin up or down. "
-            "The popup shows plugins in this order (those not listed fall back "
-            "to their built-in priority)."
+            "Drag a plugin by its handle (≡) to drop it anywhere in the list, "
+            "or use the ↑ / ↓ buttons for one step at a time. The popup shows "
+            "plugins in this order (those not listed fall back to their "
+            "built-in priority)."
         )
         self._fill_order_group(group)
         return group
@@ -777,16 +778,56 @@ class PluginManagerDialog:
             ),
         )
 
+        # Full ordered name list, kept in sync for drag-and-drop + arrow moves.
+        self._order_names = [p.name for p in sorted_plugins]
+        dnd_targets = [Gtk.TargetEntry.new(
+            "LINUXPOP_ORDER_ROW", Gtk.TargetFlags.SAME_APP, 0)]
+
         for index, plugin in enumerate(sorted_plugins):
             row = Handy.ActionRow()
             row.set_title(plugin.tooltip or plugin.name)
             row.set_subtitle(plugin.name)
+            row._order_index = index
+            row._order_icon = plugin.icon
+            row._plugin_name = plugin.name
+            # Right-click context menu: jump to top/bottom + hide the plugin.
+            try:
+                gesture = Gtk.GestureMultiPress.new(row)
+                gesture.set_button(3)  # secondary / right click
+                gesture.connect("pressed", self._on_order_row_rightclick, row)
+                row._ctx_gesture = gesture  # keep a ref so it isn't GC'd
+            except Exception as exc:  # noqa: BLE001
+                print(f"[plugin_manager] context-menu setup failed: {exc}")
             try:
                 img = Gtk.Image.new_from_icon_name(plugin.icon, Gtk.IconSize.LARGE_TOOLBAR)
                 img.set_pixel_size(20)
                 row.add_prefix(img)
             except Exception:
                 pass
+
+            # Drag-and-drop: the whole row is a drag source, and every row is a
+            # drop target. Dropping onto another row moves this plugin to that
+            # slot. The ↑/↓ buttons stay for precise / keyboard-driven moves.
+            try:
+                row.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, dnd_targets,
+                                    Gdk.DragAction.MOVE)
+                row.drag_dest_set(Gtk.DestDefaults.ALL, dnd_targets,
+                                  Gdk.DragAction.MOVE)
+                row.connect("drag-begin", self._on_order_drag_begin)
+                row.connect("drag-data-get", self._on_order_drag_data_get)
+                row.connect("drag-data-received", self._on_order_drag_data_received)
+                theme = Gtk.IconTheme.get_default()
+                if theme.has_icon("list-drag-handle-symbolic"):
+                    grip = Gtk.Image.new_from_icon_name(
+                        "list-drag-handle-symbolic", Gtk.IconSize.BUTTON)
+                else:
+                    grip = Gtk.Label(label="⣿")  # braille block, grip-like
+                grip.set_valign(Gtk.Align.CENTER)
+                grip.set_tooltip_text("Drag to reorder")
+                grip.get_style_context().add_class("dim-label")
+                row.add(grip)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[plugin_manager] drag-reorder setup failed: {exc}")
 
             up_btn = Gtk.Button.new_from_icon_name("go-up-symbolic", Gtk.IconSize.BUTTON)
             up_btn.set_valign(Gtk.Align.CENTER)
@@ -819,14 +860,16 @@ class PluginManagerDialog:
         new_idx = index + delta
         if new_idx < 0 or new_idx >= len(sorted_plugins):
             return
-        ordered_names = [p.name for p in sorted_plugins]
-        ordered_names[index], ordered_names[new_idx] = (
-            ordered_names[new_idx], ordered_names[index],
-        )
+        names = [p.name for p in sorted_plugins]
+        names[index], names[new_idx] = names[new_idx], names[index]
+        self._persist_order(names)
+
+    def _persist_order(self, ordered_names) -> None:
+        """Save the full plugin order, then refresh the list and the popup."""
         try:
             from settings import get_settings
             s = get_settings()
-            s.set("plugin_order", ordered_names)
+            s.set("plugin_order", list(ordered_names))
             s.save()
         except Exception as exc:  # noqa: BLE001
             print(f"[plugin_manager] could not save order: {exc}")
@@ -834,6 +877,90 @@ class PluginManagerDialog:
         self._refresh_order_group()
         if self._on_changed:
             self._on_changed()
+
+    # ---- drag-and-drop reordering -------------------------------------------
+    def _on_order_drag_begin(self, row, context) -> None:
+        # Show the plugin's own icon under the cursor while dragging.
+        try:
+            Gtk.drag_set_icon_name(
+                context, getattr(row, "_order_icon", "view-list-symbolic"), 8, 8)
+        except Exception:
+            pass
+
+    def _on_order_drag_data_get(self, row, context, data, info, time) -> None:
+        data.set_text(str(getattr(row, "_order_index", -1)), -1)
+
+    def _on_order_drag_data_received(self, row, context, x, y, data, info, time) -> None:
+        try:
+            src = int(data.get_text())
+        except (TypeError, ValueError):
+            return
+        dst = getattr(row, "_order_index", -1)
+        names = list(getattr(self, "_order_names", []) or [])
+        if not (0 <= src < len(names)) or not (0 <= dst < len(names)) or src == dst:
+            return
+        # Move the dragged plugin to the dropped-on row's position.
+        names.insert(dst, names.pop(src))
+        self._persist_order(names)
+
+    # ---- right-click context menu -------------------------------------------
+    def _on_order_row_rightclick(self, gesture, n_press, x, y, row) -> None:
+        name = getattr(row, "_plugin_name", None)
+        if not name:
+            return
+        menu = Gtk.Menu()
+
+        def add(label, callback, sensitive=True):
+            item = Gtk.MenuItem(label=label)
+            item.set_sensitive(sensitive)
+            item.connect("activate", lambda _i: callback())
+            menu.append(item)
+
+        names = list(getattr(self, "_order_names", []) or [])
+        at_top = names and names[0] == name
+        at_bottom = names and names[-1] == name
+        add("Move to top", lambda: self._order_move_to(name, "top"), not at_top)
+        add("Move to bottom", lambda: self._order_move_to(name, "bottom"), not at_bottom)
+        menu.append(Gtk.SeparatorMenuItem())
+        add("Hide from popup", lambda: self._hide_plugin(name))
+        menu.show_all()
+        try:
+            menu.popup_at_pointer(gesture.get_last_event(None))
+        except Exception:
+            menu.popup_at_pointer(None)
+
+    def _order_move_to(self, name: str, where: str) -> None:
+        names = list(getattr(self, "_order_names", []) or [])
+        if name not in names:
+            return
+        names.remove(name)
+        names.insert(0, name) if where == "top" else names.append(name)
+        self._persist_order(names)
+
+    def _hide_plugin(self, name: str) -> None:
+        """Hide a plugin from the popup by adding it to disabled_plugins.
+        Reversible: re-enable it from the Installed tab."""
+        try:
+            from settings import get_settings
+            s = get_settings()
+            disabled = list(s.get("disabled_plugins") or [])
+            if name not in disabled:
+                disabled.append(name)
+                s.set("disabled_plugins", disabled)
+                s.save()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[plugin_manager] hide failed: {exc}")
+            return
+        # Reload so the daemon drops it from the popup, then refresh the list
+        # (the hidden plugin leaves the Order tab; unhide it under Installed).
+        if self._on_changed:
+            try:
+                self._on_changed()
+            except Exception:
+                pass
+        self._refresh_order_group()
+        if getattr(self, "_installed_group", None) is not None:
+            self._refresh_installed_group()
 
     def _rebuild_catalog_buttons(self) -> None:
         page = getattr(self, "_catalog_page", None)
